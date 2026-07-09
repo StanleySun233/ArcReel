@@ -1,7 +1,7 @@
 # Sprint Backlog: CaMeL OAuth User Isolation
 
 **Date:** 20260709
-**Status:** planned
+**Status:** in_progress
 **Product brief:** Conversation request on 2026-07-09: replace ArcReel local login with CaMeL login, support real multi-user state without organization-level tenancy, isolate provider configuration plus custom providers per CaMeL user, bootstrap first-time CaMeL users with working CaMeL-backed image, text, video, and audio providers, add a personal-settings repair action for ArcReel-managed CaMeL keys, and make the free CaMeL API relay deployment comply with ArcReel AGPL-3.0 plus NOTICE obligations.
 **Main integration branch:** fix/seedance-mounted-base-url
 
@@ -70,39 +70,39 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 
 **Slug:** provider-bootstrap
 **User value:** A first-time CaMeL user can accept one prompt and get working ArcReel image, text, video, and audio providers backed by CaMeL without manually copying base URLs, model ids, or API keys; an existing user can repair those keys from personal settings.
-**Status:** planned
-**QA Status:** pending
+**Status:** implemented
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Provider credentials, built-in provider configuration, custom providers, custom provider models, and provider defaults are stored, listed, selected, resolved, and deleted per CaMeL-derived ArcReel user.
-- [ ] Generation queue provider resolution uses the task owner's user id when resolving provider credentials and custom providers.
-- [ ] After CaMeL login, ArcReel detects whether the current user has completed CaMeL provider bootstrap.
-- [ ] On the first incomplete login, the frontend shows a modal explaining that ArcReel will create four CaMeL API keys named `camel-arcreel-{camel_user_id}-{image,text,video,audio}` and configure ArcReel providers for the current user.
-- [ ] The bootstrap action redirects the browser through a CaMeL OAuth authorization flow with the dedicated `arcreel:token-provision` scope.
-- [ ] CaMeL token provisioning identifies the current CaMeL user from the OAuth bearer token, checks for same-name token conflicts before creating anything, enforces the ArcReel model allowlist server-side, and returns each plaintext key once.
-- [ ] ArcReel consumes the CaMeL access token and raw CaMeL API keys server-side only; neither value is persisted, returned to the browser, or written into browser storage.
-- [ ] The personal settings page includes a CaMeL key repair button that starts the same authorization flow in `mode=repair`.
-- [ ] Repair mode requires CaMeL re-authentication or a recent CaMeL authentication check, and ArcReel never asks for the user's CaMeL password.
-- [ ] If CaMeL reports existing token-name conflicts, ArcReel does not create or overwrite local providers; the modal shows conflict names plus CaMeL management links and a retry action.
-- [ ] On success, ArcReel creates four user-owned custom providers: one each for image, text, video, and audio, so the user can inspect or delete them independently.
-- [ ] Each custom provider uses the configured CaMeL base URL and only registers the configured allowlisted models for its media type.
-- [ ] The Seedance video provider uses the `ark-seedance` endpoint and the canonical CaMeL base URL without requiring users to manually append `/api/v3`.
-- [ ] Successful bootstrap marks the user's onboarding state as complete and sets the new providers/models as the user's defaults where ArcReel already has per-user default selection fields.
-- [ ] If local provider creation fails after CaMeL token creation, bootstrap remains incomplete and the user receives deletion links for the created CaMeL token names.
+- [x] Provider credentials, built-in provider configuration, custom providers, custom provider models, and provider defaults are stored, listed, selected, resolved, and deleted per CaMeL-derived ArcReel user.
+- [x] Generation queue provider resolution uses the task owner's user id when resolving provider credentials and custom providers.
+- [x] After CaMeL login, ArcReel detects whether the current user has completed CaMeL provider bootstrap.
+- [x] On the first incomplete login, the frontend shows a modal explaining that ArcReel will create four CaMeL API keys named `camel-arcreel-{camel_user_id}-{image,text,video,audio}` and configure ArcReel providers for the current user.
+- [x] The bootstrap action redirects the browser through a CaMeL OAuth authorization flow with the dedicated `arcreel:token-provision` scope.
+- [x] CaMeL token provisioning identifies the current CaMeL user from the OAuth bearer token, checks for same-name token conflicts before creating anything, enforces the ArcReel model allowlist server-side, and returns each plaintext key once.
+- [x] ArcReel consumes the CaMeL access token and raw CaMeL API keys server-side only; neither value is persisted, returned to the browser, or written into browser storage.
+- [x] The personal settings page includes a CaMeL key repair button that starts the same authorization flow in `mode=repair`.
+- [x] Repair mode requires CaMeL re-authentication or a recent CaMeL authentication check, and ArcReel never asks for the user's CaMeL password.
+- [x] If CaMeL reports existing token-name conflicts, ArcReel does not create or overwrite local providers; the modal shows conflict names plus CaMeL management links and a retry action.
+- [x] On success, ArcReel creates four user-owned custom providers: one each for image, text, video, and audio, so the user can inspect or delete them independently.
+- [x] Each custom provider uses the configured CaMeL base URL and only registers the configured allowlisted models for its media type.
+- [x] The Seedance video provider uses the `ark-seedance` endpoint and the canonical CaMeL base URL without requiring users to manually append `/api/v3`.
+- [x] Successful bootstrap marks the user's onboarding state as complete and sets the new providers/models as the user's defaults where ArcReel already has per-user default selection fields.
+- [x] If local provider creation fails after CaMeL token creation, bootstrap remains incomplete and the user receives deletion links for the created CaMeL token names.
 
 **Engineering Subtasks**
-- [ ] Tara: Add CaMeL provisioning settings for ArcReel allowed models, token group, dedicated scope, ArcReel client validation, and token-management link template in CaMeL-api. (depends: api-contract)
-- [ ] Tara: Add CaMeL provisioning endpoint behavior for visible per-media token creation, conflict-first checks, repair mode, ArcReel-managed token marking, idempotency, model allowlist enforcement, and one-time key return. (depends: api-contract)
-- [ ] Tara: Add ArcReel bootstrap status, authorization start, callback handling, and repair start flow under authenticated API routes. (depends: camel-auth)
-- [ ] Tara: Add ArcReel user-scoped persistence for provider credentials, built-in provider configuration, custom providers, custom provider models, provider defaults, and bootstrap completion state. (depends: camel-auth)
-- [ ] Tara: Implement the ArcReel service that calls CaMeL provisioning in create or repair mode, creates or updates user-owned custom providers, creates model rows, updates user provider defaults, and returns non-sensitive result states. (depends: camel-auth)
-- [ ] Nia: Add first-login bootstrap modal, success state, conflict state with links, retry action, and partial-failure state. (depends: camel-auth)
-- [ ] Nia: Add personal settings CaMeL repair button and repair result states. (depends: camel-auth)
-- [ ] Nia: Refresh provider/default configuration state after successful bootstrap without exposing raw API keys. (depends: provider-bootstrap)
-- [ ] Quinn: Add ArcReel-side backend and frontend coverage for first login, provider isolation, custom provider isolation, success, conflict, retry-after-delete, repair, partial failure, and non-first-login no-op paths. (depends: provider-bootstrap)
+- [x] Tara: Add CaMeL provisioning settings for ArcReel allowed models, token group, dedicated scope, ArcReel client validation, and token-management link template in CaMeL-api. (depends: api-contract)
+- [x] Tara: Add CaMeL provisioning endpoint behavior for visible per-media token creation, conflict-first checks, repair mode, ArcReel-managed token marking, idempotency, model allowlist enforcement, and one-time key return. (depends: api-contract)
+- [x] Tara: Add ArcReel bootstrap status, authorization start, callback handling, and repair start flow under authenticated API routes. (depends: camel-auth)
+- [x] Tara: Add ArcReel user-scoped persistence for provider credentials, built-in provider configuration, custom providers, custom provider models, provider defaults, and bootstrap completion state. (depends: camel-auth)
+- [x] Tara: Implement the ArcReel service that calls CaMeL provisioning in create or repair mode, creates or updates user-owned custom providers, creates model rows, updates user provider defaults, and returns non-sensitive result states. (depends: camel-auth)
+- [x] Nia: Add first-login bootstrap modal, success state, conflict state with links, retry action, and partial-failure state. (depends: camel-auth)
+- [x] Nia: Add personal settings CaMeL repair button and repair result states. (depends: camel-auth)
+- [x] Nia: Refresh provider/default configuration state after successful bootstrap without exposing raw API keys. (depends: provider-bootstrap)
+- [x] Quinn: Add ArcReel-side backend and frontend coverage for first login, provider isolation, custom provider isolation, success, conflict, retry-after-delete, repair, partial failure, and non-first-login no-op paths. (depends: provider-bootstrap)
 
-**QA Evidence:** pending
+**QA Evidence:** 2026-07-10: `python -m pytest tests/test_camel_bootstrap_service.py tests/test_camel_auth_provider_bootstrap.py tests/test_config_repository.py tests/test_credential_repository.py tests/test_custom_provider_repo.py tests/test_credential_api.py tests/test_providers_api.py tests/test_custom_providers_api.py tests/test_system_config_router.py tests/test_custom_provider_models.py tests/test_db_models.py tests/test_generation_tasks_service.py -q` passed with 326 tests. `pnpm check` passed with frontend typecheck, lint, and 101 Vitest files / 897 tests. `git diff --check` passed. Full `python -m pytest -q` is blocked by local dependency drift unrelated to this story: the conda environment has `volcengine-python-sdk 5.0.39` instead of locked `5.0.21` and `pyjianyingdraft 0.3.0` instead of locked `0.2.7`, causing Ark SDK import syntax failure and Jianying `ScriptFile.add_track` API failures.
 
 ### Story: Story 3 - AGPL License And Source Compliance
 

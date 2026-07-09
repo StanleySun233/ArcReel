@@ -25,18 +25,26 @@
 
 ## Subtasks
 
-- [ ] Add CaMeL provisioning settings and endpoint behavior for visible per-media tokens, conflicts, repair mode, ArcReel-managed marking, idempotency, model allowlist enforcement, and one-time key return.
-  - Commit: pending
+- [x] Add CaMeL provisioning settings and endpoint behavior for visible per-media tokens, conflicts, repair mode, ArcReel-managed marking, idempotency, model allowlist enforcement, and one-time key return.
+  - Commit: d847d2bb (CaMeL-api)
 - [x] Add ArcReel bootstrap status, authorization start, callback handling, and repair start flow under authenticated API routes.
-  - Commit: 3181512
+  - Commit: 3181512, f758e49
 - [x] Add ArcReel user-scoped persistence for provider credentials, built-in provider configuration, custom providers, custom provider models, provider defaults, and bootstrap completion state.
-  - Commit: 8e05499
+  - Commit: 8e05499, f758e49
 - [x] Implement the ArcReel service that calls CaMeL provisioning in create or repair mode, creates or updates user-owned custom providers, creates model rows, and updates user provider defaults.
-  - Commit: 3181512
-- [ ] Add conflict retry behavior and partial-failure handling for CaMeL tokens created before local provider persistence fails.
-  - Commit: 3181512 (ArcReel non-sensitive result handling); CaMeL endpoint support pending.
+  - Commit: 3181512, f758e49
+- [x] Add conflict retry behavior and partial-failure handling for CaMeL tokens created before local provider persistence fails.
+  - Commit: d847d2bb (CaMeL-api), 3181512, f758e49
 
-**Ready for QA:** no
+**Ready for QA:** yes
+
+## QA Evidence
+
+- Commit: 7f41629
+- Command: `python -m pytest tests/test_camel_bootstrap_service.py tests/test_camel_auth_provider_bootstrap.py tests/test_config_repository.py tests/test_credential_repository.py tests/test_custom_provider_repo.py tests/test_credential_api.py tests/test_providers_api.py tests/test_custom_providers_api.py tests/test_system_config_router.py tests/test_custom_provider_models.py tests/test_db_models.py tests/test_generation_tasks_service.py -q`
+- Result: 326 passed, 1 existing FastAPI/TestClient warning.
+- Command: `git diff --check`
+- Result: passed.
 
 ## Blockers
 
