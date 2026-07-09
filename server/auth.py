@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from datetime import UTC
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import jwt
 from fastapi import Depends, HTTPException, Query
@@ -32,6 +32,7 @@ class CurrentUserInfo(BaseModel):
 
     id: str
     sub: str
+    provider: str = "local"
     role: str = "admin"
 
     model_config = ConfigDict(frozen=True)
@@ -50,6 +51,16 @@ _ANONYMOUS_USER_SUB = "local"
 # 避免静默 fail-open。
 _AUTH_DISABLED_VALUES = frozenset({"false", "0", "no", "off"})
 
+AuthMode = Literal["local", "camel"]
+
+
+def get_auth_mode() -> AuthMode:
+    return "camel" if os.environ.get("AUTH_MODE", "local").strip().lower() == "camel" else "local"
+
+
+def is_camel_auth_mode() -> bool:
+    return get_auth_mode() == "camel"
+
 
 def is_auth_enabled() -> bool:
     """``AUTH_ENABLED`` env 解析。默认 ``true``，保持现有部署行为；空值也按默认。
@@ -63,7 +74,7 @@ def _anonymous_user() -> "CurrentUserInfo":
     """关闭认证时返回的固定匿名用户。"""
     from lib.db.base import DEFAULT_USER_ID
 
-    return CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, role="admin")
+    return CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, provider="local", role="admin")
 
 
 # OAuth2 scheme
@@ -100,7 +111,7 @@ def get_token_secret() -> str:
     return _cached_token_secret
 
 
-def create_token(username: str) -> str:
+def create_token(username: str, user_id: str | None = None, provider: str = "local") -> str:
     """创建 JWT token
 
     Args:
@@ -109,9 +120,13 @@ def create_token(username: str) -> str:
     Returns:
         JWT token 字符串
     """
+    from lib.db.base import DEFAULT_USER_ID
+
     now = time.time()
     payload = {
         "sub": username,
+        "user_id": user_id or DEFAULT_USER_ID,
+        "provider": provider,
         "iat": now,
         "exp": now + TOKEN_EXPIRY_SECONDS,
     }
@@ -194,6 +209,8 @@ def check_credentials(username: str, password: str) -> bool:
     """
     if not is_auth_enabled():
         return True
+    if is_camel_auth_mode():
+        return False
     expected_username = os.environ.get("AUTH_USERNAME", "admin")
     pw_hash = _get_password_hash()
     username_ok = secrets.compare_digest(username, expected_username)
@@ -216,6 +233,8 @@ def ensure_auth_password(env_path: str | None = None) -> str:
         当前的 AUTH_PASSWORD 值；关闭认证时返回空串。
     """
     if not is_auth_enabled():
+        return ""
+    if is_camel_auth_mode():
         return ""
     password = os.environ.get("AUTH_PASSWORD")
     if password:
@@ -371,7 +390,7 @@ async def _verify_api_key(token: str) -> dict | None:
         except (ValueError, TypeError):
             logger.warning("API Key expires_at 值格式无法解析，忽略过期检查: %r", expires_at)
 
-    payload = {"sub": f"apikey:{row['name']}", "via": "apikey"}
+    payload = {"sub": f"apikey:{row['name']}", "via": "apikey", "user_id": row["user_id"], "provider": "apikey"}
     _set_api_key_cache(key_hash, payload, expires_at_ts=expires_at_monotonic)
 
     # 异步更新 last_used_at（不阻塞，保存引用防止 GC）
@@ -423,7 +442,9 @@ def _payload_to_user(payload: dict) -> CurrentUserInfo:
     from lib.db.base import DEFAULT_USER_ID
 
     sub = payload.get("sub", "")
-    return CurrentUserInfo(id=DEFAULT_USER_ID, sub=sub, role="admin")
+    user_id = payload.get("user_id") or DEFAULT_USER_ID
+    provider = payload.get("provider") or payload.get("via") or "local"
+    return CurrentUserInfo(id=str(user_id), sub=str(sub), provider=str(provider), role="admin")
 
 
 async def get_current_user(

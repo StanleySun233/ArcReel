@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { useAutoFocus } from "@/hooks/useAutoFocus";
 import { errMsg, voidPromise } from "@/utils/async";
@@ -21,16 +21,70 @@ import {
 const POSTER_GRID_STYLE = posterGridStyle({ size: 44, maskShape: "60% 60% at 50% 35%", opacity: 0.05 });
 const AMBIENT_GLOW_STYLE = ambientGlowStyle();
 
+function decodeFragmentValue(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value.replace(/\+/g, " "));
+  } catch {
+    return value;
+  }
+}
+
+function callbackReturnPath(hash: string): string | null {
+  const fromMarker = "&from=";
+  const fromIndex = hash.indexOf(fromMarker);
+  if (fromIndex >= 0) {
+    return decodeFragmentValue(hash.slice(fromIndex + fromMarker.length));
+  }
+  return new URLSearchParams(hash).get("from");
+}
+
 export function LoginPage() {
   const { t, i18n } = useTranslation(["common", "auth"]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const search = useSearch();
   const login = useAuthStore((s) => s.login);
+  const authMode = useAuthStore((s) => s.authMode);
+  const authStatus = useAuthStore((s) => s.authStatus);
+  const authLoading = useAuthStore((s) => s.isLoading);
+  const providers = useAuthStore((s) => s.providers);
   const usernameRef = useAutoFocus<HTMLInputElement>();
+  const callbackHandledRef = useRef(false);
+  const isCallback = location === "/login/callback";
+  const camelProvider = providers.find((provider) => provider.id === "camel");
+  const isCamelMode = authMode === "camel";
+
+  useEffect(() => {
+    if (!isCallback || callbackHandledRef.current) return;
+    callbackHandledRef.current = true;
+
+    const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+    const params = new URLSearchParams(hash);
+    const token = params.get("access_token");
+    const returnTo = safeReturnPath(callbackReturnPath(hash)) ?? "/app/projects";
+
+    if (!token) {
+      setError(t("auth:login_callback_failed"));
+      return;
+    }
+
+    login(token, "camel");
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    setLocation(returnTo);
+  }, [isCallback, login, setLocation, t]);
+
+  const handleCamelLogin = () => {
+    if (!camelProvider) return;
+    const returnTo = safeReturnPath(new URLSearchParams(search).get("from")) ?? "/app/projects";
+    const startUrl = new URL(camelProvider.login_url, window.location.origin);
+    startUrl.searchParams.set("from", returnTo);
+    setLoading(true);
+    window.location.assign(startUrl.pathname + startUrl.search + startUrl.hash);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -92,55 +146,98 @@ export function LoginPage() {
           </h1>
         </div>
 
-        <form onSubmit={voidPromise(handleSubmit)} className="space-y-4">
-          <div>
-            <FieldLabel htmlFor="login-username" required>
-              {t("auth:username")}
-            </FieldLabel>
-            <input
-              id="login-username"
-              type="text"
-              autoComplete="username"
-              spellCheck={false}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className={INPUT_CLS}
-              ref={usernameRef}
-              required
-            />
+        {isCallback ? (
+          <div className="space-y-4">
+            {error ? (
+              <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
+                {error}
+              </p>
+            ) : (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center justify-center gap-2 text-sm text-text-3"
+              >
+                <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />
+                <span>{t("auth:login_callback")}</span>
+              </div>
+            )}
           </div>
-
-          <div>
-            <FieldLabel htmlFor="login-password" required>
-              {t("auth:password")}
-            </FieldLabel>
-            <input
-              id="login-password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={INPUT_CLS}
-              required
-            />
+        ) : authLoading && !authStatus ? (
+          <div role="status" aria-live="polite" className="flex items-center justify-center gap-2 text-sm text-text-3">
+            <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />
+            <span>{t("common:loading")}</span>
           </div>
+        ) : isCamelMode ? (
+          <div className="space-y-4">
+            {camelProvider ? (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleCamelLogin}
+                className={`${ACCENT_BTN_CLS} w-full justify-center`}
+                style={ACCENT_BUTTON_STYLE}
+              >
+                {loading && <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />}
+                {t("auth:camel_login")}
+              </button>
+            ) : (
+              <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
+                {t("auth:camel_login_unavailable")}
+              </p>
+            )}
+          </div>
+        ) : (
+          <form onSubmit={voidPromise(handleSubmit)} className="space-y-4">
+            <div>
+              <FieldLabel htmlFor="login-username" required>
+                {t("auth:username")}
+              </FieldLabel>
+              <input
+                id="login-username"
+                type="text"
+                autoComplete="username"
+                spellCheck={false}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className={INPUT_CLS}
+                ref={usernameRef}
+                required
+              />
+            </div>
 
-          {error && (
-            <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
-              {error}
-            </p>
-          )}
+            <div>
+              <FieldLabel htmlFor="login-password" required>
+                {t("auth:password")}
+              </FieldLabel>
+              <input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={INPUT_CLS}
+                required
+              />
+            </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`${ACCENT_BTN_CLS} w-full justify-center`}
-            style={ACCENT_BUTTON_STYLE}
-          >
-            {loading && <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />}
-            {loading ? t("auth:logging_in") : t("auth:login")}
-          </button>
-        </form>
+            {error && (
+              <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`${ACCENT_BTN_CLS} w-full justify-center`}
+              style={ACCENT_BUTTON_STYLE}
+            >
+              {loading && <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />}
+              {loading ? t("auth:logging_in") : t("auth:login")}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

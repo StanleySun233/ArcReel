@@ -149,6 +149,7 @@ export function AppRoutes() {
       <ConfigStatusLoader />
       <Switch>
         {/* Login page */}
+        <Route path="/login/callback" component={LoginPage} />
         <Route path="/login" component={LoginPage} />
 
         {/* Root redirects to projects list */}
