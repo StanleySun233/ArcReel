@@ -13,9 +13,11 @@ from server.auth import CurrentUserInfo, get_current_user
 from server.routers import api_keys
 
 
-def _make_client() -> TestClient:
+def _make_client(user: CurrentUserInfo | None = None) -> TestClient:
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: user or CurrentUserInfo(
+        id="default", sub="testuser", role="admin"
+    )
     app.include_router(api_keys.router, prefix="/api/v1")
     return TestClient(app)
 
@@ -80,6 +82,19 @@ class TestCreateApiKey:
                 resp = client.post("/api/v1/api-keys", json={"name": "mykey"})
 
         assert resp.status_code == 409
+
+
+class TestApiKeyManagerAuth:
+    def test_api_key_auth_cannot_manage_api_keys(self):
+        api_key_user = CurrentUserInfo(id="camel:owner", sub="apikey:owner-key", provider="apikey", role="admin")
+        with _make_client(api_key_user) as client:
+            create_resp = client.post("/api/v1/api-keys", json={"name": "mykey"})
+            list_resp = client.get("/api/v1/api-keys")
+            delete_resp = client.delete("/api/v1/api-keys/1")
+
+        assert create_resp.status_code == 403
+        assert list_resp.status_code == 403
+        assert delete_resp.status_code == 403
 
 
 class TestListApiKeys:

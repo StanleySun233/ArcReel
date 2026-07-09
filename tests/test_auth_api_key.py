@@ -4,13 +4,18 @@ API Key 认证分流单元测试
 测试 auth 模块中的 API Key 路径：哈希计算、缓存逻辑、认证分流。
 """
 
+import asyncio
 import hashlib
+import os
 import time
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
+from lib.db.models.api_key import ApiKey
+from lib.db.models.user import User
 import server.auth as auth_module
 
 
@@ -20,6 +25,28 @@ def clear_cache():
     auth_module._api_key_cache.clear()
     yield
     auth_module._api_key_cache.clear()
+
+
+class _SessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+def _tracked_create_task(tasks):
+    original_create_task = asyncio.create_task
+
+    def create_task(coro):
+        task = original_create_task(coro)
+        tasks.append(task)
+        return task
+
+    return create_task
 
 
 class TestHashApiKey:
@@ -123,3 +150,36 @@ class TestVerifyAndGetPayloadAsync:
         ):
             await auth_module._verify_and_get_payload_async("arc-somekey")
         mock_jwt.assert_not_called()
+
+
+class TestApiKeyOwnerResolution:
+    @pytest.mark.asyncio
+    async def test_bearer_api_key_resolves_persisted_owner_user_id(self, async_session):
+        key = "arc-owner-key"
+        key_hash = auth_module._hash_api_key(key)
+        async with async_session.begin():
+            async_session.add(User(id="camel:owner", username="owner", role="user", is_active=True))
+            async_session.add(
+                ApiKey(
+                    name="owner-key",
+                    key_hash=key_hash,
+                    key_prefix=key[:8],
+                    expires_at=datetime.now(UTC) + timedelta(days=1),
+                    user_id="camel:owner",
+                )
+            )
+
+        tasks = []
+        with (
+            patch.dict(os.environ, {"AUTH_ENABLED": "true"}),
+            patch("lib.db.async_session_factory", return_value=_SessionContext(async_session)),
+            patch("asyncio.create_task", side_effect=_tracked_create_task(tasks)),
+        ):
+            user = await auth_module.get_current_user(key)
+
+        if tasks:
+            await asyncio.gather(*tasks)
+
+        assert user.id == "camel:owner"
+        assert user.sub == "apikey:owner-key"
+        assert user.provider == "apikey"

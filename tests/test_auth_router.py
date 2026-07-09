@@ -23,6 +23,7 @@ def client():
     with patch.dict(
         os.environ,
         {
+            "AUTH_MODE": "local",
             "AUTH_USERNAME": "testuser",
             "AUTH_PASSWORD": "testpass",
             "AUTH_TOKEN_SECRET": "test-router-secret-key-at-least-32-bytes-long",
@@ -32,6 +33,32 @@ def client():
         app.include_router(auth_router.router, prefix="/api/v1")
         with TestClient(app) as c:
             yield c
+
+
+class TestAuthStatusRoute:
+    def test_camel_mode_returns_camel_provider_when_configured(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_ENABLED": "true",
+                "AUTH_MODE": "camel",
+                "CAMEL_OAUTH_BASE_URL": "https://camel.example.com",
+                "CAMEL_OAUTH_CLIENT_ID": "arc-client",
+                "CAMEL_OAUTH_CLIENT_SECRET": "arc-secret",
+                "CAMEL_OAUTH_REDIRECT_URI": "https://arcreel.example.com/api/v1/auth/camel/callback",
+            },
+        ):
+            app = FastAPI()
+            app.include_router(auth_router.router, prefix="/api/v1")
+            with TestClient(app) as c:
+                resp = c.get("/api/v1/auth/status")
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "enabled": True,
+            "mode": "camel",
+            "providers": [{"id": "camel", "label": "CaMeL", "login_url": "/api/v1/auth/camel/start"}],
+        }
 
 
 class TestLoginRoute:
@@ -63,6 +90,27 @@ class TestLoginRoute:
         )
         assert resp.status_code == 401
 
+    def test_login_disabled_in_camel_mode(self):
+        with patch.dict(
+            os.environ,
+            {
+                "AUTH_MODE": "camel",
+                "AUTH_USERNAME": "testuser",
+                "AUTH_PASSWORD": "testpass",
+                "AUTH_TOKEN_SECRET": "test-router-secret-key-at-least-32-bytes-long",
+            },
+        ):
+            app = FastAPI()
+            app.include_router(auth_router.router, prefix="/api/v1")
+            with TestClient(app) as c:
+                resp = c.post(
+                    "/api/v1/auth/token",
+                    data={"username": "testuser", "password": "testpass"},
+                )
+
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "Local password login is disabled"
+
 
 class TestVerifyRoute:
     def test_verify_valid_token(self, client):
@@ -81,6 +129,22 @@ class TestVerifyRoute:
         data = resp.json()
         assert data["valid"] is True
         assert data["username"] == "testuser"
+
+    def test_verify_returns_jwt_user_id_and_provider(self, client):
+        token = auth_module.create_token("camel-user", user_id="camel:123", provider="camel")
+
+        resp = client.get(
+            "/api/v1/auth/verify",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "valid": True,
+            "username": "camel-user",
+            "user_id": "camel:123",
+            "provider": "camel",
+        }
 
     def test_verify_no_token(self, client):
         """缺少 token 返回 401"""
