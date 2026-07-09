@@ -9,7 +9,7 @@ from sqlalchemy import Select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select, update
 
-from lib.db.base import DEFAULT_USER_ID, utc_now
+from lib.db.base import Base, DEFAULT_USER_ID, utc_now
 from lib.db.models.api_key import ApiKey
 from lib.db.repositories.base import BaseRepository, rowcount
 
@@ -37,10 +37,10 @@ class ApiKeyRepository(BaseRepository):
         super().__init__(session)
         self.user_id = user_id
 
-    def _scope_query(self, stmt: Select, model: type[ApiKey]) -> Select:
+    def _scope_query(self, stmt: Select, model: type[Base]) -> Select:
         if self.user_id is None:
             return stmt
-        return stmt.where(model.user_id == self.user_id)
+        return stmt.where(ApiKey.user_id == self.user_id)
 
     async def create(
         self,
