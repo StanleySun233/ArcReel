@@ -15,14 +15,14 @@
 
 ## Subtasks
 
-- [ ] Add auth status mode handling to the auth store.
-  - Commit: pending
+- [x] Add auth status mode handling to the auth store.
+  - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
 - [ ] Replace the local login form with CaMeL login in CaMeL mode.
   - Commit: pending
-- [ ] Add frontend callback token consumption.
-  - Commit: pending
-- [ ] Update auth translations.
-  - Commit: pending
+- [x] Add frontend callback token consumption.
+  - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
+- [x] Update auth translations.
+  - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
 **Ready for QA:** no
 
 ## Blockers
