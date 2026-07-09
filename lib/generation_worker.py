@@ -34,6 +34,7 @@ from lib.generation_queue import (
     GenerationQueue,
     get_generation_queue,
 )
+from lib.db.base import DEFAULT_USER_ID
 from lib.task_failure import encode_failure
 
 # Default provider used when a task payload does not specify one.
@@ -326,6 +327,7 @@ async def _extract_provider(task: dict[str, Any]) -> str:
     """
     project_name = task.get("project_name")
     payload = task.get("payload") or {}
+    user_id = str(task.get("user_id") or DEFAULT_USER_ID)
     # 以 media lane 区分 video / audio / image：reference_video 等 task_type 同属 video lane。
     is_video = task.get("media_type") == "video" or task.get("task_type") in ("video", "reference_video")
     is_audio = task.get("media_type") == "audio" or task.get("task_type") == "tts"
@@ -342,7 +344,7 @@ async def _extract_provider(task: dict[str, Any]) -> str:
         from lib.config.resolver import ConfigResolver
         from lib.db import async_session_factory
 
-        resolver = ConfigResolver(async_session_factory)
+        resolver = ConfigResolver(async_session_factory, user_id=user_id)
         if is_video:
             resolved = await resolver.resolve_video_backend(project, payload)
         elif is_audio:

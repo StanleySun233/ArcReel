@@ -74,6 +74,7 @@ async def _resolve_effective_image_backend(
     project: dict,
     payload: dict | None,
     *,
+    user_id: str = DEFAULT_USER_ID,
     needs_i2i: bool = False,
 ) -> ProviderModel:
     """图片 provider 解析的薄投影：委托 ``ConfigResolver.resolve_image_backend``。
@@ -85,7 +86,7 @@ async def _resolve_effective_image_backend(
     from lib.config.resolver import ConfigResolver
     from lib.db import async_session_factory
 
-    resolver = ConfigResolver(async_session_factory)
+    resolver = ConfigResolver(async_session_factory, user_id=user_id)
     capability = "i2i" if needs_i2i else "t2i"
     return await resolver.resolve_image_backend(project, payload, capability=capability)
 
@@ -214,7 +215,7 @@ async def get_media_generator(
     from lib.db import async_session_factory
 
     project_path = await asyncio.to_thread(get_project_manager().get_project_path, project_name)
-    resolver = ConfigResolver(async_session_factory)
+    resolver = ConfigResolver(async_session_factory, user_id=user_id)
 
     # provider_id 须在 async with 之前初始化：纯视频任务（require_image_backend=False）取不到
     # image provider，纯图任务也要拿到 video provider，两个分支各自赋值后传给 MediaGenerator。
@@ -237,7 +238,12 @@ async def get_media_generator(
         else:
             if require_image_backend:
                 project = await asyncio.to_thread(get_project_manager().load_project, project_name)
-                resolved_image = await _resolve_effective_image_backend(project, payload, needs_i2i=needs_i2i)
+                resolved_image = await _resolve_effective_image_backend(
+                    project,
+                    payload,
+                    user_id=user_id,
+                    needs_i2i=needs_i2i,
+                )
                 # 解析失败 → provider_id 为空，让 _get_or_create_image_backend 抛出清晰错误
                 image_provider_id = resolved_image.provider_id
                 image_backend = await _get_or_create_image_backend(
@@ -827,7 +833,12 @@ async def execute_storyboard_task(
     )
     aspect_ratio = get_aspect_ratio(project, "storyboards")
 
-    resolved_image = await _resolve_effective_image_backend(project, payload, needs_i2i=_needs_i2i)
+    resolved_image = await _resolve_effective_image_backend(
+        project,
+        payload,
+        user_id=user_id,
+        needs_i2i=_needs_i2i,
+    )
     image_size = await resolve_resolution(project, resolved_image.provider_id, resolved_image.model_id)
 
     _, version = await generator.generate_image_async(
@@ -905,7 +916,7 @@ async def execute_tts_task(
     from lib.config.resolver import ConfigResolver
     from lib.db import async_session_factory
 
-    resolver = ConfigResolver(async_session_factory)
+    resolver = ConfigResolver(async_session_factory, user_id=user_id)
     voice = await resolver.resolve_narration_voice(project)
     speed = await resolver.resolve_narration_speed(project)
 
@@ -1167,7 +1178,7 @@ async def execute_character_task(
     generator = await get_media_generator(project_name, payload=payload, user_id=user_id, needs_i2i=_needs_i2i)
     aspect_ratio = get_aspect_ratio(project, "characters")
 
-    resolved_image = await _resolve_effective_image_backend(project, payload, needs_i2i=_needs_i2i)
+    resolved_image = await _resolve_effective_image_backend(project, payload, user_id=user_id, needs_i2i=_needs_i2i)
     image_size = await resolve_resolution(project, resolved_image.provider_id, resolved_image.model_id)
 
     _, version = await generator.generate_image_async(
@@ -1266,7 +1277,7 @@ async def execute_design_task(
     generator = await get_media_generator(project_name, payload=payload, user_id=user_id, needs_i2i=needs_i2i)
     aspect_ratio = get_aspect_ratio(project, bucket_key)
 
-    resolved_image = await _resolve_effective_image_backend(project, payload, needs_i2i=needs_i2i)
+    resolved_image = await _resolve_effective_image_backend(project, payload, user_id=user_id, needs_i2i=needs_i2i)
     image_size = await resolve_resolution(project, resolved_image.provider_id, resolved_image.model_id)
 
     _, version = await generator.generate_image_async(
@@ -1474,7 +1485,7 @@ async def execute_grid_task(
         project = await asyncio.to_thread(get_project_manager().load_project, project_name)
         aspect_ratio = payload.get("grid_aspect_ratio") or get_aspect_ratio(project, "storyboards")
 
-        resolved_image = await _resolve_effective_image_backend(project, payload, needs_i2i=_needs_i2i)
+        resolved_image = await _resolve_effective_image_backend(project, payload, user_id=user_id, needs_i2i=_needs_i2i)
         # 回填 grid metadata：route 层创建/重建时无法预知 needs_i2i，由此处补齐
         grid.provider = resolved_image.provider_id
         grid.model = resolved_image.model_id

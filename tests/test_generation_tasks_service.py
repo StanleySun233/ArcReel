@@ -740,6 +740,37 @@ class TestGenerationTasks:
         assert generator._video_provider_id == "gemini-aistudio"
         assert generator._image_provider_id is None
 
+    async def test_get_media_generator_passes_task_user_id_to_config_resolver(self, monkeypatch, tmp_path):
+        project_path = _prepare_files(tmp_path)
+        fake_pm = _FakePM(project_path)
+        captured_user_ids = []
+
+        class _FakeResolver:
+            def __init__(self, session_factory, *, user_id=None, _bound_session=None):
+                self.session_factory = session_factory
+                captured_user_ids.append(user_id)
+
+            @contextlib.asynccontextmanager
+            async def session(self):
+                yield self
+
+        async def _fake_resolve_video_backend(project_name, resolver, payload):
+            return None, "custom-2"
+
+        monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: fake_pm)
+        monkeypatch.setattr("lib.config.resolver.ConfigResolver", _FakeResolver)
+        monkeypatch.setattr(generation_tasks, "_resolve_video_backend", _fake_resolve_video_backend)
+
+        generator = await generation_tasks.get_media_generator(
+            "demo",
+            payload=None,
+            user_id="task-owner",
+            require_image_backend=False,
+        )
+
+        assert captured_user_ids == ["task-owner"]
+        assert generator._video_provider_id == "custom-2"
+
     def test_emit_success_batch_includes_fingerprints(self, monkeypatch, tmp_path):
         """生成成功事件应携带 asset_fingerprints"""
         captured = []

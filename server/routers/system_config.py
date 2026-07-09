@@ -14,7 +14,7 @@ import tomllib
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, TypedDict
+from typing import Any, TypedDict
 
 from fastapi import APIRouter, Depends, HTTPException
 from packaging.version import InvalidVersion, Version
@@ -29,7 +29,6 @@ from lib.db import get_async_session
 from lib.httpx_shared import get_http_client
 from lib.i18n import Translator
 from server.auth import CurrentUser
-from server.dependencies import get_config_service
 from server.routers._validators import validate_backend_value
 
 logger = logging.getLogger(__name__)
@@ -232,9 +231,9 @@ _STRING_SETTINGS = (
 @router.get("/system/config")
 async def get_system_config(
     _user: CurrentUser,
-    svc: Annotated[ConfigService, Depends(get_config_service)],
     session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
+    svc = ConfigService(session, user_id=_user.id)
     # Read all settings in a single query
     all_s = await svc.get_all_settings()
     video_generate_audio_raw = all_s.get("video_generate_audio", "")
@@ -249,7 +248,7 @@ async def get_system_config(
     if not anthropic_key:
         from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 
-        active_cred = await AgentCredentialRepository(session).get_active()
+        active_cred = await AgentCredentialRepository(session).get_active(user_id=_user.id)
         if active_cred is not None:
             anthropic_key = active_cred.api_key
 
@@ -331,10 +330,10 @@ async def get_system_version(
 async def patch_system_config(
     req: SystemConfigPatchRequest,
     _user: CurrentUser,
-    svc: Annotated[ConfigService, Depends(get_config_service)],
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
+    svc = ConfigService(session, user_id=_user.id)
     patch: dict[str, Any] = {}
     for field_name in req.model_fields_set:
         patch[field_name] = getattr(req, field_name)
@@ -405,4 +404,4 @@ async def patch_system_config(
     await session.commit()
 
     # Return updated config
-    return await get_system_config(_user=_user, svc=svc, session=session)
+    return await get_system_config(_user=_user, session=session)

@@ -112,9 +112,9 @@ class ProviderStatus:
 
 
 class ConfigService:
-    def __init__(self, session: AsyncSession) -> None:
-        self._provider_repo = ProviderConfigRepository(session)
-        self._setting_repo = SystemSettingRepository(session)
+    def __init__(self, session: AsyncSession, user_id: str | None = None) -> None:
+        self._provider_repo = ProviderConfigRepository(session, user_id=user_id)
+        self._setting_repo = SystemSettingRepository(session, user_id=user_id)
 
     async def get_provider_config(self, provider: str) -> dict[str, str]:
         self._validate_provider(provider)

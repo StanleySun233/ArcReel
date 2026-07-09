@@ -82,3 +82,15 @@ async def test_setting_get_all(session: AsyncSession):
     await repo.set("key2", "val2")
     all_settings = await repo.get_all()
     assert all_settings == {"key1": "val1", "key2": "val2"}
+
+
+async def test_setting_is_scoped_by_user(session: AsyncSession):
+    repo_a = SystemSettingRepository(session, user_id="user-a")
+    repo_b = SystemSettingRepository(session, user_id="user-b")
+    await repo_a.set("default_video_backend", "custom-1/model-a")
+    await repo_b.set("default_video_backend", "custom-2/model-b")
+
+    assert await repo_a.get("default_video_backend") == "custom-1/model-a"
+    assert await repo_b.get("default_video_backend") == "custom-2/model-b"
+    assert await repo_a.get_all() == {"default_video_backend": "custom-1/model-a"}
+    assert await repo_b.get_all() == {"default_video_backend": "custom-2/model-b"}

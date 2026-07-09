@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select, update
 
 from lib.config.url_utils import normalize_base_url
+from lib.db.base import DEFAULT_USER_ID
 from lib.db.models.credential import ProviderCredential
 from lib.db.repositories.base import BaseRepository
 
@@ -12,6 +13,11 @@ _UNSET = object()
 
 
 class CredentialRepository(BaseRepository):
+    def __init__(self, session, user_id: str | None = None):
+        super().__init__(session)
+        self.user_id = user_id or str(session.info.get("user_id") or DEFAULT_USER_ID)
+        session.info["user_id"] = self.user_id
+
     async def create(
         self,
         provider: str,
@@ -25,6 +31,7 @@ class CredentialRepository(BaseRepository):
         """创建凭证。若为该供应商的第一条，自动设为活跃。"""
         is_first = not await self.has_active_credential(provider)
         cred = ProviderCredential(
+            user_id=self.user_id,
             provider=provider,
             name=name,
             api_key=api_key,
@@ -39,14 +46,17 @@ class CredentialRepository(BaseRepository):
         return cred
 
     async def get_by_id(self, cred_id: int) -> ProviderCredential | None:
-        stmt = select(ProviderCredential).where(ProviderCredential.id == cred_id)
+        stmt = select(ProviderCredential).where(
+            ProviderCredential.user_id == self.user_id,
+            ProviderCredential.id == cred_id,
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def list_by_provider(self, provider: str) -> list[ProviderCredential]:
         stmt = (
             select(ProviderCredential)
-            .where(ProviderCredential.provider == provider)
+            .where(ProviderCredential.user_id == self.user_id, ProviderCredential.provider == provider)
             .order_by(ProviderCredential.created_at)
         )
         result = await self.session.execute(stmt)
@@ -54,6 +64,7 @@ class CredentialRepository(BaseRepository):
 
     async def get_active(self, provider: str) -> ProviderCredential | None:
         stmt = select(ProviderCredential).where(
+            ProviderCredential.user_id == self.user_id,
             ProviderCredential.provider == provider,
             ProviderCredential.is_active == True,  # noqa: E712
         )
@@ -66,6 +77,7 @@ class CredentialRepository(BaseRepository):
     async def get_active_credentials_bulk(self) -> dict[str, ProviderCredential]:
         """批量获取所有供应商的活跃凭证。"""
         stmt = select(ProviderCredential).where(
+            ProviderCredential.user_id == self.user_id,
             ProviderCredential.is_active == True,  # noqa: E712
         )
         result = await self.session.execute(stmt)
@@ -74,10 +86,14 @@ class CredentialRepository(BaseRepository):
     async def activate(self, cred_id: int, provider: str) -> None:
         """激活指定凭证，同时取消同供应商的其他活跃标记。"""
         await self.session.execute(
-            update(ProviderCredential).where(ProviderCredential.provider == provider).values(is_active=False)
+            update(ProviderCredential)
+            .where(ProviderCredential.user_id == self.user_id, ProviderCredential.provider == provider)
+            .values(is_active=False)
         )
         await self.session.execute(
-            update(ProviderCredential).where(ProviderCredential.id == cred_id).values(is_active=True)
+            update(ProviderCredential)
+            .where(ProviderCredential.user_id == self.user_id, ProviderCredential.id == cred_id)
+            .values(is_active=True)
         )
 
     async def update(
@@ -121,7 +137,7 @@ class CredentialRepository(BaseRepository):
         if was_active:
             stmt = (
                 select(ProviderCredential)
-                .where(ProviderCredential.provider == provider)
+                .where(ProviderCredential.user_id == self.user_id, ProviderCredential.provider == provider)
                 .order_by(ProviderCredential.created_at)
                 .limit(1)
             )
