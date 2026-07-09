@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import { useAutoFocus } from "@/hooks/useAutoFocus";
 import { errMsg, voidPromise } from "@/utils/async";
@@ -21,16 +21,55 @@ import {
 const POSTER_GRID_STYLE = posterGridStyle({ size: 44, maskShape: "60% 60% at 50% 35%", opacity: 0.05 });
 const AMBIENT_GLOW_STYLE = ambientGlowStyle();
 
+function decodeFragmentValue(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    return decodeURIComponent(value.replace(/\+/g, " "));
+  } catch {
+    return value;
+  }
+}
+
+function callbackReturnPath(hash: string): string | null {
+  const fromMarker = "&from=";
+  const fromIndex = hash.indexOf(fromMarker);
+  if (fromIndex >= 0) {
+    return decodeFragmentValue(hash.slice(fromIndex + fromMarker.length));
+  }
+  return new URLSearchParams(hash).get("from");
+}
+
 export function LoginPage() {
   const { t, i18n } = useTranslation(["common", "auth"]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const search = useSearch();
   const login = useAuthStore((s) => s.login);
   const usernameRef = useAutoFocus<HTMLInputElement>();
+  const callbackHandledRef = useRef(false);
+  const isCallback = location === "/login/callback";
+
+  useEffect(() => {
+    if (!isCallback || callbackHandledRef.current) return;
+    callbackHandledRef.current = true;
+
+    const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+    const params = new URLSearchParams(hash);
+    const token = params.get("access_token");
+    const returnTo = safeReturnPath(callbackReturnPath(hash)) ?? "/app/projects";
+
+    if (!token) {
+      setError(t("auth:login_callback_failed"));
+      return;
+    }
+
+    login(token, "camel");
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    setLocation(returnTo);
+  }, [isCallback, login, setLocation, t]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -92,55 +131,74 @@ export function LoginPage() {
           </h1>
         </div>
 
-        <form onSubmit={voidPromise(handleSubmit)} className="space-y-4">
-          <div>
-            <FieldLabel htmlFor="login-username" required>
-              {t("auth:username")}
-            </FieldLabel>
-            <input
-              id="login-username"
-              type="text"
-              autoComplete="username"
-              spellCheck={false}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className={INPUT_CLS}
-              ref={usernameRef}
-              required
-            />
+        {isCallback ? (
+          <div className="space-y-4">
+            {error ? (
+              <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
+                {error}
+              </p>
+            ) : (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex items-center justify-center gap-2 text-sm text-text-3"
+              >
+                <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />
+                <span>{t("auth:login_callback")}</span>
+              </div>
+            )}
           </div>
+        ) : (
+          <form onSubmit={voidPromise(handleSubmit)} className="space-y-4">
+            <div>
+              <FieldLabel htmlFor="login-username" required>
+                {t("auth:username")}
+              </FieldLabel>
+              <input
+                id="login-username"
+                type="text"
+                autoComplete="username"
+                spellCheck={false}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className={INPUT_CLS}
+                ref={usernameRef}
+                required
+              />
+            </div>
 
-          <div>
-            <FieldLabel htmlFor="login-password" required>
-              {t("auth:password")}
-            </FieldLabel>
-            <input
-              id="login-password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={INPUT_CLS}
-              required
-            />
-          </div>
+            <div>
+              <FieldLabel htmlFor="login-password" required>
+                {t("auth:password")}
+              </FieldLabel>
+              <input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={INPUT_CLS}
+                required
+              />
+            </div>
 
-          {error && (
-            <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
-              {error}
-            </p>
-          )}
+            {error && (
+              <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
+                {error}
+              </p>
+            )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className={`${ACCENT_BTN_CLS} w-full justify-center`}
-            style={ACCENT_BUTTON_STYLE}
-          >
-            {loading && <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />}
-            {loading ? t("auth:logging_in") : t("auth:login")}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className={`${ACCENT_BTN_CLS} w-full justify-center`}
+              style={ACCENT_BUTTON_STYLE}
+            >
+              {loading && <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />}
+              {loading ? t("auth:logging_in") : t("auth:login")}
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
