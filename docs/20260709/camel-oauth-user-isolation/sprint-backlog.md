@@ -180,7 +180,7 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 | Story | Branch | Worktree Path | Merge Target | Merge Status | Cleanup Status |
 |-------|--------|---------------|--------------|--------------|----------------|
 | Story 1 - CaMeL OAuth Login And User Identity | `story/camel-oauth-user-isolation/camel-auth` | `../ArcReel-worktrees/camel-oauth-user-isolation/camel-auth` | `fix/seedance-mounted-base-url` | merged | removed |
-| Story 2 - CaMeL Provider Bootstrap And Key Repair | `story/camel-oauth-user-isolation/provider-bootstrap` | `../ArcReel-worktrees/camel-oauth-user-isolation/provider-bootstrap` | `fix/seedance-mounted-base-url` | pending | pending |
+| Story 2 - CaMeL Provider Bootstrap And Key Repair | `story/camel-oauth-user-isolation/provider-bootstrap` | `../ArcReel-worktrees/camel-oauth-user-isolation/provider-bootstrap` | `fix/seedance-mounted-base-url` | merged in `74181fb` | removed |
 | Story 3 - AGPL License And Source Compliance | `story/camel-oauth-user-isolation/license-compliance` | `../ArcReel-worktrees/camel-oauth-user-isolation/license-compliance` | `fix/seedance-mounted-base-url` | merged | removed |
 
 ## Blockers
