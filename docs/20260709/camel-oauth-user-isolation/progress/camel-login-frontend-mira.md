@@ -17,13 +17,13 @@
 
 - [x] Add auth status mode handling to the auth store.
   - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
-- [ ] Replace the local login form with CaMeL login in CaMeL mode.
-  - Commit: pending
+- [x] Replace the local login form with CaMeL login in CaMeL mode.
+  - Commit: f0d962bf2bdb5ce008b3555f3d98f8213cecf433
 - [x] Add frontend callback token consumption.
   - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
 - [x] Update auth translations.
   - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
-**Ready for QA:** no
+**Ready for QA:** yes
 
 ## Blockers
 
