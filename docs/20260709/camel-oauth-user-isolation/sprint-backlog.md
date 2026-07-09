@@ -108,7 +108,7 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 
 **Slug:** license-compliance
 **User value:** Users of the free CaMeL API relay deployment can see the ArcReel attribution, license, NOTICE terms, and the exact source code for the modified version they are using.
-**Status:** planned
+**Status:** implemented
 **QA Status:** pending
 **PO Status:** pending
 
@@ -181,7 +181,7 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 |-------|--------|---------------|--------------|--------------|----------------|
 | Story 1 - CaMeL OAuth Login And User Identity | `story/camel-oauth-user-isolation/camel-auth` | `../ArcReel-worktrees/camel-oauth-user-isolation/camel-auth` | `fix/seedance-mounted-base-url` | merged | removed |
 | Story 2 - CaMeL Provider Bootstrap And Key Repair | `story/camel-oauth-user-isolation/provider-bootstrap` | `../ArcReel-worktrees/camel-oauth-user-isolation/provider-bootstrap` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 3 - AGPL License And Source Compliance | `story/camel-oauth-user-isolation/license-compliance` | `../ArcReel-worktrees/camel-oauth-user-isolation/license-compliance` | `fix/seedance-mounted-base-url` | pending | pending |
+| Story 3 - AGPL License And Source Compliance | `story/camel-oauth-user-isolation/license-compliance` | `../ArcReel-worktrees/camel-oauth-user-isolation/license-compliance` | `fix/seedance-mounted-base-url` | merged | removed |
 
 ## Blockers
 
