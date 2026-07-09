@@ -69,7 +69,7 @@ export function LoginPage() {
     const returnTo = safeReturnPath(callbackReturnPath(hash)) ?? "/app/projects";
 
     if (!token) {
-      setError(t("auth:login_callback_failed"));
+      queueMicrotask(() => setError(t("auth:login_callback_failed")));
       return;
     }
 

@@ -85,16 +85,15 @@ class CredentialRepository(BaseRepository):
 
     async def activate(self, cred_id: int, provider: str) -> None:
         """激活指定凭证，同时取消同供应商的其他活跃标记。"""
+        cred = await self.get_by_id(cred_id)
+        if cred is None or cred.provider != provider:
+            return
         await self.session.execute(
             update(ProviderCredential)
             .where(ProviderCredential.user_id == self.user_id, ProviderCredential.provider == provider)
             .values(is_active=False)
         )
-        await self.session.execute(
-            update(ProviderCredential)
-            .where(ProviderCredential.user_id == self.user_id, ProviderCredential.id == cred_id)
-            .values(is_active=True)
-        )
+        cred.is_active = True
 
     async def update(
         self,

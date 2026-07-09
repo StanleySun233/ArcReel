@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
 
 from lib.db import get_async_session
@@ -36,3 +37,23 @@ async def bootstrap_start(
         user_id=_user.id,
         idempotency_key=f"arc-bootstrap-{uuid.uuid4().hex}",
     )
+
+
+@router.post("/start-url")
+async def bootstrap_start_url(
+    _user: CurrentUser,
+    mode: Literal["create", "repair"] = "create",
+    from_path: Annotated[str | None, Query(alias="from")] = None,
+) -> JSONResponse:
+    intent = "provider_repair" if mode == "repair" else "provider_bootstrap"
+    redirect = build_camel_authorization_redirect(
+        from_path,
+        intent=intent,
+        user_id=_user.id,
+        idempotency_key=f"arc-bootstrap-{uuid.uuid4().hex}",
+    )
+    response = JSONResponse({"authorization_url": redirect.headers["location"]})
+    for key, value in redirect.raw_headers:
+        if key.lower() == b"set-cookie":
+            response.raw_headers.append((key, value))
+    return response

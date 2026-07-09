@@ -40,7 +40,7 @@ Required bootstrap settings:
 
 The deployed `camelbot` configuration is the production source of truth for the final CaMeL base URL, token group, and media model allowlists. ArcReel reads those values from environment configuration instead of hardcoding model ids in code.
 
-`AUTH_ENABLED=false` remains a local development bypass. In `AUTH_MODE=camel`, `ensure_auth_password()` does not generate or persist `AUTH_PASSWORD`.
+`AUTH_ENABLED=false` remains a local development bypass. In `AUTH_MODE=camel`, `ensure_auth_password()` does not generate or persist `AUTH_PASSWORD`. ArcReel does not preserve legacy local-login, local-password, or local-account mutation behavior in CaMeL mode; CaMeL OAuth is the only supported product path for this deployment.
 
 ## Legal Compliance Configuration
 
@@ -265,7 +265,7 @@ Response after bootstrap is complete:
 }
 ```
 
-### `GET /api/v1/camel/bootstrap/start?mode=create&from=/app/settings`
+### `POST /api/v1/camel/bootstrap/start-url?mode=create&from=/app/settings`
 
 Requires an ArcReel authenticated session.
 
@@ -274,8 +274,18 @@ Behavior:
 - validates that `from` is a safe ArcReel-relative path;
 - validates that `mode` is `create` or `repair`;
 - creates an OAuth `state` containing the mode, safe return path, current ArcReel user id, and idempotency key;
-- redirects to CaMeL `/api/oauth/provider/authorize` with `CAMEL_OAUTH_BOOTSTRAP_SCOPES`;
+- sets the short-lived OAuth state cookie and returns the CaMeL `/api/oauth/provider/authorize` URL with `CAMEL_OAUTH_BOOTSTRAP_SCOPES`;
 - for `mode=repair`, requests a fresh CaMeL authentication check through `max_age` or `prompt=login` when supported by CaMeL.
+
+Response:
+
+```json
+{
+  "authorization_url": "https://api.camel-hub.com/api/oauth/provider/authorize?response_type=code&..."
+}
+```
+
+The frontend calls this endpoint with its normal ArcReel `Authorization: Bearer` header, then navigates the browser to `authorization_url`. It does not navigate directly to an authenticated ArcReel redirect endpoint because browser top-level navigation does not include the stored ArcReel bearer token.
 
 Redirect example:
 
@@ -333,10 +343,10 @@ ArcReel marks bootstrap complete only after all four local custom providers, the
 
 ## Personal Settings Key Repair
 
-The personal settings page shows a CaMeL key repair action when `AUTH_MODE=camel`. The button starts:
+The personal settings page shows a CaMeL key repair action when `AUTH_MODE=camel`. The button calls:
 
 ```text
-GET /api/v1/camel/bootstrap/start?mode=repair&from=%2Fapp%2Fsettings%3Fsection%3Daccount
+POST /api/v1/camel/bootstrap/start-url?mode=repair&from=%2Fapp%2Fsettings%3Fsection%3Daccount
 ```
 
 Repair mode reauthorizes through CaMeL before changing keys. ArcReel never asks for the user's CaMeL password. CaMeL validates the user's current authentication and the dedicated `arcreel:token-provision` scope.
@@ -462,8 +472,8 @@ In `mode="camel"`:
 - Local username/password inputs are hidden.
 - Local password creation, password reset, email mutation, and local account mutation entry points are hidden or absent.
 - Existing `Authorization: Bearer` request behavior remains unchanged after the token is stored.
-- The first-login bootstrap modal starts `GET /api/v1/camel/bootstrap/start?mode=create`.
-- The personal settings page includes a CaMeL key repair button that starts `GET /api/v1/camel/bootstrap/start?mode=repair`.
+- The first-login bootstrap modal calls `POST /api/v1/camel/bootstrap/start-url?mode=create`, then navigates to the returned `authorization_url`.
+- The personal settings page includes a CaMeL key repair button that calls `POST /api/v1/camel/bootstrap/start-url?mode=repair`, then navigates to the returned `authorization_url`.
 - The About/Legal section displays the same frontend legal config data as the login page.
 - The UI must preserve ArcReel attribution without presenting this deployment as the official ArcReel service unless trademark permission is obtained.
 

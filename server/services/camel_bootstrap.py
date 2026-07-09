@@ -144,6 +144,21 @@ def _token_deletion_links(settings: CamelBootstrapSettings, tokens: list[dict]) 
     return links
 
 
+def _camel_conflict_links(conflicts: object) -> list[dict]:
+    if not isinstance(conflicts, list):
+        return []
+    links = []
+    for conflict in conflicts:
+        if not isinstance(conflict, dict):
+            continue
+        token_name = str(conflict.get("token_name") or conflict.get("name") or "")
+        media = str(conflict.get("media") or "")
+        delete_url = str(conflict.get("delete_url") or conflict.get("management_url") or "")
+        if token_name and delete_url:
+            links.append({"media": media, "token_name": token_name, "delete_url": delete_url})
+    return links
+
+
 def _models_for_spec(spec: CamelMediaSpec) -> list[dict]:
     return [
         {
@@ -229,7 +244,7 @@ async def complete_camel_provider_bootstrap(
         return {
             "completed": False,
             "error": "camel_token_conflict" if provisioned.get("error") == "token_name_conflict" else "camel_token_error",
-            "conflicts": provisioned.get("conflicts") or [],
+            "conflicts": _camel_conflict_links(provisioned.get("conflicts")),
         }
 
     tokens = provisioned.get("tokens")

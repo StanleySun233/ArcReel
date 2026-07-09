@@ -189,6 +189,66 @@ export interface SuccessResponse {
   message?: string;
 }
 
+export type CamelBootstrapMode = "create" | "repair";
+
+export interface CamelBootstrapProviderPreview {
+  media: string;
+  provider_name: string;
+  base_url: string;
+  endpoint: string;
+  models: string[];
+  token_name: string;
+}
+
+export type CamelBootstrapStatus =
+  | {
+      needed: true;
+      completed: false;
+      camel_user_id: string;
+      providers: CamelBootstrapProviderPreview[];
+    }
+  | {
+      needed: false;
+      completed: true;
+    };
+
+export interface CamelBootstrapProviderResult {
+  media: string;
+  provider_id: number;
+  provider_name: string;
+  models: string[];
+}
+
+export interface CamelBootstrapTokenLink {
+  media: string;
+  token_name: string;
+  delete_url: string;
+}
+
+export type CamelBootstrapResult =
+  | {
+      completed: true;
+      providers: CamelBootstrapProviderResult[];
+    }
+  | {
+      completed: false;
+      error: "camel_token_conflict";
+      conflicts: CamelBootstrapTokenLink[];
+    }
+  | {
+      completed: false;
+      error: "partial_bootstrap_failed";
+      created_tokens: CamelBootstrapTokenLink[];
+    }
+  | {
+      completed: false;
+      error?: string;
+    };
+
+export interface CamelBootstrapStartResponse {
+  authorization_url: string;
+}
+
 /** 说书模式片段 PATCH 入参（drama 模式片段走 {@link API.updateScene}）。 */
 export interface SegmentUpdatePayload {
   script_file: string;
@@ -392,6 +452,15 @@ class API {
       method: "PATCH",
       body: JSON.stringify(patch),
     });
+  }
+
+  static async getCamelBootstrapStatus(): Promise<CamelBootstrapStatus> {
+    return this.request("/camel/bootstrap/status");
+  }
+
+  static async startCamelBootstrap(mode: CamelBootstrapMode, from: string): Promise<CamelBootstrapStartResponse> {
+    const params = new URLSearchParams({ mode, from });
+    return this.request(`/camel/bootstrap/start-url?${params.toString()}`, { method: "POST" });
   }
 
 
