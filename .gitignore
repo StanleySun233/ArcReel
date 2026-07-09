@@ -62,6 +62,7 @@ CLAUDE.local.md
 
 # Local Codex runtime metadata
 .codex/
+.local/
 
 # Frontend build artifacts
 frontend/node_modules/
