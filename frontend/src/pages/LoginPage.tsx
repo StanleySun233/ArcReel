@@ -9,6 +9,7 @@ import { safeReturnPath } from "@/utils/safe-url";
 import { BRAND } from "@/branding";
 import type { LoginResponse, ErrorResponse } from "@/api";
 import { FieldLabel } from "@/components/ui/FieldLabel";
+import { LegalLinks } from "@/components/legal/LegalLinks";
 import {
   ACCENT_BTN_CLS,
   ACCENT_BUTTON_STYLE,
@@ -133,7 +134,7 @@ export function LoginPage() {
       <div aria-hidden className="pointer-events-none absolute inset-0" style={POSTER_GRID_STYLE} />
 
       <div
-        className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-hairline p-8 shadow-2xl"
+        className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-hairline p-8 shadow-2xl"
         style={CARD_STYLE}
       >
         <div className="mb-6 text-center">
@@ -238,6 +239,10 @@ export function LoginPage() {
             </button>
           </form>
         )}
+
+        <div className="mt-6 border-t border-hairline pt-5">
+          <LegalLinks />
+        </div>
       </div>
     </div>
   );

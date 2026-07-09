@@ -17,16 +17,16 @@
 
 ## Subtasks
 
-- [ ] Add frontend legal config in `frontend/src/config/legal.ts` backed by `VITE_ARCREEL_LEGAL_*` variables with safe upstream defaults, modified-version notice, modified date, and source configured status.
-  - Commit: pending
-- [ ] Add reusable legal links component backed by frontend legal config, including upstream attribution, deployed source, license, NOTICE, no-warranty notice, AGPL conveyance notice, modified-version statement, and free CaMeL API relay statement.
-  - Commit: pending
-- [ ] Add unauthenticated login-page legal/source links.
-  - Commit: pending
-- [ ] Update About/Legal section with current deployed source, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution.
-  - Commit: pending
+- [x] Add frontend legal config in `frontend/src/config/legal.ts` backed by `VITE_ARCREEL_LEGAL_*` variables with safe upstream defaults, modified-version notice, modified date, and source configured status.
+  - Commit: 181e749
+- [x] Add reusable legal links component backed by frontend legal config, including upstream attribution, deployed source, license, NOTICE, no-warranty notice, AGPL conveyance notice, modified-version statement, and free CaMeL API relay statement.
+  - Commit: d66ea08
+- [x] Add unauthenticated login-page legal/source links.
+  - Commit: 521ad7e
+- [x] Update About/Legal section with current deployed source, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution.
+  - Commit: 3b115c9
 
-**Ready for QA:** no
+**Ready for QA:** yes
 
 ## Blockers
 
