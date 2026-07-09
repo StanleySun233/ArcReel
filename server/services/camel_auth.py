@@ -92,9 +92,9 @@ def safe_return_path(raw: str | None) -> str:
     if not raw:
         return "/app/projects"
     parts = urlsplit(raw)
-    if parts.scheme or parts.netloc or not parts.path.startswith("/") or raw.startswith("//"):
+    if parts.scheme or parts.netloc or not parts.path.startswith("/app/") or raw.startswith("//"):
         raise HTTPException(status_code=400, detail="Invalid return path")
-    return urlunsplit(("", "", parts.path, parts.query, ""))
+    return urlunsplit(("", "", parts.path, parts.query, parts.fragment))
 
 
 def _encode_state_cookie(state: CamelOAuthState) -> str:
