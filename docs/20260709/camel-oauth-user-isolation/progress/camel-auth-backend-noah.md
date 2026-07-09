@@ -21,7 +21,7 @@
 - [x] Add CaMeL OAuth backend settings and helpers.
   - Commit: 053d0bb
 - [x] Add auth start/callback routes and state validation.
-  - Commit: 053d0bb
+  - Commit: 053d0bb, e7728f2
 - [x] Upsert CaMeL users and sign JWTs with real `user_id`.
   - Commit: a7cb123, 053d0bb
 - [x] Add OAuth state intent dispatch without persisting CaMeL access tokens.
@@ -30,6 +30,7 @@
   - Commit: a7cb123, 053d0bb
 - [x] Resolve API key Bearer auth to the persisted owner.
   - Commit: a7cb123, 4eb6791
+
 **Ready for QA:** yes
 
 ## Blockers
