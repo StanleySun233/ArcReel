@@ -26,6 +26,12 @@
 
 **Ready for QA:** yes
 
+## QA Evidence
+
+- Commit: ed3761d
+- `pnpm exec vitest run src/stores/auth-store.test.ts src/pages/LoginPage.test.tsx`
+  - Result: 2 files passed, 10 tests passed.
+
 ## Blockers
 
 | Date | Subtask | Blocker | Status |

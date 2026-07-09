@@ -28,6 +28,12 @@
 
 **Ready for QA:** yes
 
+## QA Evidence
+
+- Commit: ed3761d
+- `pnpm exec vitest run src/config/legal.test.ts src/components/legal/LegalLinks.test.tsx src/pages/LoginPage.test.tsx src/components/pages/settings/AboutSection.test.tsx`
+  - Result: 4 files passed, 11 tests passed.
+
 ## Blockers
 
 | Date | Subtask | Blocker | Status |

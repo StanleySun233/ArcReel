@@ -20,7 +20,7 @@ This sprint does not introduce organizations, tenant administration, cross-user 
 | Backend | Tara | [->](./progress/provider-bootstrap-backend-tara.md) |
 | Frontend | Nia | [->](./progress/provider-bootstrap-frontend-nia.md) |
 | Frontend | Lena | [->](./progress/license-compliance-frontend-lena.md) |
-| QA | Quinn | |
+| QA | Quinn | [->](./progress/qa-quinn.md) |
 | Product Owner | Parker | |
 
 ## Implementation Agent Allocation
@@ -42,29 +42,29 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 **Slug:** camel-auth
 **User value:** A user clicks "Login by CaMeL", signs in through CaMeL if needed, and ArcReel recognizes the correct local user without ArcReel passwords.
 **Status:** implemented
-**QA Status:** pending
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] ArcReel exposes a CaMeL OAuth start endpoint and callback endpoint under `/api/v1/auth`.
-- [ ] The callback exchanges the authorization code with CaMeL, reads `/api/oauth/provider/userinfo`, upserts the local ArcReel user, and issues an ArcReel JWT containing the real `user_id`.
-- [ ] The callback never persists the CaMeL OAuth credential and never exposes it in the ArcReel JWT, URL fragment, or browser storage.
-- [ ] The callback supports OAuth state intent dispatch for regular login, provider bootstrap, and provider repair.
-- [ ] `CurrentUserInfo.id` reflects the local CaMeL-derived user id instead of `default`.
-- [ ] Local username/password login, password generation, create-password, and local-account mutation controls are disabled in CaMeL auth mode.
-- [ ] API key Bearer auth resolves the owning user id from the API key row.
-- [ ] `/login` shows only the CaMeL login path in CaMeL auth mode.
-- [ ] `/login/callback` consumes the ArcReel JWT from the URL fragment and redirects to the safe return path.
+- [x] ArcReel exposes a CaMeL OAuth start endpoint and callback endpoint under `/api/v1/auth`.
+- [x] The callback exchanges the authorization code with CaMeL, reads `/api/oauth/provider/userinfo`, upserts the local ArcReel user, and issues an ArcReel JWT containing the real `user_id`.
+- [x] The callback never persists the CaMeL OAuth credential and never exposes it in the ArcReel JWT, URL fragment, or browser storage.
+- [x] The callback supports OAuth state intent dispatch for regular login, provider bootstrap, and provider repair.
+- [x] `CurrentUserInfo.id` reflects the local CaMeL-derived user id instead of `default`.
+- [x] Local username/password login, password generation, create-password, and local-account mutation controls are disabled in CaMeL auth mode.
+- [x] API key Bearer auth resolves the owning user id from the API key row.
+- [x] `/login` shows only the CaMeL login path in CaMeL auth mode.
+- [x] `/login/callback` consumes the ArcReel JWT from the URL fragment and redirects to the safe return path.
 
 **Engineering Subtasks**
-- [ ] Noah: Add CaMeL OAuth settings, client helpers, state validation, callback handling, and user upsert support in `server/auth.py`, `server/routers/auth.py`, and a focused auth service module. (depends: api-contract)
-- [ ] Noah: Add OAuth state intent dispatch for login, provider bootstrap, and provider repair without persisting CaMeL access tokens. (depends: api-contract)
-- [ ] Noah: Disable local password login and automatic password generation in CaMeL auth mode. (depends: api-contract)
-- [ ] Noah: Update API key verification to include the persisted owner `user_id` in the auth payload. (depends: api-contract)
-- [ ] Mira: Replace the login form with CaMeL login in CaMeL auth mode and add callback token handling in `frontend/src/pages/LoginPage.tsx`, `frontend/src/stores/auth-store.ts`, `frontend/src/router.tsx`, and auth i18n files. (depends: api-contract)
-- [ ] Quinn: Add ArcReel-side backend and frontend coverage for CaMeL auth status, local login disablement, callback token handling, real `user_id`, and API key owner auth. (depends: camel-auth)
+- [x] Noah: Add CaMeL OAuth settings, client helpers, state validation, callback handling, and user upsert support in `server/auth.py`, `server/routers/auth.py`, and a focused auth service module. (depends: api-contract)
+- [x] Noah: Add OAuth state intent dispatch for login, provider bootstrap, and provider repair without persisting CaMeL access tokens. (depends: api-contract)
+- [x] Noah: Disable local password login and automatic password generation in CaMeL auth mode. (depends: api-contract)
+- [x] Noah: Update API key verification to include the persisted owner `user_id` in the auth payload. (depends: api-contract)
+- [x] Mira: Replace the login form with CaMeL login in CaMeL auth mode and add callback token handling in `frontend/src/pages/LoginPage.tsx`, `frontend/src/stores/auth-store.ts`, `frontend/src/router.tsx`, and auth i18n files. (depends: api-contract)
+- [x] Quinn: Add ArcReel-side backend and frontend coverage for CaMeL auth status, local login disablement, callback token handling, real `user_id`, and API key owner auth. (depends: camel-auth)
 
-**QA Evidence:** pending
+**QA Evidence:** 2026-07-10: `python -m pytest tests/test_auth.py tests/test_auth_router.py tests/test_auth_api_key.py tests/test_api_keys_router.py -q` passed with 59 tests. `pnpm exec vitest run src/stores/auth-store.test.ts src/pages/LoginPage.test.tsx` passed with 2 files / 10 tests. Follow-up integrated frontend check in `pnpm check` passed with 105 Vitest files / 909 tests. Coverage committed locally in `ed3761d`.
 
 ### Story: Story 2 - CaMeL Provider Bootstrap And Key Repair
 
@@ -109,7 +109,7 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 **Slug:** license-compliance
 **User value:** Users of the free CaMeL API relay deployment can see the ArcReel attribution, license, NOTICE terms, and the exact source code for the modified version they are using.
 **Status:** implemented
-**QA Status:** pending
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
@@ -127,9 +127,9 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 - [x] Lena: Add a reusable legal links component for login and About/Legal surfaces. (depends: api-contract)
 - [x] Lena: Add unauthenticated login-page legal/source links without requiring a user session. (depends: camel-auth)
 - [x] Lena: Update About/Legal section to include current deployed source URL, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution. (depends: license-compliance)
-- [ ] Quinn: Add frontend coverage for unauthenticated login-page legal links, authenticated About/Legal links, and missing deployed-source warning. (depends: license-compliance)
+- [x] Quinn: Add frontend coverage for unauthenticated login-page legal links, authenticated About/Legal links, and missing deployed-source warning. (depends: license-compliance)
 
-**QA Evidence:** Implementation merged in `659701e`; frontend coverage remains pending under Quinn.
+**QA Evidence:** 2026-07-10: `pnpm exec vitest run src/config/legal.test.ts src/components/legal/LegalLinks.test.tsx src/pages/LoginPage.test.tsx src/components/pages/settings/AboutSection.test.tsx` passed with 4 files / 11 tests. Follow-up integrated frontend check in `pnpm check` passed with 105 Vitest files / 909 tests. Coverage committed locally in `ed3761d`.
 
 ## File Ownership
 

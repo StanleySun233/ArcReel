@@ -33,6 +33,12 @@
 
 **Ready for QA:** yes
 
+## QA Evidence
+
+- Commit: ed3761d
+- `python -m pytest tests/test_auth.py tests/test_auth_router.py tests/test_auth_api_key.py tests/test_api_keys_router.py -q`
+  - Result: 59 passed, 1 warning.
+
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
