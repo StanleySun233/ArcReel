@@ -29,7 +29,7 @@
 - [x] Disable local password login in CaMeL mode.
   - Commit: a7cb123, 053d0bb
 - [x] Resolve API key Bearer auth to the persisted owner.
-  - Commit: a7cb123
+  - Commit: a7cb123, 4eb6791
 **Ready for QA:** yes
 
 ## Blockers
