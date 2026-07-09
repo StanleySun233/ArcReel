@@ -41,7 +41,7 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 
 **Slug:** camel-auth
 **User value:** A user clicks "Login by CaMeL", signs in through CaMeL if needed, and ArcReel recognizes the correct local user without ArcReel passwords.
-**Status:** planned
+**Status:** implemented
 **QA Status:** pending
 **PO Status:** pending
 
@@ -179,7 +179,7 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 
 | Story | Branch | Worktree Path | Merge Target | Merge Status | Cleanup Status |
 |-------|--------|---------------|--------------|--------------|----------------|
-| Story 1 - CaMeL OAuth Login And User Identity | `story/camel-oauth-user-isolation/camel-auth` | `../ArcReel-worktrees/camel-oauth-user-isolation/camel-auth` | `fix/seedance-mounted-base-url` | pending | pending |
+| Story 1 - CaMeL OAuth Login And User Identity | `story/camel-oauth-user-isolation/camel-auth` | `../ArcReel-worktrees/camel-oauth-user-isolation/camel-auth` | `fix/seedance-mounted-base-url` | merged | removed |
 | Story 2 - CaMeL Provider Bootstrap And Key Repair | `story/camel-oauth-user-isolation/provider-bootstrap` | `../ArcReel-worktrees/camel-oauth-user-isolation/provider-bootstrap` | `fix/seedance-mounted-base-url` | pending | pending |
 | Story 3 - AGPL License And Source Compliance | `story/camel-oauth-user-isolation/license-compliance` | `../ArcReel-worktrees/camel-oauth-user-isolation/license-compliance` | `fix/seedance-mounted-base-url` | pending | pending |
 
