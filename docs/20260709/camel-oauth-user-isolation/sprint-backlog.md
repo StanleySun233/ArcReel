@@ -113,23 +113,23 @@ The implementation team has five development agents total: Noah, Mira, Tara, Nia
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] The service explicitly states that this deployment is a modified ArcReel deployment offered free of charge with CaMeL as the API relay; no paid access or commercial API resale is introduced by this story, and free access does not remove AGPL-3.0 obligations.
-- [ ] A frontend legal config module exposes original ArcReel attribution, upstream repository URL, AGPL-3.0 license link, NOTICE link, deployed source URL, deployed source ref, optional source archive URL, modified-version notice, and modified date from `VITE_ARCREEL_LEGAL_*` variables with safe defaults.
-- [ ] The login page shows legal/source links before authentication, including `Powered by ArcReel — https://github.com/ArcReel/ArcReel` and a link to the current deployed source.
-- [ ] The authenticated About/Legal section shows the same legal/source links and preserves the upstream ArcReel repository link required by NOTICE.
-- [ ] The legal UI states that ArcReel is provided without warranty, users may receive and convey the covered work under AGPL-3.0, and the full license is available through the visible license link.
-- [ ] The deployed source link points to the fork/branch/commit or source archive that corresponds to the running modified ArcReel version, excluding secrets and deployment-private configuration.
-- [ ] The UI marks the deployment as a modified version and does not imply the deployment is the official ArcReel service unless trademark permission is obtained; if rebranded, attribution remains visible and unmodified.
-- [ ] CaMeL-api is documented as a separate API relay service unless AGPL ArcReel code is copied into it or the services are combined into one derivative work.
+- [x] The service explicitly states that this deployment is a modified ArcReel deployment offered free of charge with CaMeL as the API relay; no paid access or commercial API resale is introduced by this story, and free access does not remove AGPL-3.0 obligations.
+- [x] A frontend legal config module exposes original ArcReel attribution, upstream repository URL, AGPL-3.0 license link, NOTICE link, deployed source URL, deployed source ref, optional source archive URL, modified-version notice, and modified date from `VITE_ARCREEL_LEGAL_*` variables with safe defaults.
+- [x] The login page shows legal/source links before authentication, including `Powered by ArcReel — https://github.com/ArcReel/ArcReel` and a link to the current deployed source.
+- [x] The authenticated About/Legal section shows the same legal/source links and preserves the upstream ArcReel repository link required by NOTICE.
+- [x] The legal UI states that ArcReel is provided without warranty, users may receive and convey the covered work under AGPL-3.0, and the full license is available through the visible license link.
+- [x] The deployed source link points to the fork/branch/commit or source archive that corresponds to the running modified ArcReel version, excluding secrets and deployment-private configuration.
+- [x] The UI marks the deployment as a modified version and does not imply the deployment is the official ArcReel service unless trademark permission is obtained; if rebranded, attribution remains visible and unmodified.
+- [x] CaMeL-api is documented as a separate API relay service unless AGPL ArcReel code is copied into it or the services are combined into one derivative work.
 
 **Engineering Subtasks**
-- [ ] Lena: Add frontend legal config in `frontend/src/config/legal.ts` reading `VITE_ARCREEL_LEGAL_*` variables with safe upstream defaults, modified-version notice, modified date, and source configured status. (depends: api-contract)
-- [ ] Lena: Add a reusable legal links component for login and About/Legal surfaces. (depends: api-contract)
-- [ ] Lena: Add unauthenticated login-page legal/source links without requiring a user session. (depends: camel-auth)
-- [ ] Lena: Update About/Legal section to include current deployed source URL, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution. (depends: license-compliance)
+- [x] Lena: Add frontend legal config in `frontend/src/config/legal.ts` reading `VITE_ARCREEL_LEGAL_*` variables with safe upstream defaults, modified-version notice, modified date, and source configured status. (depends: api-contract)
+- [x] Lena: Add a reusable legal links component for login and About/Legal surfaces. (depends: api-contract)
+- [x] Lena: Add unauthenticated login-page legal/source links without requiring a user session. (depends: camel-auth)
+- [x] Lena: Update About/Legal section to include current deployed source URL, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution. (depends: license-compliance)
 - [ ] Quinn: Add frontend coverage for unauthenticated login-page legal links, authenticated About/Legal links, and missing deployed-source warning. (depends: license-compliance)
 
-**QA Evidence:** pending
+**QA Evidence:** Implementation merged in `659701e`; frontend coverage remains pending under Quinn.
 
 ## File Ownership
 
