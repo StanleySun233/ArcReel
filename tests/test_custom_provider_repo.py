@@ -240,6 +240,102 @@ class TestConcurrencyColumns:
             )
 
 
+class TestUserIsolation:
+    async def test_provider_crud_is_scoped_by_user(self, session: AsyncSession):
+        repo_a = CustomProviderRepository(session, user_id="user-a")
+        repo_b = CustomProviderRepository(session, user_id="user-b")
+        provider_a = await repo_a.create_provider(
+            display_name="Provider A",
+            discovery_format="openai",
+            base_url="https://a.example.com",
+            api_key="key-a",
+            models=[{"model_id": "model-a", "display_name": "Model A", "endpoint": "openai-chat"}],
+        )
+        provider_b = await repo_b.create_provider(
+            display_name="Provider B",
+            discovery_format="openai",
+            base_url="https://b.example.com",
+            api_key="key-b",
+            models=[{"model_id": "model-b", "display_name": "Model B", "endpoint": "openai-chat"}],
+        )
+        await session.flush()
+
+        assert [p.id for p in await repo_a.list_providers()] == [provider_a.id]
+        assert [p.id for p in await repo_b.list_providers()] == [provider_b.id]
+        assert await repo_a.get_provider(provider_b.id) is None
+        assert await repo_b.get_provider(provider_a.id) is None
+
+        assert await repo_b.update_provider(provider_a.id, display_name="Hijacked") is None
+        found_a = await repo_a.get_provider(provider_a.id)
+        assert found_a is not None
+        assert found_a.display_name == "Provider A"
+
+        await repo_b.delete_provider(provider_a.id)
+        await session.flush()
+
+        assert await repo_a.get_provider(provider_a.id) is not None
+        assert await repo_b.get_provider(provider_b.id) is not None
+        assert [m.model_id for m in await repo_a.list_models(provider_a.id)] == ["model-a"]
+
+    async def test_model_management_is_scoped_by_user(self, session: AsyncSession):
+        repo_a = CustomProviderRepository(session, user_id="user-a")
+        repo_b = CustomProviderRepository(session, user_id="user-b")
+        provider_a = await repo_a.create_provider(
+            display_name="Provider A",
+            discovery_format="openai",
+            base_url="https://a.example.com",
+            api_key="key-a",
+            models=[
+                {"model_id": "shared-model", "display_name": "A Shared", "endpoint": "openai-chat"},
+                {"model_id": "a-delete", "display_name": "A Delete", "endpoint": "openai-images"},
+            ],
+        )
+        provider_b = await repo_b.create_provider(
+            display_name="Provider B",
+            discovery_format="openai",
+            base_url="https://b.example.com",
+            api_key="key-b",
+            models=[{"model_id": "shared-model", "display_name": "B Shared", "endpoint": "openai-chat"}],
+        )
+        await session.flush()
+
+        assert await repo_b.list_models(provider_a.id) == []
+        assert await repo_a.list_models(provider_b.id) == []
+        assert await repo_b.replace_models(
+            provider_a.id,
+            [{"model_id": "b-injected", "display_name": "B Injected", "endpoint": "openai-chat"}],
+        ) == []
+        await session.flush()
+
+        models_a = await repo_a.list_models(provider_a.id)
+        models_b = await repo_b.list_models(provider_b.id)
+        assert [m.model_id for m in models_a] == ["shared-model", "a-delete"]
+        assert [m.model_id for m in models_b] == ["shared-model"]
+        assert await repo_b.update_model(models_a[0].id, display_name="B Updated") is None
+
+        await repo_b.delete_model(models_a[0].id)
+        await session.flush()
+
+        assert [m.model_id for m in await repo_a.list_models(provider_a.id)] == ["shared-model", "a-delete"]
+        assert [m.model_id for m in await repo_b.list_models(provider_b.id)] == ["shared-model"]
+
+        await repo_a.replace_models(
+            provider_a.id,
+            [{"model_id": "a-new", "display_name": "A New", "endpoint": "openai-chat"}],
+        )
+        await session.flush()
+
+        assert [m.model_id for m in await repo_a.list_models(provider_a.id)] == ["a-new"]
+        assert [m.model_id for m in await repo_b.list_models(provider_b.id)] == ["shared-model"]
+
+        model_a = (await repo_a.list_models(provider_a.id))[0]
+        await repo_a.delete_model(model_a.id)
+        await session.flush()
+
+        assert await repo_a.list_models(provider_a.id) == []
+        assert [m.model_id for m in await repo_b.list_models(provider_b.id)] == ["shared-model"]
+
+
 class TestModelManagement:
     async def _make_provider(self, repo: CustomProviderRepository, session: AsyncSession) -> int:
         p = await repo.create_provider(

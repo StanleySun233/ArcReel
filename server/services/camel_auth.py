@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import secrets
 import time
 from dataclasses import dataclass
 from typing import Literal, cast
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import httpx
 import jwt
@@ -63,6 +64,12 @@ class CamelLocalUser:
     id: str
     username: str
     camel_user_id: str
+
+
+@dataclass(frozen=True)
+class CamelOAuthExchange:
+    access_token: str
+    userinfo: dict
 
 
 def get_camel_oauth_settings() -> CamelOAuthSettings:
@@ -169,7 +176,7 @@ def build_camel_authorization_redirect(
     return response
 
 
-async def _fetch_camel_userinfo(settings: CamelOAuthSettings, code: str) -> dict:
+async def _fetch_camel_exchange(settings: CamelOAuthSettings, code: str) -> CamelOAuthExchange:
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_response = await client.post(
             settings.token_url,
@@ -196,7 +203,7 @@ async def _fetch_camel_userinfo(settings: CamelOAuthSettings, code: str) -> dict
         userinfo = userinfo_response.json()
         if not isinstance(userinfo, dict):
             raise HTTPException(status_code=502, detail="CaMeL userinfo response was invalid")
-        return userinfo
+        return CamelOAuthExchange(access_token=str(access_token), userinfo=userinfo)
 
 
 def _camel_user_id(userinfo: dict) -> str:
@@ -234,20 +241,53 @@ async def _handle_login_intent(userinfo: dict, state: CamelOAuthState) -> Redire
     return _frontend_callback_redirect(token, state.return_path)
 
 
-async def _handle_provider_intent(userinfo: dict, state: CamelOAuthState) -> RedirectResponse:
-    user_id = f"camel:{_camel_user_id(userinfo)}"
-    if state.user_id is not None and state.user_id != user_id:
+def _provider_intent_redirect(return_path: str, result: dict) -> RedirectResponse:
+    parts = urlsplit(return_path)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    if result.get("completed") is True:
+        query["camel_bootstrap"] = "completed"
+    else:
+        query["camel_bootstrap"] = str(result.get("error") or "failed")
+    query["camel_bootstrap_result"] = json.dumps(result, separators=(",", ":"))
+    response = RedirectResponse(urlunsplit(("", "", parts.path, urlencode(query), parts.fragment)))
+    response.delete_cookie(CAMEL_STATE_COOKIE_NAME)
+    return response
+
+
+async def _handle_provider_intent_with_token(
+    userinfo: dict,
+    state: CamelOAuthState,
+    access_token: str,
+) -> RedirectResponse:
+    from server.services.camel_bootstrap import CamelLocalBootstrapError, complete_camel_provider_bootstrap
+
+    user = await upsert_camel_user(userinfo)
+    if state.user_id is not None and state.user_id != user.id:
         raise HTTPException(status_code=400, detail="CaMeL user mismatch")
-    raise HTTPException(status_code=501, detail="CaMeL provider intent is not implemented")
+    mode = "repair" if state.intent == "provider_repair" else "create"
+    try:
+        async with async_session_factory() as session:
+            async with session.begin():
+                result = await complete_camel_provider_bootstrap(
+                    session,
+                    user_id=user.id,
+                    camel_user_id=user.camel_user_id,
+                    access_token=access_token,
+                    mode=mode,
+                    idempotency_key=state.idempotency_key,
+                )
+    except CamelLocalBootstrapError as exc:
+        result = exc.result
+    return _provider_intent_redirect(state.return_path, result)
 
 
 async def complete_camel_oauth_callback(code: str, state: str, state_cookie: str | None) -> RedirectResponse:
     settings = _require_settings()
     oauth_state = _decode_state_cookie(state, state_cookie)
     try:
-        userinfo = await _fetch_camel_userinfo(settings, code)
+        exchange = await _fetch_camel_exchange(settings, code)
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="CaMeL OAuth request failed")
     if oauth_state.intent == "login":
-        return await _handle_login_intent(userinfo, oauth_state)
-    return await _handle_provider_intent(userinfo, oauth_state)
+        return await _handle_login_intent(exchange.userinfo, oauth_state)
+    return await _handle_provider_intent_with_token(exchange.userinfo, oauth_state, exchange.access_token)

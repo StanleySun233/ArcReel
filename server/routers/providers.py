@@ -29,7 +29,7 @@ from lib.db.base import dt_to_iso
 from lib.db.repositories.credential_repository import CredentialRepository
 from lib.gemini_shared import VERTEX_SCOPES
 from lib.i18n import Translator
-from server.dependencies import get_config_service
+from server.auth import CurrentUser
 
 if TYPE_CHECKING:
     from lib.db.models.credential import ProviderCredential
@@ -280,9 +280,11 @@ def _build_field(
 @router.get("", response_model=ProvidersListResponse)
 async def list_providers(
     _t: Translator,
-    svc: Annotated[ConfigService, Depends(get_config_service)],
+    _user: CurrentUser,
+    session: AsyncSession = Depends(get_async_session),
 ) -> ProvidersListResponse:
     """返回所有供应商及其状态。"""
+    svc = ConfigService(session, user_id=_user.id)
     statuses = await svc.get_all_providers_status()
     providers = [
         ProviderSummary(
@@ -305,17 +307,18 @@ async def list_providers(
 async def get_provider_config(
     provider_id: str,
     _t: Translator,
+    _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> ProviderConfigResponse:
     """返回单个供应商的配置字段（registry 元数据与 DB 值合并）。"""
     _validate_provider(provider_id, _t)
 
     meta = PROVIDER_REGISTRY[provider_id]
-    svc = ConfigService(session)
+    svc = ConfigService(session, user_id=_user.id)
     db_values = await svc.get_provider_config_masked(provider_id)
 
     # 计算状态：基于凭证表是否有活跃凭证
-    cred_repo = CredentialRepository(session)
+    cred_repo = CredentialRepository(session, user_id=_user.id)
     has_active = await cred_repo.has_active_credential(provider_id)
     status = "ready" if has_active else "unconfigured"
 
@@ -363,12 +366,13 @@ async def patch_provider_config(
     body: dict[str, str | None],
     request: Request,
     _t: Translator,
+    _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> Response:
     """更新供应商配置。值为 null 表示删除该键。"""
     _validate_provider(provider_id, _t)
 
-    svc = ConfigService(session)
+    svc = ConfigService(session, user_id=_user.id)
     for key, value in body.items():
         if value is None:
             await svc.delete_provider_config(provider_id, key, flush=False)
@@ -400,10 +404,11 @@ async def patch_provider_config(
 async def list_credentials(
     provider_id: str,
     _t: Translator,
+    _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> CredentialListResponse:
     _validate_provider(provider_id, _t)
-    repo = CredentialRepository(session)
+    repo = CredentialRepository(session, user_id=_user.id)
     creds = await repo.list_by_provider(provider_id)
     return CredentialListResponse(credentials=[_cred_to_response(c) for c in creds])
 
@@ -414,10 +419,11 @@ async def create_credential(
     body: CreateCredentialRequest,
     request: Request,
     _t: Translator,
+    _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> CredentialResponse:
     _validate_provider(provider_id, _t)
-    repo = CredentialRepository(session)
+    repo = CredentialRepository(session, user_id=_user.id)
     cred = await repo.create(
         provider=provider_id,
         name=body.name,
@@ -438,10 +444,11 @@ async def update_credential(
     body: UpdateCredentialRequest,
     request: Request,
     _t: Translator,
+    _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> Response:
     _validate_provider(provider_id, _t)
-    repo = CredentialRepository(session)
+    repo = CredentialRepository(session, user_id=_user.id)
     cred = await _get_credential_or_404(repo, provider_id, cred_id, _t)
     kwargs: dict = {}
     if body.name is not None:
@@ -468,10 +475,11 @@ async def delete_credential(
     cred_id: int,
     request: Request,
     _t: Translator,
+    _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> Response:
     _validate_provider(provider_id, _t)
-    repo = CredentialRepository(session)
+    repo = CredentialRepository(session, user_id=_user.id)
     cred = await _get_credential_or_404(repo, provider_id, cred_id, _t)
     cred_path = cred.credentials_path  # 在 delete 前保存，避免 ORM 对象过期后无法访问
     await repo.delete(cred_id)
@@ -495,10 +503,11 @@ async def activate_credential(
     cred_id: int,
     request: Request,
     _t: Translator,
+    _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> Response:
     _validate_provider(provider_id, _t)
-    repo = CredentialRepository(session)
+    repo = CredentialRepository(session, user_id=_user.id)
     await _get_credential_or_404(repo, provider_id, cred_id, _t)
     await repo.activate(cred_id, provider_id)
     await session.commit()
@@ -510,6 +519,7 @@ async def activate_credential(
 async def upload_vertex_credential(
     request: Request,
     _t: Translator,
+    _user: CurrentUser,
     name: str = "Vertex Credentials",
     session: AsyncSession = Depends(get_async_session),
     file: UploadFile = File(...),
@@ -531,7 +541,7 @@ async def upload_vertex_credential(
     if not isinstance(payload, dict) or not payload.get("project_id"):
         raise HTTPException(status_code=400, detail=_t("vertex_json_missing_project_id"))
 
-    repo = CredentialRepository(session)
+    repo = CredentialRepository(session, user_id=_user.id)
     cred = await repo.create(provider="gemini-vertex", name=name)
 
     dest = app_data_dir().parent / "vertex_keys" / f"vertex_cred_{cred.id}.json"
@@ -829,13 +839,14 @@ _TEST_DISPATCH: dict[str, Callable[[dict[str, str], Any], ConnectionTestResponse
 async def test_provider_connection(
     provider_id: str,
     _t: Translator,
+    _user: CurrentUser,
     credential_id: int | None = None,
     session: AsyncSession = Depends(get_async_session),
 ) -> ConnectionTestResponse:
     """调用供应商 API 验证连通性。可指定 credential_id 测试特定凭证。"""
     _validate_provider(provider_id, _t)
 
-    repo = CredentialRepository(session)
+    repo = CredentialRepository(session, user_id=_user.id)
     if credential_id is not None:
         cred = await _get_credential_or_404(repo, provider_id, credential_id, _t)
     else:
@@ -848,7 +859,7 @@ async def test_provider_connection(
             message=_t("missing_credentials"),
         )
 
-    svc = ConfigService(session)
+    svc = ConfigService(session, user_id=_user.id)
     config = await svc.get_provider_config(provider_id)
     cred.overlay_config(config)
 

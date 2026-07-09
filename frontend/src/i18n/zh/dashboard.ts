@@ -82,6 +82,7 @@ export default {
   'models': '模型选择',
   'usage': '用量统计',
   'api_keys': 'API 令牌',
+  'account': '账号',
   'about': '关于',
   'system_config_title': '系统配置与 API 访问管理',
   'about_loading': '正在加载版本信息…',

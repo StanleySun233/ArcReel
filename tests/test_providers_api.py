@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -19,9 +21,29 @@ from lib.db import get_async_session
 from lib.db.models.credential import ProviderCredential
 from lib.db.repositories.credential_repository import CredentialRepository
 from lib.i18n import get_translator
+from server.auth import CurrentUserInfo, get_current_user
 from server.dependencies import get_config_service
 from server.routers import providers
 from tests.conftest import make_translator
+
+_FAKE_USER = CurrentUserInfo(id="test-user", sub="testuser", role="admin")
+
+
+def _scoped_factory(instance):
+    def _factory(_session, *, user_id=None):
+        assert user_id == _FAKE_USER.id
+        return instance
+
+    return _factory
+
+
+def _patch_config_service(mock_svc):
+    return patch("server.routers.providers.ConfigService", side_effect=_scoped_factory(mock_svc))
+
+
+def _patch_credential_repository(mock_repo):
+    return patch("server.routers.providers.CredentialRepository", side_effect=_scoped_factory(mock_repo))
+
 
 # ---------------------------------------------------------------------------
 # 测试应用工厂
@@ -31,16 +53,24 @@ from tests.conftest import make_translator
 def _make_app(mock_svc: ConfigService) -> FastAPI:
     """创建绑定 mock ConfigService 的最小 FastAPI 应用。"""
     app = FastAPI()
+    mock_session = AsyncMock()
 
     # 覆盖 get_config_service，直接注入 mock 服务
     app.dependency_overrides[get_config_service] = lambda: mock_svc
 
+    async def _override_session():
+        yield mock_session
+
+    app.dependency_overrides[get_async_session] = _override_session
+    app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     app.include_router(providers.router, prefix="/api/v1")
     return app
 
 
-def _make_client(mock_svc: ConfigService) -> TestClient:
-    return TestClient(_make_app(mock_svc))
+@contextmanager
+def _make_client(mock_svc: ConfigService) -> Iterator[TestClient]:
+    with _patch_config_service(mock_svc), TestClient(_make_app(mock_svc)) as client:
+        yield client
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +220,7 @@ def _make_session_app() -> tuple[FastAPI, AsyncMock]:
 
     app.dependency_overrides[get_async_session] = _override_session
     app.dependency_overrides[get_translator] = lambda: make_translator()
+    app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     app.include_router(providers.router, prefix="/api/v1")
     return app, mock_session
 
@@ -222,8 +253,8 @@ class TestGetProviderConfig:
     def test_returns_200_for_known_provider(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_ready()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_active()),
+            _patch_config_service(self._mock_svc_ready()),
+            _patch_credential_repository(self._mock_cred_repo_active()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -232,8 +263,8 @@ class TestGetProviderConfig:
     def test_returns_404_for_unknown_provider(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/nonexistent/config")
@@ -242,8 +273,8 @@ class TestGetProviderConfig:
     def test_response_structure(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_ready()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_active()),
+            _patch_config_service(self._mock_svc_ready()),
+            _patch_credential_repository(self._mock_cred_repo_active()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -257,8 +288,8 @@ class TestGetProviderConfig:
         """api_key / base_url / credentials_path 不应出现在 fields 中。"""
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_ready()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_active()),
+            _patch_config_service(self._mock_svc_ready()),
+            _patch_credential_repository(self._mock_cred_repo_active()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -271,8 +302,8 @@ class TestGetProviderConfig:
         """非凭证 optional key（如 image_rpm）应出现在 fields 中。"""
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_ready()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_active()),
+            _patch_config_service(self._mock_svc_ready()),
+            _patch_credential_repository(self._mock_cred_repo_active()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -283,8 +314,8 @@ class TestGetProviderConfig:
     def test_ready_status_when_active_credential(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_ready()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_active()),
+            _patch_config_service(self._mock_svc_ready()),
+            _patch_credential_repository(self._mock_cred_repo_active()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -293,8 +324,8 @@ class TestGetProviderConfig:
     def test_unconfigured_status_when_no_active_credential(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -316,8 +347,8 @@ class TestGetProviderConfig:
         """supports_base_url 取自 registry optional_keys 是否含 base_url，前端据此渲染凭证 URL 输入。"""
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get(f"/api/v1/providers/{provider_id}/config")
@@ -328,8 +359,8 @@ class TestGetProviderConfig:
         """单 secret provider（如 gemini-aistudio）→ secret_fields = [api_key]。"""
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -340,8 +371,8 @@ class TestGetProviderConfig:
         """可灵 → secret_fields = [api_key, access_key, secret_key]（保留 required_keys 顺序）。"""
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/kling/config")
@@ -359,8 +390,8 @@ class TestGetProviderConfig:
         """可灵 secret_field_groups 二选一分组：[api_key] 或 [access_key, secret_key]。"""
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/kling/config")
@@ -371,8 +402,8 @@ class TestGetProviderConfig:
         """未声明 credential_groups 的 provider → secret_field_groups 回退为 [全部 secret_fields] 单组。"""
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/config")
@@ -387,8 +418,8 @@ class TestGetProviderConfig:
         """
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc_empty()),
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_empty()),
+            _patch_config_service(self._mock_svc_empty()),
+            _patch_credential_repository(self._mock_cred_repo_empty()),
         ):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-vertex/config")
@@ -412,8 +443,9 @@ def _make_patch_app(mock_svc_instance: ConfigService) -> FastAPI:
         yield mock_session
 
     app.dependency_overrides[get_async_session] = _override_session
+    app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
 
-    with patch("server.routers.providers.ConfigService", return_value=mock_svc_instance):
+    with _patch_config_service(mock_svc_instance):
         app.include_router(providers.router, prefix="/api/v1")
 
     return app
@@ -429,7 +461,7 @@ def _make_mock_svc() -> ConfigService:
 class TestPatchProviderConfig:
     def test_returns_204(self):
         mock_svc = _make_mock_svc()
-        with patch("server.routers.providers.ConfigService", return_value=mock_svc):
+        with _patch_config_service(mock_svc):
             app = FastAPI()
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
@@ -438,6 +470,7 @@ class TestPatchProviderConfig:
                 yield mock_session
 
             app.dependency_overrides[get_async_session] = _override
+            app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
             app.include_router(providers.router, prefix="/api/v1")
 
             with TestClient(app) as client:
@@ -456,6 +489,7 @@ class TestPatchProviderConfig:
             yield mock_session
 
         app.dependency_overrides[get_async_session] = _override
+        app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
         app.include_router(providers.router, prefix="/api/v1")
 
         with TestClient(app) as client:
@@ -467,7 +501,7 @@ class TestPatchProviderConfig:
 
     def test_null_value_calls_delete(self):
         mock_svc = _make_mock_svc()
-        with patch("server.routers.providers.ConfigService", return_value=mock_svc):
+        with _patch_config_service(mock_svc):
             app = FastAPI()
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
@@ -476,6 +510,7 @@ class TestPatchProviderConfig:
                 yield mock_session
 
             app.dependency_overrides[get_async_session] = _override
+            app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
             app.include_router(providers.router, prefix="/api/v1")
 
             with TestClient(app) as client:
@@ -489,7 +524,7 @@ class TestPatchProviderConfig:
 
     def test_non_null_value_calls_set(self):
         mock_svc = _make_mock_svc()
-        with patch("server.routers.providers.ConfigService", return_value=mock_svc):
+        with _patch_config_service(mock_svc):
             app = FastAPI()
             mock_session = AsyncMock()
             mock_session.commit = AsyncMock()
@@ -498,6 +533,7 @@ class TestPatchProviderConfig:
                 yield mock_session
 
             app.dependency_overrides[get_async_session] = _override
+            app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
             app.include_router(providers.router, prefix="/api/v1")
 
             with TestClient(app) as client:
@@ -546,6 +582,7 @@ class TestPatchProviderConfigMaxWorkersValidation:
 
         app.dependency_overrides[get_async_session] = _override_session
         app.dependency_overrides[get_translator] = lambda: make_translator(locale)
+        app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
         app.include_router(providers.router, prefix="/api/v1")
         return app
 
@@ -618,8 +655,8 @@ class TestTestProviderConnection:
     def test_returns_200(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_configured()),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(self._mock_cred_repo_configured()),
+            _patch_config_service(self._mock_svc()),
             patch.dict(providers._TEST_DISPATCH, {"gemini-aistudio": self._fake_test_fn}),
         ):
             with TestClient(app) as client:
@@ -629,8 +666,8 @@ class TestTestProviderConnection:
     def test_returns_404_for_unknown_provider(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_unconfigured()),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(self._mock_cred_repo_unconfigured()),
+            _patch_config_service(self._mock_svc()),
         ):
             with TestClient(app) as client:
                 resp = client.post("/api/v1/providers/nonexistent/test")
@@ -639,8 +676,8 @@ class TestTestProviderConnection:
     def test_success_true_when_configured(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_configured()),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(self._mock_cred_repo_configured()),
+            _patch_config_service(self._mock_svc()),
             patch.dict(providers._TEST_DISPATCH, {"gemini-aistudio": self._fake_test_fn}),
         ):
             with TestClient(app) as client:
@@ -653,8 +690,8 @@ class TestTestProviderConnection:
     def test_success_false_when_no_credential(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_unconfigured()),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(self._mock_cred_repo_unconfigured()),
+            _patch_config_service(self._mock_svc()),
         ):
             with TestClient(app) as client:
                 resp = client.post("/api/v1/providers/gemini-aistudio/test")
@@ -665,8 +702,8 @@ class TestTestProviderConnection:
     def test_response_has_required_fields(self):
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_configured()),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(self._mock_cred_repo_configured()),
+            _patch_config_service(self._mock_svc()),
             patch.dict(providers._TEST_DISPATCH, {"gemini-aistudio": self._fake_test_fn}),
         ):
             with TestClient(app) as client:
@@ -682,8 +719,8 @@ class TestTestProviderConnection:
 
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo_configured()),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(self._mock_cred_repo_configured()),
+            _patch_config_service(self._mock_svc()),
             patch.dict(providers._TEST_DISPATCH, {"gemini-aistudio": _failing_fn}),
         ):
             with TestClient(app) as client:
@@ -923,8 +960,8 @@ class TestTestProviderConnection:
 
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=repo),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(repo),
+            _patch_config_service(self._mock_svc()),
             patch("httpx.get", return_value=self._FakeKlingResponse({"code": 0, "message": "", "data": {}})),
         ):
             with TestClient(app) as client:
@@ -941,8 +978,8 @@ class TestTestProviderConnection:
 
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=repo),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(repo),
+            _patch_config_service(self._mock_svc()),
             patch.dict(providers._TEST_DISPATCH, {"gemini-aistudio": self._fake_test_fn}),
         ):
             with TestClient(app) as client:
@@ -985,8 +1022,8 @@ class TestArkAgentPlanConnectionTest:
 
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo()),
-            patch("server.routers.providers.ConfigService", return_value=self._mock_svc()),
+            _patch_credential_repository(self._mock_cred_repo()),
+            _patch_config_service(self._mock_svc()),
             patch.dict(providers._TEST_DISPATCH, {"ark-agent-plan": _capture}),
         ):
             with TestClient(app) as client:
@@ -1008,8 +1045,8 @@ class TestArkAgentPlanConnectionTest:
 
         app, _ = _make_session_app()
         with (
-            patch("server.routers.providers.CredentialRepository", return_value=self._mock_cred_repo()),
-            patch("server.routers.providers.ConfigService", return_value=svc),
+            _patch_credential_repository(self._mock_cred_repo()),
+            _patch_config_service(svc),
             patch.dict(providers._TEST_DISPATCH, {"ark-agent-plan": _capture}),
         ):
             with TestClient(app) as client:

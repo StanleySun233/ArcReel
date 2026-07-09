@@ -11,12 +11,14 @@ import {
   KeyRound,
   Languages,
   Plug,
+  UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useConfigStatusStore } from "@/stores/config-status-store";
 import { AgentConfigTab } from "./AgentConfigTab";
 import { ApiKeysTab } from "./ApiKeysTab";
 import { AboutSection } from "./settings/AboutSection";
+import { CamelAccountSection } from "./settings/CamelAccountSection";
 import { MediaModelSection } from "./settings/MediaModelSection";
 import { ProviderSection } from "./ProviderSection";
 import { UsageStatsSection } from "./settings/UsageStatsSection";
@@ -33,7 +35,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 
-type SettingsSection = "agent" | "providers" | "media" | "usage" | "api-keys" | "about";
+type SettingsSection = "agent" | "providers" | "media" | "usage" | "api-keys" | "account" | "about";
 
 interface SectionDef {
   id: SettingsSection;
@@ -64,6 +66,7 @@ const SECTION_GROUPS: SectionGroup[] = [
     items: [
       { id: "usage", labelKey: "dashboard:usage", Icon: BarChart3 },
       { id: "api-keys", labelKey: "dashboard:api_keys", Icon: KeyRound },
+      { id: "account", labelKey: "dashboard:account", Icon: UserRound },
     ],
   },
   {
@@ -87,6 +90,7 @@ export function SystemConfigPage() {
     if (section === "media") return "media";
     if (section === "usage") return "usage";
     if (section === "api-keys") return "api-keys";
+    if (section === "account") return "account";
     if (section === "about") return "about";
     return "providers";
   }, [search]);
@@ -305,6 +309,7 @@ export function SystemConfigPage() {
                   <ApiKeysTab />
                 </div>
               )}
+              {activeSection === "account" && <CamelAccountSection />}
               {activeSection === "about" && <AboutSection />}
             </div>
           )}

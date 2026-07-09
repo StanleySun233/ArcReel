@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lib.db.base import DEFAULT_USER_ID
 from lib.db.models.config import ProviderConfig, SystemSetting
 
 
@@ -17,8 +18,10 @@ def mask_secret(value: str) -> str:
 
 
 class ProviderConfigRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: str | None = None) -> None:
         self.session = session
+        self.user_id = user_id or str(session.info.get("user_id") or DEFAULT_USER_ID)
+        session.info["user_id"] = self.user_id
 
     async def set(
         self,
@@ -29,7 +32,11 @@ class ProviderConfigRepository:
         is_secret: bool = False,
         flush: bool = True,
     ) -> None:
-        stmt = select(ProviderConfig).where(ProviderConfig.provider == provider, ProviderConfig.key == key)
+        stmt = select(ProviderConfig).where(
+            ProviderConfig.user_id == self.user_id,
+            ProviderConfig.provider == provider,
+            ProviderConfig.key == key,
+        )
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
         if row:
@@ -37,23 +44,41 @@ class ProviderConfigRepository:
             row.is_secret = is_secret
             row.updated_at = datetime.now(UTC)
         else:
-            self.session.add(ProviderConfig(provider=provider, key=key, value=value, is_secret=is_secret))
+            self.session.add(
+                ProviderConfig(
+                    user_id=self.user_id,
+                    provider=provider,
+                    key=key,
+                    value=value,
+                    is_secret=is_secret,
+                )
+            )
         if flush:
             await self.session.flush()
 
     async def delete(self, provider: str, key: str, *, flush: bool = True) -> None:
-        stmt = delete(ProviderConfig).where(ProviderConfig.provider == provider, ProviderConfig.key == key)
+        stmt = delete(ProviderConfig).where(
+            ProviderConfig.user_id == self.user_id,
+            ProviderConfig.provider == provider,
+            ProviderConfig.key == key,
+        )
         await self.session.execute(stmt)
         if flush:
             await self.session.flush()
 
     async def get_all(self, provider: str) -> dict[str, str]:
-        stmt = select(ProviderConfig).where(ProviderConfig.provider == provider)
+        stmt = select(ProviderConfig).where(
+            ProviderConfig.user_id == self.user_id,
+            ProviderConfig.provider == provider,
+        )
         result = await self.session.execute(stmt)
         return {row.key: row.value for row in result.scalars()}
 
     async def get_all_masked(self, provider: str) -> dict[str, dict]:
-        stmt = select(ProviderConfig).where(ProviderConfig.provider == provider)
+        stmt = select(ProviderConfig).where(
+            ProviderConfig.user_id == self.user_id,
+            ProviderConfig.provider == provider,
+        )
         result = await self.session.execute(stmt)
         out: dict[str, dict] = {}
         for row in result.scalars():
@@ -64,13 +89,16 @@ class ProviderConfigRepository:
         return out
 
     async def get_configured_keys(self, provider: str) -> list[str]:
-        stmt = select(ProviderConfig.key).where(ProviderConfig.provider == provider)
+        stmt = select(ProviderConfig.key).where(
+            ProviderConfig.user_id == self.user_id,
+            ProviderConfig.provider == provider,
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars())
 
     async def get_all_configured_keys_bulk(self) -> dict[str, list[str]]:
         """Fetch configured keys for ALL providers in a single query."""
-        stmt = select(ProviderConfig.provider, ProviderConfig.key)
+        stmt = select(ProviderConfig.provider, ProviderConfig.key).where(ProviderConfig.user_id == self.user_id)
         result = await self.session.execute(stmt)
         out: dict[str, list[str]] = {}
         for provider, key in result:
@@ -79,7 +107,7 @@ class ProviderConfigRepository:
 
     async def get_all_configs_bulk(self) -> dict[str, dict[str, str]]:
         """Fetch all config key-value pairs for ALL providers in a single query."""
-        stmt = select(ProviderConfig)
+        stmt = select(ProviderConfig).where(ProviderConfig.user_id == self.user_id)
         result = await self.session.execute(stmt)
         out: dict[str, dict[str, str]] = {}
         for row in result.scalars():
@@ -88,27 +116,29 @@ class ProviderConfigRepository:
 
 
 class SystemSettingRepository:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, user_id: str | None = None) -> None:
         self.session = session
+        self.user_id = user_id or str(session.info.get("user_id") or DEFAULT_USER_ID)
+        session.info["user_id"] = self.user_id
 
     async def set(self, key: str, value: str) -> None:
-        stmt = select(SystemSetting).where(SystemSetting.key == key)
+        stmt = select(SystemSetting).where(SystemSetting.user_id == self.user_id, SystemSetting.key == key)
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
         if row:
             row.value = value
             row.updated_at = datetime.now(UTC)
         else:
-            self.session.add(SystemSetting(key=key, value=value))
+            self.session.add(SystemSetting(user_id=self.user_id, key=key, value=value))
         await self.session.flush()
 
     async def get(self, key: str, default: str = "") -> str:
-        stmt = select(SystemSetting.value).where(SystemSetting.key == key)
+        stmt = select(SystemSetting.value).where(SystemSetting.user_id == self.user_id, SystemSetting.key == key)
         result = await self.session.execute(stmt)
         val = result.scalar_one_or_none()
         return val if val is not None else default
 
     async def get_all(self) -> dict[str, str]:
-        stmt = select(SystemSetting)
+        stmt = select(SystemSetting).where(SystemSetting.user_id == self.user_id)
         result = await self.session.execute(stmt)
         return {row.key: row.value for row in result.scalars()}
