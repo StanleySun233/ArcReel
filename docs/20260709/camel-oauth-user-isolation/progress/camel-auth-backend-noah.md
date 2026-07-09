@@ -18,19 +18,19 @@
 
 ## Subtasks
 
-- [ ] Add CaMeL OAuth backend settings and helpers.
-  - Commit: pending
-- [ ] Add auth start/callback routes and state validation.
-  - Commit: pending
-- [ ] Upsert CaMeL users and sign JWTs with real `user_id`.
-  - Commit: pending
-- [ ] Add OAuth state intent dispatch without persisting CaMeL access tokens.
-  - Commit: pending
-- [ ] Disable local password login in CaMeL mode.
-  - Commit: pending
-- [ ] Resolve API key Bearer auth to the persisted owner.
-  - Commit: pending
-**Ready for QA:** no
+- [x] Add CaMeL OAuth backend settings and helpers.
+  - Commit: 053d0bb
+- [x] Add auth start/callback routes and state validation.
+  - Commit: 053d0bb
+- [x] Upsert CaMeL users and sign JWTs with real `user_id`.
+  - Commit: a7cb123, 053d0bb
+- [x] Add OAuth state intent dispatch without persisting CaMeL access tokens.
+  - Commit: 053d0bb
+- [x] Disable local password login in CaMeL mode.
+  - Commit: a7cb123, 053d0bb
+- [x] Resolve API key Bearer auth to the persisted owner.
+  - Commit: a7cb123
+**Ready for QA:** yes
 
 ## Blockers
 
