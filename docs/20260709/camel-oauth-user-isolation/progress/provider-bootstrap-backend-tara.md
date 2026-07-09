@@ -27,14 +27,14 @@
 
 - [ ] Add CaMeL provisioning settings and endpoint behavior for visible per-media tokens, conflicts, repair mode, ArcReel-managed marking, idempotency, model allowlist enforcement, and one-time key return.
   - Commit: pending
-- [ ] Add ArcReel bootstrap status, authorization start, callback handling, and repair start flow under authenticated API routes.
-  - Commit: pending
+- [x] Add ArcReel bootstrap status, authorization start, callback handling, and repair start flow under authenticated API routes.
+  - Commit: 3181512
 - [x] Add ArcReel user-scoped persistence for provider credentials, built-in provider configuration, custom providers, custom provider models, provider defaults, and bootstrap completion state.
   - Commit: 8e05499
-- [ ] Implement the ArcReel service that calls CaMeL provisioning in create or repair mode, creates or updates user-owned custom providers, creates model rows, and updates user provider defaults.
-  - Commit: pending
+- [x] Implement the ArcReel service that calls CaMeL provisioning in create or repair mode, creates or updates user-owned custom providers, creates model rows, and updates user provider defaults.
+  - Commit: 3181512
 - [ ] Add conflict retry behavior and partial-failure handling for CaMeL tokens created before local provider persistence fails.
-  - Commit: pending
+  - Commit: 3181512 (ArcReel non-sensitive result handling); CaMeL endpoint support pending.
 
 **Ready for QA:** no
 
