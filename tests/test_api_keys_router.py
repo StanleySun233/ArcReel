@@ -13,9 +13,9 @@ from server.auth import CurrentUserInfo, get_current_user
 from server.routers import api_keys
 
 
-def _make_client() -> TestClient:
+def _make_client(user_id: str = "default") -> TestClient:
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=user_id, sub="testuser", role="admin")
     app.include_router(api_keys.router, prefix="/api/v1")
     return TestClient(app)
 
@@ -80,6 +80,30 @@ class TestCreateApiKey:
                 resp = client.post("/api/v1/api-keys", json={"name": "mykey"})
 
         assert resp.status_code == 409
+
+    def test_create_uses_current_user_id(self):
+        with _make_client(user_id="camel:123") as client:
+            mock_repo = AsyncMock()
+            mock_repo.create = AsyncMock(return_value={**FAKE_ROW, "user_id": "camel:123"})
+
+            mock_session = AsyncMock()
+            mock_begin = AsyncMock()
+            mock_begin.__aenter__ = AsyncMock(return_value=None)
+            mock_begin.__aexit__ = AsyncMock(return_value=False)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=False)
+            mock_session.begin = lambda: mock_begin
+
+            with (
+                patch("server.routers.api_keys.async_session_factory", return_value=mock_session),
+                patch("server.routers.api_keys.ApiKeyRepository", return_value=mock_repo) as repo_cls,
+            ):
+                resp = client.post("/api/v1/api-keys", json={"name": "mykey"})
+
+        assert resp.status_code == 201
+        repo_cls.assert_called_once_with(mock_session, user_id="camel:123")
+        mock_repo.create.assert_awaited_once()
+        assert mock_repo.create.await_args.kwargs["user_id"] == "camel:123"
 
 
 class TestListApiKeys:

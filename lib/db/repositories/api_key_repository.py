@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import Select
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import select, update
 
@@ -24,6 +25,7 @@ def _row_to_dict(row: ApiKey) -> dict[str, Any]:
         "id": row.id,
         "name": row.name,
         "key_prefix": row.key_prefix,
+        "user_id": row.user_id,
         "created_at": _to_iso(row.created_at),
         "expires_at": _to_iso(row.expires_at),
         "last_used_at": _to_iso(row.last_used_at),
@@ -31,6 +33,15 @@ def _row_to_dict(row: ApiKey) -> dict[str, Any]:
 
 
 class ApiKeyRepository(BaseRepository):
+    def __init__(self, session, user_id: str | None = None):
+        super().__init__(session)
+        self.user_id = user_id
+
+    def _scope_query(self, stmt: Select, model: type[ApiKey]) -> Select:
+        if self.user_id is None:
+            return stmt
+        return stmt.where(model.user_id == self.user_id)
+
     async def create(
         self,
         *,
@@ -74,6 +85,7 @@ class ApiKeyRepository(BaseRepository):
             "name": row.name,
             "key_hash": row.key_hash,
             "key_prefix": row.key_prefix,
+            "user_id": row.user_id,
             "created_at": row.created_at,
             "expires_at": row.expires_at,
             "last_used_at": row.last_used_at,
@@ -93,7 +105,10 @@ class ApiKeyRepository(BaseRepository):
 
     async def delete(self, key_id: int) -> bool:
         """Delete a key by ID. Returns True if deleted, False if not found."""
-        result = await self.session.execute(sa_delete(ApiKey).where(ApiKey.id == key_id))
+        stmt = sa_delete(ApiKey).where(ApiKey.id == key_id)
+        if self.user_id is not None:
+            stmt = stmt.where(ApiKey.user_id == self.user_id)
+        result = await self.session.execute(stmt)
         return rowcount(result) > 0
 
     async def touch_last_used(self, key_hash: str) -> None:
