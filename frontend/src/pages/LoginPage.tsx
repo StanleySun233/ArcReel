@@ -48,9 +48,15 @@ export function LoginPage() {
   const [location, setLocation] = useLocation();
   const search = useSearch();
   const login = useAuthStore((s) => s.login);
+  const authMode = useAuthStore((s) => s.authMode);
+  const authStatus = useAuthStore((s) => s.authStatus);
+  const authLoading = useAuthStore((s) => s.isLoading);
+  const providers = useAuthStore((s) => s.providers);
   const usernameRef = useAutoFocus<HTMLInputElement>();
   const callbackHandledRef = useRef(false);
   const isCallback = location === "/login/callback";
+  const camelProvider = providers.find((provider) => provider.id === "camel");
+  const isCamelMode = authMode === "camel";
 
   useEffect(() => {
     if (!isCallback || callbackHandledRef.current) return;
@@ -70,6 +76,15 @@ export function LoginPage() {
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
     setLocation(returnTo);
   }, [isCallback, login, setLocation, t]);
+
+  const handleCamelLogin = () => {
+    if (!camelProvider) return;
+    const returnTo = safeReturnPath(new URLSearchParams(search).get("from")) ?? "/app/projects";
+    const startUrl = new URL(camelProvider.login_url, window.location.origin);
+    startUrl.searchParams.set("from", returnTo);
+    setLoading(true);
+    window.location.assign(startUrl.pathname + startUrl.search + startUrl.hash);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -146,6 +161,30 @@ export function LoginPage() {
                 <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />
                 <span>{t("auth:login_callback")}</span>
               </div>
+            )}
+          </div>
+        ) : authLoading && !authStatus ? (
+          <div role="status" aria-live="polite" className="flex items-center justify-center gap-2 text-sm text-text-3">
+            <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />
+            <span>{t("common:loading")}</span>
+          </div>
+        ) : isCamelMode ? (
+          <div className="space-y-4">
+            {camelProvider ? (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleCamelLogin}
+                className={`${ACCENT_BTN_CLS} w-full justify-center`}
+                style={ACCENT_BUTTON_STYLE}
+              >
+                {loading && <Loader2 aria-hidden className="h-4 w-4 motion-safe:animate-spin" />}
+                {t("auth:camel_login")}
+              </button>
+            ) : (
+              <p role="alert" aria-live="polite" className="text-sm text-warm-bright">
+                {t("auth:camel_login_unavailable")}
+              </p>
             )}
           </div>
         ) : (

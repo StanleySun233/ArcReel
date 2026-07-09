@@ -5,6 +5,8 @@ export default {
   'login_failed': 'Login failed',
   'login_callback': 'Completing login...',
   'login_callback_failed': 'Login callback failed',
+  'camel_login': 'Login by CaMeL',
+  'camel_login_unavailable': 'CaMeL login is not configured',
   'username': 'Username',
   'password': 'Password',
 };
