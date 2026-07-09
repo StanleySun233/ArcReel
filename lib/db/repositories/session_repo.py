@@ -26,8 +26,13 @@ def _row_to_dict(row: AgentSession) -> dict[str, Any]:
 
 
 class SessionRepository(BaseRepository):
+    def __init__(self, session, user_id: str | None = None):
+        super().__init__(session)
+        self.user_id = user_id or str(session.info.get("user_id") or DEFAULT_USER_ID)
+        session.info["user_id"] = self.user_id
+
     async def create(
-        self, project_name: str, sdk_session_id: str, title: str = "", user_id: str = DEFAULT_USER_ID
+        self, project_name: str, sdk_session_id: str, title: str = "", user_id: str | None = None
     ) -> dict[str, Any]:
         now = utc_now()
         row = AgentSession(
@@ -38,7 +43,7 @@ class SessionRepository(BaseRepository):
             status="idle",
             created_at=now,
             updated_at=now,
-            user_id=user_id,
+            user_id=user_id or self.user_id,
         )
         self.session.add(row)
         await self.session.commit()
@@ -46,8 +51,7 @@ class SessionRepository(BaseRepository):
         return _row_to_dict(row)
 
     async def get(self, session_id: str) -> dict[str, Any] | None:
-        stmt = select(AgentSession).where(AgentSession.sdk_session_id == session_id)
-        stmt = self._scope_query(stmt, AgentSession)
+        stmt = select(AgentSession).where(AgentSession.user_id == self.user_id, AgentSession.sdk_session_id == session_id)
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
         return _row_to_dict(row) if row else None
@@ -60,35 +64,39 @@ class SessionRepository(BaseRepository):
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        stmt = select(AgentSession)
+        stmt = select(AgentSession).where(AgentSession.user_id == self.user_id)
         if project_name:
             stmt = stmt.where(AgentSession.project_name == project_name)
         if status:
             stmt = stmt.where(AgentSession.status == status)
         stmt = stmt.order_by(AgentSession.updated_at.desc())
         stmt = stmt.limit(max(1, limit)).offset(max(0, offset))
-        stmt = self._scope_query(stmt, AgentSession)
-
         result = await self.session.execute(stmt)
         return [_row_to_dict(row) for row in result.scalars().all()]
 
     async def update_status(self, session_id: str, status: str) -> bool:
         now = utc_now()
         result = await self.session.execute(
-            update(AgentSession).where(AgentSession.sdk_session_id == session_id).values(status=status, updated_at=now)
+            update(AgentSession)
+            .where(AgentSession.user_id == self.user_id, AgentSession.sdk_session_id == session_id)
+            .values(status=status, updated_at=now)
         )
         await self.session.commit()
         return rowcount(result) > 0
 
     async def delete(self, session_id: str) -> bool:
-        result = await self.session.execute(sa_delete(AgentSession).where(AgentSession.sdk_session_id == session_id))
+        result = await self.session.execute(
+            sa_delete(AgentSession).where(AgentSession.user_id == self.user_id, AgentSession.sdk_session_id == session_id)
+        )
         await self.session.commit()
         return rowcount(result) > 0
 
     async def interrupt_running(self) -> int:
         now = utc_now()
         result = await self.session.execute(
-            update(AgentSession).where(AgentSession.status == "running").values(status="interrupted", updated_at=now)
+            update(AgentSession)
+            .where(AgentSession.user_id == self.user_id, AgentSession.status == "running")
+            .values(status="interrupted", updated_at=now)
         )
         await self.session.commit()
         return rowcount(result)

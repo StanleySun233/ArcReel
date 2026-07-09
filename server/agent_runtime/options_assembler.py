@@ -100,9 +100,11 @@ class OptionsAssembler:
         provider_env_loader: Callable[[], Awaitable[dict[str, str]]] | None = None,
         session_factory_provider: Callable[[], Any] | None = None,
         user_id_provider: Callable[[], str] | None = None,
+        projects_root_provider: Callable[[], Path] | None = None,
     ) -> None:
         self.data_dir = Path(data_dir)
         self.projects_root = Path(projects_root)
+        self._projects_root_provider = projects_root_provider or (lambda: self.projects_root)
         self._allowed_tools = list(allowed_tools)
         self._setting_sources = list(setting_sources)
         self._access_policy_provider = access_policy_provider
@@ -270,7 +272,7 @@ class OptionsAssembler:
 
         arcreel_server = build_arcreel_mcp_server(
             project_name=project_name,
-            projects_root=self.projects_root,
+            projects_root=self._projects_root_provider(),
         )
 
         return ClaudeAgentOptions(

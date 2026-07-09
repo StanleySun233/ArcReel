@@ -24,6 +24,7 @@ import portalocker
 from pydantic import BaseModel, Field
 
 from lib.agent_profile import agent_profile_dir
+from lib.app_data_dir import app_data_dir
 from lib.asset_types import ASSET_SPECS, validate_asset_name
 from lib.episode_ledger import SOURCE_TEXT_SUFFIXES
 from lib.episode_paths import episode_script_relpath
@@ -42,6 +43,7 @@ from lib.profile_manifest import (
 from lib.project_change_hints import emit_project_change_hint
 from lib.script_editor import ScriptEditError, resolve_items
 from lib.style_templates import LEGACY_STYLE_MAP, resolve_template_prompt
+from lib.user_scope import scoped_projects_root
 
 logger = logging.getLogger(__name__)
 
@@ -213,8 +215,20 @@ class ProjectManager:
             # 尝试从环境变量或默认路径获取
             projects_root = os.environ.get("AI_ANIME_PROJECTS", "projects")
 
-        self.projects_root = Path(projects_root)
+        self._projects_root = Path(projects_root)
+        self._scope_by_current_user = self._same_path(self._projects_root, app_data_dir())
+        self._projects_root.mkdir(parents=True, exist_ok=True)
         self.projects_root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _same_path(left: Path, right: Path) -> bool:
+        return left.resolve(strict=False) == right.resolve(strict=False)
+
+    @property
+    def projects_root(self) -> Path:
+        root = scoped_projects_root(self._projects_root) if self._scope_by_current_user else self._projects_root
+        root.mkdir(parents=True, exist_ok=True)
+        return root
 
     def list_projects(self) -> list[str]:
         """列出所有项目"""

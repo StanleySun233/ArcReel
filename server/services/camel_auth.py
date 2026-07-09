@@ -26,6 +26,7 @@ CamelOAuthIntent = Literal["login", "provider_bootstrap", "provider_repair"]
 @dataclass(frozen=True)
 class CamelOAuthSettings:
     base_url: str
+    internal_base_url: str
     client_id: str
     client_secret: str
     redirect_uri: str
@@ -43,11 +44,11 @@ class CamelOAuthSettings:
 
     @property
     def token_url(self) -> str:
-        return f"{self.base_url}/api/oauth/provider/token"
+        return f"{self.internal_base_url}/api/oauth/provider/token"
 
     @property
     def userinfo_url(self) -> str:
-        return f"{self.base_url}/api/oauth/provider/userinfo"
+        return f"{self.internal_base_url}/api/oauth/provider/userinfo"
 
 
 @dataclass(frozen=True)
@@ -73,8 +74,10 @@ class CamelOAuthExchange:
 
 
 def get_camel_oauth_settings() -> CamelOAuthSettings:
+    base_url = os.environ.get("CAMEL_OAUTH_BASE_URL", "").strip().rstrip("/")
     return CamelOAuthSettings(
-        base_url=os.environ.get("CAMEL_OAUTH_BASE_URL", "").strip().rstrip("/"),
+        base_url=base_url,
+        internal_base_url=(os.environ.get("CAMEL_OAUTH_INTERNAL_BASE_URL", "").strip().rstrip("/") or base_url),
         client_id=os.environ.get("CAMEL_OAUTH_CLIENT_ID", "").strip(),
         client_secret=os.environ.get("CAMEL_OAUTH_CLIENT_SECRET", "").strip(),
         redirect_uri=os.environ.get("CAMEL_OAUTH_REDIRECT_URI", "").strip(),

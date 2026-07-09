@@ -23,6 +23,7 @@ from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict
 
 from lib import PROJECT_ROOT
+from lib.user_scope import set_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +75,9 @@ def _anonymous_user() -> "CurrentUserInfo":
     """关闭认证时返回的固定匿名用户。"""
     from lib.db.base import DEFAULT_USER_ID
 
-    return CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, provider="local", role="admin")
+    user = CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, provider="local", role="admin")
+    set_current_user_id(user.id)
+    return user
 
 
 # OAuth2 scheme
@@ -152,11 +155,14 @@ def verify_token(token: str) -> dict | None:
 DOWNLOAD_TOKEN_EXPIRY_SECONDS = 300  # 5 分钟
 
 
-def create_download_token(username: str, project_name: str) -> str:
+def create_download_token(username: str, project_name: str, user_id: str | None = None) -> str:
     """签发短时效下载 token，用于浏览器原生下载认证"""
+    from lib.db.base import DEFAULT_USER_ID
+
     now = time.time()
     payload = {
         "sub": username,
+        "user_id": user_id or DEFAULT_USER_ID,
         "project": project_name,
         "purpose": "download",
         "iat": now,
@@ -177,8 +183,10 @@ def verify_download_token(token: str, project_name: str) -> dict:
         ValueError: purpose 或 project 不匹配
     """
     if not is_auth_enabled():
+        user = _anonymous_user()
         return {
             "sub": _ANONYMOUS_USER_SUB,
+            "user_id": user.id,
             "project": project_name,
             "purpose": "download",
         }
@@ -187,6 +195,7 @@ def verify_download_token(token: str, project_name: str) -> dict:
         raise ValueError("token purpose 不匹配")
     if payload.get("project") != project_name:
         raise ValueError("token project 不匹配")
+    set_current_user_id(str(payload.get("user_id") or "default"))
     return payload
 
 
@@ -444,7 +453,9 @@ def _payload_to_user(payload: dict) -> CurrentUserInfo:
     sub = payload.get("sub", "")
     user_id = payload.get("user_id") or DEFAULT_USER_ID
     provider = payload.get("provider") or payload.get("via") or "local"
-    return CurrentUserInfo(id=str(user_id), sub=str(sub), provider=str(provider), role="admin")
+    user = CurrentUserInfo(id=str(user_id), sub=str(sub), provider=str(provider), role="admin")
+    set_current_user_id(user.id)
+    return user
 
 
 async def get_current_user(

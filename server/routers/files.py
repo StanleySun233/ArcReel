@@ -70,7 +70,7 @@ ALLOWED_EXTENSIONS = {
 
 
 @router.get("/files/{project_name}/{path:path}")
-async def serve_project_file(project_name: str, path: str, request: Request, _t: Translator):
+async def serve_project_file(project_name: str, path: str, request: Request, _user: CurrentUser, _t: Translator):
     """服务项目内的静态文件（图片/视频）"""
     try:
 

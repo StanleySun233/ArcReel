@@ -244,7 +244,7 @@ async def create_export_token(
 
         diagnostics = await asyncio.to_thread(_sync)
         username = current_user.sub
-        download_token = create_download_token(username, name)
+        download_token = create_download_token(username, name, user_id=current_user.id)
         return {
             "download_token": download_token,
             "expires_in": 300,
