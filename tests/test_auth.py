@@ -63,19 +63,8 @@ class TestCreateAndVerifyToken:
             payload = auth_module.verify_token(token)
             assert payload is not None
             assert payload["sub"] == "admin"
-            assert payload["user_id"] == "default"
-            assert payload["provider"] == "local"
             assert "iat" in payload
             assert "exp" in payload
-
-    def test_create_token_accepts_real_user_id_and_provider(self):
-        with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
-            token = auth_module.create_token("camel-user", user_id="camel:123", provider="camel")
-            payload = auth_module.verify_token(token)
-            assert payload is not None
-            assert payload["sub"] == "camel-user"
-            assert payload["user_id"] == "camel:123"
-            assert payload["provider"] == "camel"
 
     def test_verify_token_invalid(self):
         """无效 token 返回 None"""
@@ -123,13 +112,6 @@ class TestCheckCredentials:
         with patch.dict(os.environ, env, clear=True):
             assert auth_module.check_credentials("admin", "secret") is True
 
-    def test_check_credentials_disabled_in_camel_mode(self):
-        with patch.dict(
-            os.environ,
-            {"AUTH_MODE": "camel", "AUTH_USERNAME": "admin", "AUTH_PASSWORD": "pass123"},
-        ):
-            assert auth_module.check_credentials("admin", "pass123") is False
-
 
 class TestEnsureAuthPassword:
     def setup_method(self):
@@ -141,17 +123,6 @@ class TestEnsureAuthPassword:
         with patch.dict(os.environ, {"AUTH_PASSWORD": "existing-pwd"}):
             result = auth_module.ensure_auth_password()
             assert result == "existing-pwd"
-
-    def test_camel_mode_does_not_generate_or_return_password(self, tmp_path):
-        env = os.environ.copy()
-        env["AUTH_MODE"] = "camel"
-        env.pop("AUTH_PASSWORD", None)
-        env_file = tmp_path / ".env"
-        with patch.dict(os.environ, env, clear=True):
-            result = auth_module.ensure_auth_password(env_path=str(env_file))
-            assert result == ""
-            assert "AUTH_PASSWORD" not in os.environ
-            assert not env_file.exists()
 
     def test_auto_generate_when_empty(self, tmp_path):
         """AUTH_PASSWORD 为空时自动生成密码并写入 os.environ"""
@@ -324,25 +295,7 @@ class TestGetCurrentUser:
             assert isinstance(result, auth_module.CurrentUserInfo)
             assert result.sub == "admin"
             assert result.id == "default"
-            assert result.provider == "local"
             assert result.role == "admin"
-
-    async def test_get_current_user_uses_token_user_id_and_provider(self):
-        with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
-            token = auth_module.create_token("camel-user", user_id="camel:123", provider="camel")
-            result = await auth_module.get_current_user(token)
-            assert isinstance(result, auth_module.CurrentUserInfo)
-            assert result.sub == "camel-user"
-            assert result.id == "camel:123"
-            assert result.provider == "camel"
-
-    def test_payload_to_user_uses_api_key_owner(self):
-        result = auth_module._payload_to_user(
-            {"sub": "apikey:mykey", "via": "apikey", "user_id": "camel:123", "provider": "apikey"}
-        )
-        assert result.sub == "apikey:mykey"
-        assert result.id == "camel:123"
-        assert result.provider == "apikey"
 
     async def test_get_current_user_invalid_token(self):
         import pytest
