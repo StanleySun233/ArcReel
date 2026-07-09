@@ -23,6 +23,7 @@
   - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
 - [x] Update auth translations.
   - Commit: a2eb83c98c5e842805980e22cae7fedef71e25dd
+
 **Ready for QA:** yes
 
 ## Blockers
