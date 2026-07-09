@@ -18,19 +18,18 @@
 ## Subtasks
 
 - [x] Add frontend legal config in `frontend/src/config/legal.ts` backed by `VITE_ARCREEL_LEGAL_*` variables with safe upstream defaults, modified-version notice, modified date, and source configured status.
-  - Commit: 606e0dc
+  - Commit: 181e749
 - [x] Add reusable legal links component backed by frontend legal config, including upstream attribution, deployed source, license, NOTICE, no-warranty notice, AGPL conveyance notice, modified-version statement, and free CaMeL API relay statement.
-  - Commit: 8507fa7
-- [ ] Add unauthenticated login-page legal/source links.
-  - Commit: blocked pending Story 1 frontend integration
+  - Commit: d66ea08
+- [x] Add unauthenticated login-page legal/source links.
+  - Commit: 521ad7e
 - [x] Update About/Legal section with current deployed source, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution.
-  - Commit: 9e4ca2f
+  - Commit: 3b115c9
 
-**Ready for QA:** no
+**Ready for QA:** yes
 
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
 | 2026-07-09 | Public source link copy | Final deployed source URL is not known until deployment branch or commit is selected. | pending |
-| 2026-07-09 | LoginPage legal links | Waiting for Story 1 frontend integration before serially editing `frontend/src/pages/LoginPage.tsx`. | pending |
