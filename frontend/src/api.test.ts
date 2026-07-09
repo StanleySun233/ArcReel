@@ -341,6 +341,29 @@ describe("API", () => {
       expect(requestSpy).toHaveBeenCalledOnce();
     });
 
+    it("calls the CaMeL bootstrap status endpoint", async () => {
+      const requestSpy = vi
+        .spyOn(API, "request")
+        .mockResolvedValue({ needed: false, completed: true } as never);
+
+      await API.getCamelBootstrapStatus();
+
+      expect(requestSpy).toHaveBeenCalledWith("/camel/bootstrap/status");
+    });
+
+    it("calls the CaMeL bootstrap start-url endpoint with mode and return path", async () => {
+      const requestSpy = vi
+        .spyOn(API, "request")
+        .mockResolvedValue({ authorization_url: "https://camel.example/oauth" } as never);
+
+      await API.startCamelBootstrap("create", "/app/projects/demo?tab=settings#providers");
+
+      expect(requestSpy).toHaveBeenCalledWith(
+        "/camel/bootstrap/start-url?mode=create&from=%2Fapp%2Fprojects%2Fdemo%3Ftab%3Dsettings%23providers",
+        { method: "POST" },
+      );
+    });
+
     it("covers task, assistant, version and usage query builders", async () => {
       const requestSpy = vi
         .spyOn(API, "request")

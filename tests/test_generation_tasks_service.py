@@ -705,7 +705,7 @@ class TestGenerationTasks:
         fake_video_backend = object()
 
         class _FakeResolver:
-            def __init__(self, session_factory):
+            def __init__(self, session_factory, *, user_id=None, _bound_session=None):
                 self.session_factory = session_factory
 
             @contextlib.asynccontextmanager

@@ -20,6 +20,8 @@ from lib.db.base import Base
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import custom_providers
 
+TEST_USER_ID = "test"
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -50,7 +52,9 @@ def app(session_factory) -> FastAPI:
             yield session
 
     _app.dependency_overrides[get_async_session] = _override_session
-    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="test", sub="test", role="admin")
+    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id=TEST_USER_ID, sub="test", role="admin"
+    )
     _app.include_router(custom_providers.router, prefix="/api/v1")
     return _app
 
@@ -744,11 +748,13 @@ class TestDeleteProviderCleansGlobalSettings:
         pid = resp.json()["id"]
 
         # 模拟全局配置引用该供应商
-        svc = ConfigService(session)
+        svc = ConfigService(session, user_id=TEST_USER_ID)
+        other_svc = ConfigService(session, user_id="other")
         await svc.set_setting("default_text_backend", f"custom-{pid}/gpt-4o")
         await svc.set_setting("default_image_backend", f"custom-{pid}/dall-e-3")
         await svc.set_setting("default_audio_backend", f"custom-{pid}/tts-1")
         await svc.set_setting("default_video_backend", "gemini-aistudio/veo-3")  # 不应被清理
+        await other_svc.set_setting("default_text_backend", f"custom-{pid}/gpt-4o")
         await session.commit()
 
         # 删除供应商（mock 掉项目清理和缓存失效）
@@ -765,6 +771,7 @@ class TestDeleteProviderCleansGlobalSettings:
         assert await svc.get_setting("default_audio_backend", "") == ""
         # 不相关的设置应保留
         assert await svc.get_setting("default_video_backend", "") == "gemini-aistudio/veo-3"
+        assert await other_svc.get_setting("default_text_backend", "") == f"custom-{pid}/gpt-4o"
 
 
 class TestDeleteProviderCleansProjectRefs:
@@ -817,8 +824,10 @@ class TestReplaceModelsCleansStaleRefs:
         pid = resp.json()["id"]
 
         # 模拟全局配置引用 gpt-4o
-        svc = ConfigService(session)
+        svc = ConfigService(session, user_id=TEST_USER_ID)
+        other_svc = ConfigService(session, user_id="other")
         await svc.set_setting("default_text_backend", f"custom-{pid}/gpt-4o")
+        await other_svc.set_setting("default_text_backend", f"custom-{pid}/gpt-4o")
         await session.commit()
 
         # 替换 models — 移除 gpt-4o，保留 dall-e-3
@@ -841,6 +850,7 @@ class TestReplaceModelsCleansStaleRefs:
 
         # gpt-4o 被删除，引用它的全局配置应被清空
         assert await svc.get_setting("default_text_backend", "") == ""
+        assert await other_svc.get_setting("default_text_backend", "") == f"custom-{pid}/gpt-4o"
 
 
 class TestEmptyModelIdRejected:
@@ -1511,13 +1521,22 @@ class TestDiscoverAnthropic:
         from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 
         repo = AgentCredentialRepository(session)
+        other = await repo.create(
+            preset_id="__custom__",
+            display_name="other",
+            base_url="https://other.example",
+            api_key="sk-other",
+            user_id="other",
+        )
+        await repo.set_active(other.id, user_id="other")
         cred = await repo.create(
             preset_id="__custom__",
             display_name="stored",
             base_url="https://stored.example",
             api_key="sk-stored",
+            user_id=TEST_USER_ID,
         )
-        await repo.set_active(cred.id)
+        await repo.set_active(cred.id, user_id=TEST_USER_ID)
         await session.commit()
 
         with patch("server.routers.custom_providers._run_discover", new=AsyncMock()) as mock_run:
@@ -1544,13 +1563,22 @@ class TestDiscoverAnthropic:
         from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 
         repo = AgentCredentialRepository(session)
+        other = await repo.create(
+            preset_id="__custom__",
+            display_name="other",
+            base_url="https://other.example",
+            api_key="sk-other",
+            user_id="other",
+        )
+        await repo.set_active(other.id, user_id="other")
         cred = await repo.create(
             preset_id="__custom__",
             display_name="stored",
             base_url="https://stored.example",
             api_key="sk-stored",
+            user_id=TEST_USER_ID,
         )
-        await repo.set_active(cred.id)
+        await repo.set_active(cred.id, user_id=TEST_USER_ID)
         await session.commit()
 
         with patch("server.routers.custom_providers._run_discover", new=AsyncMock()) as mock_run:

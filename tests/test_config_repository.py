@@ -60,6 +60,67 @@ async def test_get_configured_keys(session: AsyncSession):
     assert keys == ["api_key"]
 
 
+async def test_provider_config_is_scoped_by_user(session: AsyncSession):
+    repo_a = ProviderConfigRepository(session, user_id="user-a")
+    repo_b = ProviderConfigRepository(session, user_id="user-b")
+
+    await repo_a.set("gemini-aistudio", "api_key", "AIza-user-a-secret", is_secret=True)
+    await repo_a.set("gemini-aistudio", "base_url", "https://a.example.com", is_secret=False)
+    await repo_b.set("gemini-aistudio", "api_key", "AIza-user-b-secret", is_secret=True)
+    await repo_b.set("gemini-aistudio", "base_url", "https://b.example.com", is_secret=False)
+    await repo_b.set("ark", "api_key", "ark-user-b-secret", is_secret=True)
+
+    assert await repo_a.get_all("gemini-aistudio") == {
+        "api_key": "AIza-user-a-secret",
+        "base_url": "https://a.example.com",
+    }
+    assert await repo_b.get_all("gemini-aistudio") == {
+        "api_key": "AIza-user-b-secret",
+        "base_url": "https://b.example.com",
+    }
+
+    masked_a = await repo_a.get_all_masked("gemini-aistudio")
+    masked_b = await repo_b.get_all_masked("gemini-aistudio")
+    assert masked_a["api_key"]["is_set"] is True
+    assert masked_a["api_key"]["masked"] != "AIza-user-a-secret"
+    assert masked_a["base_url"]["value"] == "https://a.example.com"
+    assert masked_b["api_key"]["is_set"] is True
+    assert masked_b["api_key"]["masked"] != "AIza-user-b-secret"
+    assert masked_b["base_url"]["value"] == "https://b.example.com"
+
+    assert set(await repo_a.get_configured_keys("gemini-aistudio")) == {"api_key", "base_url"}
+    assert set(await repo_b.get_configured_keys("gemini-aistudio")) == {"api_key", "base_url"}
+    assert await repo_a.get_all_configs_bulk() == {
+        "gemini-aistudio": {
+            "api_key": "AIza-user-a-secret",
+            "base_url": "https://a.example.com",
+        }
+    }
+    assert await repo_b.get_all_configs_bulk() == {
+        "gemini-aistudio": {
+            "api_key": "AIza-user-b-secret",
+            "base_url": "https://b.example.com",
+        },
+        "ark": {"api_key": "ark-user-b-secret"},
+    }
+    bulk_keys_a = await repo_a.get_all_configured_keys_bulk()
+    bulk_keys_b = await repo_b.get_all_configured_keys_bulk()
+    assert set(bulk_keys_a["gemini-aistudio"]) == {"api_key", "base_url"}
+    assert set(bulk_keys_b["gemini-aistudio"]) == {"api_key", "base_url"}
+    assert set(bulk_keys_b["ark"]) == {"api_key"}
+
+    await repo_a.delete("gemini-aistudio", "api_key")
+    assert await repo_a.get_all("gemini-aistudio") == {"base_url": "https://a.example.com"}
+    assert await repo_b.get_all("gemini-aistudio") == {
+        "api_key": "AIza-user-b-secret",
+        "base_url": "https://b.example.com",
+    }
+
+    await repo_b.delete("gemini-aistudio", "base_url")
+    assert await repo_a.get_all("gemini-aistudio") == {"base_url": "https://a.example.com"}
+    assert await repo_b.get_all("gemini-aistudio") == {"api_key": "AIza-user-b-secret"}
+
+
 # --- SystemSettingRepository ---
 
 

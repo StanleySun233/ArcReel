@@ -11,7 +11,23 @@ from fastapi.testclient import TestClient
 from lib.db import get_async_session
 from lib.db.models.credential import ProviderCredential
 from lib.db.repositories.credential_repository import CredentialRepository
+from server.auth import CurrentUserInfo, get_current_user
 from server.routers import providers
+
+
+_FAKE_USER = CurrentUserInfo(id="test-user", sub="testuser", role="admin")
+
+
+def _scoped_factory(instance):
+    def _factory(_session, *, user_id=None):
+        assert user_id == _FAKE_USER.id
+        return instance
+
+    return _factory
+
+
+def _patch_credential_repository(mock_repo):
+    return patch("server.routers.providers.CredentialRepository", side_effect=_scoped_factory(mock_repo))
 
 
 def _make_app() -> tuple[FastAPI, MagicMock]:
@@ -23,6 +39,7 @@ def _make_app() -> tuple[FastAPI, MagicMock]:
         yield mock_session
 
     app.dependency_overrides[get_async_session] = _override
+    app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     app.include_router(providers.router, prefix="/api/v1")
     return app, mock_session
 
@@ -55,7 +72,7 @@ class TestListCredentials:
         app, _ = _make_app()
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.list_by_provider = AsyncMock(return_value=[_fake_cred()])
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/gemini-aistudio/credentials")
         assert resp.status_code == 200
@@ -77,7 +94,7 @@ class TestCreateCredential:
         app, _ = _make_app()
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.create = AsyncMock(return_value=_fake_cred())
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.post(
                     "/api/v1/providers/gemini-aistudio/credentials",
@@ -88,7 +105,7 @@ class TestCreateCredential:
     def test_requires_name(self):
         app, _ = _make_app()
         mock_repo = MagicMock(spec=CredentialRepository)
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.post(
                     "/api/v1/providers/gemini-aistudio/credentials",
@@ -121,7 +138,7 @@ class TestKlingTwoSecretCredential:
         app, _ = _make_app()
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.create = AsyncMock(return_value=_fake_kling_cred())
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.post(
                     "/api/v1/providers/kling/credentials",
@@ -137,7 +154,7 @@ class TestKlingTwoSecretCredential:
         app, _ = _make_app()
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.create = AsyncMock(return_value=_fake_kling_cred())
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.post(
                     "/api/v1/providers/kling/credentials",
@@ -154,7 +171,7 @@ class TestKlingTwoSecretCredential:
         app, _ = _make_app()
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.list_by_provider = AsyncMock(return_value=[_fake_kling_cred()])
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.get("/api/v1/providers/kling/credentials")
         assert resp.status_code == 200
@@ -172,7 +189,7 @@ class TestKlingTwoSecretCredential:
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.get_by_id = AsyncMock(return_value=_fake_kling_cred())
         mock_repo.update = AsyncMock()
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.patch(
                     "/api/v1/providers/kling/credentials/1",
@@ -188,7 +205,7 @@ class TestKlingTwoSecretCredential:
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.get_by_id = AsyncMock(return_value=_fake_kling_cred())
         mock_repo.update = AsyncMock()
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.patch(
                     "/api/v1/providers/kling/credentials/1",
@@ -207,7 +224,7 @@ class TestActivateCredential:
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.get_by_id = AsyncMock(return_value=_fake_cred(provider="gemini-aistudio"))
         mock_repo.activate = AsyncMock()
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.post("/api/v1/providers/gemini-aistudio/credentials/1/activate")
         assert resp.status_code == 204
@@ -216,7 +233,7 @@ class TestActivateCredential:
         app, _ = _make_app()
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.get_by_id = AsyncMock(return_value=None)
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.post("/api/v1/providers/gemini-aistudio/credentials/999/activate")
         assert resp.status_code == 404
@@ -228,7 +245,7 @@ class TestDeleteCredential:
         mock_repo = MagicMock(spec=CredentialRepository)
         mock_repo.get_by_id = AsyncMock(return_value=_fake_cred())
         mock_repo.delete = AsyncMock()
-        with patch("server.routers.providers.CredentialRepository", return_value=mock_repo):
+        with _patch_credential_repository(mock_repo):
             with TestClient(app) as client:
                 resp = client.delete("/api/v1/providers/gemini-aistudio/credentials/1")
         assert resp.status_code == 204

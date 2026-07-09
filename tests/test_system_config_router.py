@@ -7,19 +7,27 @@ GET/PATCH /api/v1/system/config without real providers.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from dataclasses import dataclass, field
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from lib.config.service import ConfigService, ProviderStatus
+from lib.config.service import ConfigService
 from lib.db import get_async_session
 from lib.db.base import Base
+from lib.db.repositories.credential_repository import CredentialRepository
 from server.auth import CurrentUserInfo, get_current_user
-from server.dependencies import get_config_service
 from server.routers import system_config as system_config_router
+
+TEST_USER_ID = "system-test"
+
+
+@dataclass
+class _SystemConfigSeed:
+    settings: dict[str, str] = field(default_factory=dict)
+    ready_providers: list[str] = field(default_factory=list)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -37,8 +45,19 @@ async def db_session():
     await engine.dispose()
 
 
-def _make_app_with_mock(mock_svc: ConfigService) -> FastAPI:
-    """App with a fully mocked ConfigService + in-memory DB (no real DB)."""
+async def _seed_system_config(session, seed: _SystemConfigSeed) -> None:
+    svc = ConfigService(session, user_id=TEST_USER_ID)
+    for key, value in seed.settings.items():
+        await svc.set_setting(key, value)
+
+    cred_repo = CredentialRepository(session, user_id=TEST_USER_ID)
+    for provider in seed.ready_providers:
+        await cred_repo.create(provider=provider, name=f"{provider} credential", api_key=f"{provider}-key")
+
+    await session.commit()
+
+
+def _make_app_with_mock(seed: _SystemConfigSeed) -> FastAPI:
     from contextlib import asynccontextmanager
 
     mem_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -48,11 +67,15 @@ def _make_app_with_mock(mock_svc: ConfigService) -> FastAPI:
     async def _lifespan(_app: FastAPI):
         async with mem_engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+        async with mem_factory() as session:
+            await _seed_system_config(session, seed)
         yield
+        await mem_engine.dispose()
 
     app = FastAPI(lifespan=_lifespan)
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
-    app.dependency_overrides[get_config_service] = lambda: mock_svc
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id=TEST_USER_ID, sub="testuser", role="admin"
+    )
 
     async def _override_session():
         async with mem_factory() as session:
@@ -67,49 +90,8 @@ def _make_mock_svc(
     *,
     settings: dict[str, str] | None = None,
     ready_providers: list[str] | None = None,
-) -> ConfigService:
-    """Create a mock ConfigService with configurable settings and provider statuses."""
-    _settings = dict(settings or {})
-    svc = MagicMock(spec=ConfigService)
-
-    async def _get_setting(key: str, default: str = "") -> str:
-        return _settings.get(key, default)
-
-    async def _set_setting(key: str, value: str) -> None:
-        _settings[key] = value
-
-    async def _get_all_settings() -> dict[str, str]:
-        return dict(_settings)
-
-    svc.get_setting = AsyncMock(side_effect=_get_setting)
-    svc.get_all_settings = AsyncMock(side_effect=_get_all_settings)
-    svc.set_setting = AsyncMock(side_effect=_set_setting)
-
-    ready = set(ready_providers or [])
-
-    async def _get_all_providers_status():
-        from lib.config.registry import PROVIDER_REGISTRY
-
-        statuses = []
-        for name, meta in PROVIDER_REGISTRY.items():
-            status = "ready" if name in ready else "unconfigured"
-            statuses.append(
-                ProviderStatus(
-                    name=name,
-                    display_name=meta.display_name,
-                    description=meta.description,
-                    status=status,
-                    media_types=list(meta.media_types),
-                    capabilities=list(meta.capabilities),
-                    required_keys=list(meta.required_keys),
-                    configured_keys=list(meta.required_keys) if name in ready else [],
-                    missing_keys=[] if name in ready else list(meta.required_keys),
-                )
-            )
-        return statuses
-
-    svc.get_all_providers_status = AsyncMock(side_effect=_get_all_providers_status)
-    return svc
+) -> _SystemConfigSeed:
+    return _SystemConfigSeed(settings=dict(settings or {}), ready_providers=list(ready_providers or []))
 
 
 # ---------------------------------------------------------------------------
@@ -269,28 +251,8 @@ class TestGetSystemConfig:
 
 
 class TestPatchSystemConfig:
-    def _make_patch_app(self, mock_svc: ConfigService) -> FastAPI:
-        """App for PATCH tests - needs session override for commit()."""
-        app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
-        app.dependency_overrides[get_config_service] = lambda: mock_svc
-
-        mock_session = AsyncMock()
-        mock_session.commit = AsyncMock()
-
-        # PATCH 路由内部可能调用 session.execute()（兼容旧 setting key 写入路径）。
-        # 默认 stub：scalar_one_or_none() 返回 None；scalars() 返回空迭代器。
-        _exec_result = MagicMock()
-        _exec_result.scalar_one_or_none.return_value = None
-        _exec_result.scalars.return_value = iter([])
-        mock_session.execute = AsyncMock(return_value=_exec_result)
-
-        async def _override_session():
-            yield mock_session
-
-        app.dependency_overrides[get_async_session] = _override_session
-        app.include_router(system_config_router.router, prefix="/api/v1")
-        return app
+    def _make_patch_app(self, mock_svc: _SystemConfigSeed) -> FastAPI:
+        return _make_app_with_mock(mock_svc)
 
     def test_patch_returns_200(self):
         mock_svc = _make_mock_svc()
