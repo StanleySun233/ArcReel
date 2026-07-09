@@ -17,14 +17,14 @@
 
 ## Subtasks
 
-- [ ] Add frontend legal config in `frontend/src/config/legal.ts` backed by `VITE_ARCREEL_LEGAL_*` variables with safe upstream defaults, modified-version notice, modified date, and source configured status.
-  - Commit: pending
-- [ ] Add reusable legal links component backed by frontend legal config, including upstream attribution, deployed source, license, NOTICE, no-warranty notice, AGPL conveyance notice, modified-version statement, and free CaMeL API relay statement.
-  - Commit: pending
+- [x] Add frontend legal config in `frontend/src/config/legal.ts` backed by `VITE_ARCREEL_LEGAL_*` variables with safe upstream defaults, modified-version notice, modified date, and source configured status.
+  - Commit: 606e0dc
+- [x] Add reusable legal links component backed by frontend legal config, including upstream attribution, deployed source, license, NOTICE, no-warranty notice, AGPL conveyance notice, modified-version statement, and free CaMeL API relay statement.
+  - Commit: 8507fa7
 - [ ] Add unauthenticated login-page legal/source links.
-  - Commit: pending
-- [ ] Update About/Legal section with current deployed source, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution.
-  - Commit: pending
+  - Commit: blocked pending Story 1 frontend integration
+- [x] Update About/Legal section with current deployed source, AGPL license link, NOTICE link, no-warranty/AGPL-rights notice, modified-version statement, free-service/API-relay statement, and upstream attribution.
+  - Commit: 9e4ca2f
 
 **Ready for QA:** no
 
@@ -33,3 +33,4 @@
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
 | 2026-07-09 | Public source link copy | Final deployed source URL is not known until deployment branch or commit is selected. | pending |
+| 2026-07-09 | LoginPage legal links | Waiting for Story 1 frontend integration before serially editing `frontend/src/pages/LoginPage.tsx`. | pending |
