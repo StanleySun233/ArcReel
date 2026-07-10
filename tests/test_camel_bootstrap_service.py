@@ -41,10 +41,10 @@ def configure_bootstrap_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CAMEL_ARCREEL_TEXT_ENDPOINT", "openai-chat")
     monkeypatch.setenv("CAMEL_ARCREEL_VIDEO_ENDPOINT", "ark-seedance")
     monkeypatch.setenv("CAMEL_ARCREEL_AUDIO_ENDPOINT", "openai-tts")
-    monkeypatch.setenv("CAMEL_ARCREEL_IMAGE_MODELS", "camel-image")
-    monkeypatch.setenv("CAMEL_ARCREEL_TEXT_MODELS", "camel-text")
+    monkeypatch.setenv("CAMEL_ARCREEL_IMAGE_MODELS", "gpt-image-2")
+    monkeypatch.setenv("CAMEL_ARCREEL_TEXT_MODELS", "gpt-5.5")
     monkeypatch.setenv("CAMEL_ARCREEL_VIDEO_MODELS", "doubao-seedance-2-0-260128")
-    monkeypatch.setenv("CAMEL_ARCREEL_AUDIO_MODELS", "camel-audio")
+    monkeypatch.setenv("CAMEL_ARCREEL_AUDIO_MODELS", "gpt-4o-mini-tts")
     monkeypatch.setenv("CAMEL_ARCREEL_ANTHROPIC_MODELS", "claude-opus-4-8")
 
 
@@ -125,10 +125,10 @@ def test_camel_bootstrap_settings_derive_from_oauth_minimal_env(monkeypatch: pyt
     assert settings.token_provision_url == "http://camel-internal:3000/api/oauth/provider/arcreel-tokens"
     assert settings.token_link_template == "https://camel.example.com/token/{token_name}"
     assert [(spec.media, spec.endpoint, spec.models) for spec in settings.media_specs] == [
-        ("image", "openai-images", ("camel-image",)),
-        ("text", "openai-chat", ("camel-text",)),
+        ("image", "openai-images", ("gpt-image-2",)),
+        ("text", "openai-chat", ("gpt-5.5",)),
         ("video", "ark-seedance", ("doubao-seedance-2-0-260128",)),
-        ("audio", "openai-tts", ("camel-audio",)),
+        ("audio", "openai-tts", ("gpt-4o-mini-tts",)),
         ("anthropic", "anthropic-messages", ("claude-opus-4-8",)),
     ]
 
@@ -147,10 +147,10 @@ def test_camel_token_provision_payload_includes_arcreel_owned_media_specs(monkey
         "idempotency_key": "idem-1",
         "dry_run": False,
         "media_specs": [
-            {"media": "image", "models": ["camel-image"]},
-            {"media": "text", "models": ["camel-text"]},
+            {"media": "image", "models": ["gpt-image-2"]},
+            {"media": "text", "models": ["gpt-5.5"]},
             {"media": "video", "models": ["doubao-seedance-2-0-260128"]},
-            {"media": "audio", "models": ["camel-audio"]},
+            {"media": "audio", "models": ["gpt-4o-mini-tts"]},
             {"media": "anthropic", "models": ["claude-opus-4-8"]},
         ],
     }

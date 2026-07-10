@@ -24,7 +24,7 @@ function neededStatus(): CamelBootstrapStatus {
         provider_name: "CaMeL Image",
         base_url: "https://camel.example",
         endpoint: "/v1/images",
-        models: ["imagen-4"],
+        models: ["gpt-image-2"],
         token_name: "camel-arcreel-user-1-image",
       },
       {
@@ -32,7 +32,7 @@ function neededStatus(): CamelBootstrapStatus {
         provider_name: "CaMeL Text",
         base_url: "https://camel.example",
         endpoint: "/v1/chat/completions",
-        models: ["gpt-5"],
+        models: ["gpt-5.5"],
         token_name: "camel-arcreel-user-1-text",
       },
       {
@@ -56,7 +56,7 @@ function neededStatus(): CamelBootstrapStatus {
         provider_name: "CaMeL Audio",
         base_url: "https://camel.example",
         endpoint: "/v1/audio/speech",
-        models: ["tts-1"],
+        models: ["gpt-4o-mini-tts"],
         token_name: "camel-arcreel-user-1-audio",
       },
     ],
