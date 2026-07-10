@@ -39,6 +39,7 @@ class FrameCell:
     prev_scene_id: str | None = None
     next_scene_id: str | None = None
     image_path: str | None = None
+    image_file_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -49,6 +50,7 @@ class FrameCell:
             "prev_scene_id": self.prev_scene_id,
             "next_scene_id": self.next_scene_id,
             "image_path": self.image_path,
+            "image_file_id": self.image_file_id,
         }
 
     @classmethod
@@ -61,6 +63,7 @@ class FrameCell:
             prev_scene_id=data.get("prev_scene_id"),
             next_scene_id=data.get("next_scene_id"),
             image_path=data.get("image_path"),
+            image_file_id=data.get("image_file_id"),
         )
 
 
@@ -134,6 +137,7 @@ class GridGeneration:
     created_at: str
     error_message: str | None = None
     reference_images: list[ReferenceImage] | None = None
+    grid_image_file_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -142,6 +146,7 @@ class GridGeneration:
             "script_file": self.script_file,
             "scene_ids": self.scene_ids,
             "grid_image_path": self.grid_image_path,
+            "grid_image_file_id": self.grid_image_file_id,
             "rows": self.rows,
             "cols": self.cols,
             "cell_count": self.cell_count,
@@ -164,6 +169,7 @@ class GridGeneration:
             script_file=data["script_file"],
             scene_ids=data["scene_ids"],
             grid_image_path=data.get("grid_image_path"),
+            grid_image_file_id=data.get("grid_image_file_id"),
             rows=data["rows"],
             cols=data["cols"],
             cell_count=data["cell_count"],

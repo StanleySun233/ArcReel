@@ -902,20 +902,28 @@ async def execute_storyboard_task(
     )
 
     def _finalize():
-        get_project_manager().update_scene_asset(
-            project_name=project_name,
-            script_filename=script_file,
-            scene_id=resource_id,
-            asset_type="storyboard_image",
-            asset_path=f"storyboards/scene_{resource_id}.png",
-        )
         if file_id:
+            get_project_manager().update_scene_asset(
+                project_name=project_name,
+                script_filename=script_file,
+                scene_id=resource_id,
+                asset_type="storyboard_image",
+                asset_path=file_id,
+            )
             get_project_manager().update_scene_asset(
                 project_name=project_name,
                 script_filename=script_file,
                 scene_id=resource_id,
                 asset_type="storyboard_image_file_id",
                 asset_path=file_id,
+            )
+        else:
+            get_project_manager().update_scene_asset(
+                project_name=project_name,
+                script_filename=script_file,
+                scene_id=resource_id,
+                asset_type="storyboard_image",
+                asset_path=f"storyboards/scene_{resource_id}.png",
             )
         return generator.versions.get_versions("storyboards", resource_id)["versions"][-1]["created_at"]
 
@@ -1001,20 +1009,28 @@ async def execute_tts_task(
 
     def _finalize():
         if script_file:
-            get_project_manager().update_scene_asset(
-                project_name=project_name,
-                script_filename=script_file,
-                scene_id=resource_id,
-                asset_type="narration_audio",
-                asset_path=audio_rel,
-            )
             if file_id:
+                get_project_manager().update_scene_asset(
+                    project_name=project_name,
+                    script_filename=script_file,
+                    scene_id=resource_id,
+                    asset_type="narration_audio",
+                    asset_path=file_id,
+                )
                 get_project_manager().update_scene_asset(
                     project_name=project_name,
                     script_filename=script_file,
                     scene_id=resource_id,
                     asset_type="narration_audio_file_id",
                     asset_path=file_id,
+                )
+            else:
+                get_project_manager().update_scene_asset(
+                    project_name=project_name,
+                    script_filename=script_file,
+                    scene_id=resource_id,
+                    asset_type="narration_audio",
+                    asset_path=audio_rel,
                 )
         return generator.versions.get_versions("audio", resource_id)["versions"][-1]["created_at"]
 
@@ -1216,6 +1232,14 @@ async def _finalize_video_task(
             project_name=project_name,
             script_filename=script_file,
             scene_id=resource_id,
+            asset_type="video_clip",
+            asset_path=video_file_id,
+        )
+        await asyncio.to_thread(
+            get_project_manager().update_scene_asset,
+            project_name=project_name,
+            script_filename=script_file,
+            scene_id=resource_id,
             asset_type="video_clip_file_id",
             asset_path=video_file_id,
         )
@@ -1237,7 +1261,7 @@ async def _finalize_video_task(
             script_filename=script_file,
             scene_id=resource_id,
             asset_type="video_thumbnail",
-            asset_path=f"thumbnails/scene_{resource_id}.jpg",
+            asset_path=thumbnail_file_id or f"thumbnails/scene_{resource_id}.jpg",
         )
         if thumbnail_file_id:
             await asyncio.to_thread(
@@ -1725,6 +1749,7 @@ async def execute_grid_task(
 
         # e) Set grid_image_path, status to splitting
         grid.grid_image_path = f"grids/{resource_id}.png"
+        grid.grid_image_file_id = file_id
         grid.status = "splitting"
         grid_manager.save(grid)
 
@@ -1750,6 +1775,7 @@ async def execute_grid_task(
             valid_ids = {str(item.get(id_field)) for item in items if isinstance(item, dict)}
 
             asset_updates: list[tuple[str, str, Any]] = []
+            saved_cells: list[tuple[str, Path]] = []
             missing_ids: list[str] = []
 
             # 宫格已统一走普通图生视频（不再使用 first_last 模式），cell 仅作为
@@ -1785,6 +1811,7 @@ async def execute_grid_task(
                 asset_updates.append((frame.next_scene_id, "storyboard_image", cell_rel))
                 asset_updates.append((frame.next_scene_id, "grid_id", resource_id))
                 asset_updates.append((frame.next_scene_id, "grid_cell_index", frame.index))
+                saved_cells.append((str(frame.next_scene_id), cell_path))
 
             if missing_ids:
                 logger.warning(
@@ -1801,8 +1828,36 @@ async def execute_grid_task(
                     script_filename=script_file,
                     updates=asset_updates,
                 )
+            return saved_cells
 
-        await asyncio.to_thread(_assign_cells)
+        saved_cells = await asyncio.to_thread(_assign_cells)
+        file_id_updates: list[tuple[str, str, Any]] = []
+        frame_by_scene = {str(frame.next_scene_id): frame for frame in grid.frame_chain if frame.next_scene_id}
+        for scene_id, cell_path in saved_cells:
+            cell_file_id = await _record_output_file(
+                file_path=cell_path,
+                project_name=project_name,
+                created_by_user_id=user_id,
+                tenant_id=tenant_id,
+                task_id=task_id,
+                link_type="storyboard_image",
+            )
+            if not cell_file_id:
+                continue
+            frame = frame_by_scene.get(scene_id)
+            if frame is not None:
+                frame.image_file_id = cell_file_id
+            file_id_updates.append((scene_id, "storyboard_image", cell_file_id))
+            file_id_updates.append((scene_id, "storyboard_image_file_id", cell_file_id))
+
+        if file_id_updates:
+            await asyncio.to_thread(
+                get_project_manager().batch_update_scene_assets,
+                project_name=project_name,
+                script_filename=script_file,
+                updates=file_id_updates,
+            )
+            grid_manager.save(grid)
 
         # h) Set status to completed
         grid.status = "completed"

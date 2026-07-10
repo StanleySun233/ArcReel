@@ -538,7 +538,10 @@ export function ShotDetail({
   const narrationEstimate = segCost?.estimate?.audio;
 
   const assets = segment.generated_assets;
-  const hasStoryboard = !!assets?.storyboard_image;
+  const storyboardMedia = assets?.storyboard_image_file_id ?? assets?.storyboard_image ?? null;
+  const videoMedia = assets?.video_clip_file_id ?? assets?.video_clip ?? null;
+  const videoPoster = assets?.video_thumbnail_file_id ?? assets?.video_thumbnail ?? null;
+  const hasStoryboard = !!storyboardMedia;
 
   const dirtyHint = t("shot_detail_save_first");
 
@@ -831,7 +834,7 @@ export function ShotDetail({
         kind="storyboard"
         projectName={projectName}
         segmentId={segmentId}
-        assetPath={assets?.storyboard_image ?? null}
+        assetPath={storyboardMedia}
         aspectRatio={aspectRatio}
         hideGenerateButton={isGridMode}
         generating={generatingStoryboard}
@@ -848,8 +851,8 @@ export function ShotDetail({
         kind="video"
         projectName={projectName}
         segmentId={segmentId}
-        assetPath={assets?.video_clip ?? null}
-        posterPath={assets?.video_thumbnail ?? null}
+        assetPath={videoMedia}
+        posterPath={videoPoster}
         aspectRatio={aspectRatio}
         generating={generatingVideo}
         generateDisabled={!hasStoryboard || dirty || saving}
