@@ -28,13 +28,22 @@ def get_project_event_service(request: Request) -> ProjectEventService:
 async def _project_events_service(
     project_name: str,
     request: Request,
+    current_user: CurrentUserFlexible,
 ) -> ProjectEventService:
     """Resolve the service and validate the project exists before streaming starts.
 
     The 404 must be raised here (before the EventSourceResponse begins) — once the
     stream is open, no HTTP status can be returned.
     """
-    service = get_project_event_service(request)
+    base_service = get_project_event_service(request)
+    if current_user.tenant_id is None:
+        raise HTTPException(status_code=403, detail="TENANT_ACCESS_REQUIRED")
+    service = ProjectEventService(
+        base_service.project_root,
+        projects_root=base_service.projects_dir,
+        tenant_id=current_user.tenant_id,
+        poll_interval=base_service.poll_interval,
+    )
     try:
         await asyncio.to_thread(service.pm.get_project_path, project_name)
     except (FileNotFoundError, KeyError) as exc:

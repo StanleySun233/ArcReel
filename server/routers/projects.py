@@ -13,6 +13,7 @@ import math
 import os
 import shutil
 import tempfile
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -25,6 +26,7 @@ from fastapi import Path as FastAPIPath
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic import ValidationError as PydanticValidationError
+from sqlalchemy.exc import IntegrityError
 from starlette.background import BackgroundTask
 
 logger = logging.getLogger(__name__)
@@ -33,13 +35,15 @@ from lib.app_data_dir import app_data_dir
 from lib.asset_fingerprints import compute_asset_fingerprints
 from lib.config.resolver import ConfigResolver
 from lib.db import async_session_factory
+from lib.db.repositories.project_repo import ProjectRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from lib.profile_manifest import ContentMode
 from lib.project_change_hints import project_change_source
 from lib.project_manager import EpisodeScriptReboundError, ProjectManager, SourceKind
 from lib.status_calculator import StatusCalculator
 from lib.style_templates import is_known_template, resolve_template_prompt
-from server.auth import CurrentUser, create_download_token, verify_download_token
+from server.auth import CurrentUser, create_download_token, verify_download_token, verify_token
 from server.routers._reorder import full_permutation_error
 from server.routers._validators import validate_backend_value
 from server.services.project_archive import (
@@ -47,6 +51,7 @@ from server.services.project_archive import (
     ProjectArchiveValidationError,
 )
 from server.services.project_cover import resolve_project_cover
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
 
@@ -71,6 +76,18 @@ def get_status_calculator() -> StatusCalculator:
 
 def get_archive_service() -> ProjectArchiveService:
     return ProjectArchiveService(get_project_manager())
+
+
+def get_tenant_project_manager(tenant_id: str) -> ProjectManager:
+    return ProjectManager(app_data_dir(), tenant_id=tenant_id)
+
+
+def get_tenant_archive_service(tenant_id: str) -> ProjectArchiveService:
+    return ProjectArchiveService(get_tenant_project_manager(tenant_id))
+
+
+def _project_json_local_path(manager: ProjectManager, project_name: str) -> str:
+    return (manager.projects_root / project_name / manager.PROJECT_FILE).relative_to(app_data_dir()).as_posix()
 
 
 class CreateProjectRequest(BaseModel):
@@ -165,6 +182,11 @@ async def import_project_archive(
     """从 ZIP 导入项目。"""
     upload_path: str | None = None
     try:
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+
         fd, upload_path = tempfile.mkstemp(prefix="arcreel-upload-", suffix=".zip")
         os.close(fd)
 
@@ -183,13 +205,24 @@ async def import_project_archive(
         await asyncio.to_thread(_write_upload)
 
         def _sync():
-            return get_archive_service().import_project_archive(
+            return get_tenant_archive_service(access.id).import_project_archive(
                 Path(upload_path),
                 uploaded_filename=file.filename,
                 conflict_policy=conflict_policy,
             )
 
         result = await asyncio.to_thread(_sync)
+        async with async_session_factory() as session:
+            async with session.begin():
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                repo = ProjectRepository(session, tenant_id=access.id)
+                if await repo.get_by_name(result.project_name) is None:
+                    await repo.create(
+                        project_id=f"prj_{uuid.uuid4().hex}",
+                        name=result.project_name,
+                        created_by_user_id=_user.id,
+                        local_path=_project_json_local_path(get_tenant_project_manager(access.id), result.project_name),
+                    )
         return {
             "success": True,
             "project_name": result.project_name,
@@ -236,15 +269,22 @@ async def create_export_token(
     try:
         if scope not in ("full", "current"):
             raise HTTPException(status_code=422, detail=_t("scope_invalid"))
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, current_user, minimum_role=ROLE_VIEW)
+                await set_tenant_context(session, user_id=current_user.id, tenant_id=access.id)
+                if await ProjectRepository(session, tenant_id=access.id).get_by_name(name) is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
 
         def _sync():
-            if not get_project_manager().project_exists(name):
+            manager = get_tenant_project_manager(access.id)
+            if not manager.project_exists(name):
                 raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
-            return get_archive_service().get_export_diagnostics(name, scope=scope)
+            return get_tenant_archive_service(access.id).get_export_diagnostics(name, scope=scope)
 
         diagnostics = await asyncio.to_thread(_sync)
         username = current_user.sub
-        download_token = create_download_token(username, name, user_id=current_user.id)
+        download_token = create_download_token(username, f"{access.id}:{name}", user_id=current_user.id)
         return {
             "download_token": download_token,
             "expires_in": 300,
@@ -268,21 +308,20 @@ async def export_project_archive(
     if scope not in ("full", "current"):
         raise HTTPException(status_code=422, detail=_t("scope_invalid"))
 
-    # 验证 download_token
-    import jwt as pyjwt
-
     try:
-        verify_download_token(download_token, name)
-    except pyjwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail=_t("download_expired"))
+        payload = verify_token(download_token)
+        if payload is None or payload.get("purpose") != "download":
+            raise ValueError("invalid download token")
+        project_claim = str(payload.get("project") or "")
+        tenant_id, sep, token_project_name = project_claim.partition(":")
+        if not sep or token_project_name != name:
+            raise ValueError("tenant_id missing")
     except ValueError:
         raise HTTPException(status_code=403, detail=_t("download_token_mismatch"))
-    except pyjwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail=_t("download_token_invalid"))
 
     try:
         archive_path, download_name = await asyncio.to_thread(
-            lambda: get_archive_service().export_project(name, scope=scope)
+            lambda: get_tenant_archive_service(str(tenant_id)).export_project(name, scope=scope)
         )
         return FileResponse(
             archive_path,
@@ -374,12 +413,18 @@ def export_jianying_draft(
 @router.get("/projects")
 async def list_projects(_user: CurrentUser):
     """列出所有项目"""
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
+            await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+            rows = await ProjectRepository(session, tenant_id=access.id).list_all()
 
     def _sync():
-        manager = get_project_manager()
-        calculator = get_status_calculator()
+        manager = get_tenant_project_manager(access.id)
+        calculator = StatusCalculator(manager)
         projects = []
-        for name in manager.list_projects():
+        for row in rows:
+            name = row.name
             try:
                 # 尝试加载项目元数据
                 if manager.project_exists(name):
@@ -458,102 +503,128 @@ async def create_project(
     _t: Translator,
 ):
     """创建新项目"""
-    try:
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+            await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+            repo = ProjectRepository(session, tenant_id=access.id)
+            try:
+                manager = get_tenant_project_manager(access.id)
+            except Exception:
+                logger.exception("请求处理失败")
+                raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
-        def _sync():
-            manager = get_project_manager()
             title = (req.title or "").strip()
             manual_name = (req.name or "").strip()
             if not title and not manual_name:
                 raise HTTPException(status_code=400, detail=_t("title_required"))
             project_name = manual_name or manager.generate_project_name(title)
-
-            style_prompt = req.style or ""
-            if req.style_template_id:
-                if not is_known_template(req.style_template_id):
-                    raise HTTPException(
-                        status_code=400,
-                        detail=_t("unknown_style_template", template_id=req.style_template_id),
-                    )
-                style_prompt = resolve_template_prompt(req.style_template_id)
-
-            # legacy image_backend 已退役（拆为 image_provider_t2i/i2i）；写路径直接拒绝，
-            # 避免迁移后再写时被解析链忽略、静默落到全局默认的另一供应商。
-            if req.image_backend:
-                raise HTTPException(status_code=400, detail=_t("deprecated_image_backend"))
-
-            # 模式专属字段互斥：target_duration/brief 仅 ad 可用；
-            # ad 不暴露 default_duration、不开放 grid 生成模式
-            content_mode = req.content_mode or "narration"
-            if content_mode == "ad":
-                if req.default_duration is not None:
-                    raise HTTPException(status_code=400, detail=_t("ad_no_default_duration"))
-                if req.generation_mode == "grid":
-                    raise HTTPException(status_code=400, detail=_t("ad_grid_not_supported"))
-            else:
-                if req.target_duration is not None:
-                    raise HTTPException(status_code=400, detail=_t("ad_only_field", field="target_duration"))
-                if req.brief is not None:
-                    raise HTTPException(status_code=400, detail=_t("ad_only_field", field="brief"))
-
-            # 与 update 路径对称：校验所有 backend 字段
-            for field_name in (
-                "video_backend",
-                "image_provider_t2i",
-                "image_provider_i2i",
-                "text_backend_script",
-                "text_backend_overview",
-                "text_backend_style",
-            ):
-                value = getattr(req, field_name)
-                if value:
-                    validate_backend_value(value, field_name, _t)
+            if await repo.get_by_name(project_name) is not None:
+                raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
 
             try:
-                manager.create_project(project_name, content_mode=req.content_mode or "narration")
-            except FileExistsError:
-                raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
-            extras = {
-                field: value
-                for field in (
-                    "video_backend",
-                    "image_provider_t2i",
-                    "image_provider_i2i",
-                    "text_backend_script",
-                    "text_backend_overview",
-                    "text_backend_style",
-                )
-                if (value := getattr(req, field))
-            }
-            if req.model_settings is not None:
-                extras["model_settings"] = req.model_settings
-            # generation_mode 并入 extras 一次性写入，避免 create 后再 load-save 的额外 RMW
-            if req.generation_mode is not None:
-                extras["generation_mode"] = req.generation_mode
-            with project_change_source("webui"):
-                project = manager.create_project_metadata(
+                result = await asyncio.to_thread(
+                    _create_project_on_disk,
+                    manager,
                     project_name,
-                    title or manual_name,
-                    style_prompt,
-                    req.content_mode,
-                    aspect_ratio=req.aspect_ratio,
-                    default_duration=req.default_duration,
-                    style_template_id=req.style_template_id,
-                    extras=extras or None,
-                    target_duration=req.target_duration,
-                    brief=req.brief,
-                    source_kind=req.source_kind,
+                    title,
+                    manual_name,
+                    req,
+                    _t,
                 )
-            return {"success": True, "name": project_name, "project": project}
+                await repo.create(
+                    project_id=f"prj_{uuid.uuid4().hex}",
+                    name=project_name,
+                    created_by_user_id=_user.id,
+                    local_path=_project_json_local_path(manager, project_name),
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+            except IntegrityError:
+                manager.delete_project_directory(project_name)
+                raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
+            return result
 
-        return await asyncio.to_thread(_sync)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("请求处理失败")
-        raise HTTPException(status_code=500, detail=_t("internal_server_error"))
+
+def _create_project_on_disk(
+    manager: ProjectManager,
+    project_name: str,
+    title: str,
+    manual_name: str,
+    req: CreateProjectRequest,
+    _t: Callable[..., str],
+) -> dict[str, Any]:
+    style_prompt = req.style or ""
+    if req.style_template_id:
+        if not is_known_template(req.style_template_id):
+            raise HTTPException(
+                status_code=400,
+                detail=_t("unknown_style_template", template_id=req.style_template_id),
+            )
+        style_prompt = resolve_template_prompt(req.style_template_id)
+
+    if req.image_backend:
+        raise HTTPException(status_code=400, detail=_t("deprecated_image_backend"))
+
+    content_mode = req.content_mode or "narration"
+    if content_mode == "ad":
+        if req.default_duration is not None:
+            raise HTTPException(status_code=400, detail=_t("ad_no_default_duration"))
+        if req.generation_mode == "grid":
+            raise HTTPException(status_code=400, detail=_t("ad_grid_not_supported"))
+    else:
+        if req.target_duration is not None:
+            raise HTTPException(status_code=400, detail=_t("ad_only_field", field="target_duration"))
+        if req.brief is not None:
+            raise HTTPException(status_code=400, detail=_t("ad_only_field", field="brief"))
+
+    for field_name in (
+        "video_backend",
+        "image_provider_t2i",
+        "image_provider_i2i",
+        "text_backend_script",
+        "text_backend_overview",
+        "text_backend_style",
+    ):
+        value = getattr(req, field_name)
+        if value:
+            validate_backend_value(value, field_name, _t)
+
+    try:
+        manager.create_project(project_name, content_mode=req.content_mode or "narration")
+    except FileExistsError:
+        raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
+    extras = {
+        field: value
+        for field in (
+            "video_backend",
+            "image_provider_t2i",
+            "image_provider_i2i",
+            "text_backend_script",
+            "text_backend_overview",
+            "text_backend_style",
+        )
+        if (value := getattr(req, field))
+    }
+    if req.model_settings is not None:
+        extras["model_settings"] = req.model_settings
+    if req.generation_mode is not None:
+        extras["generation_mode"] = req.generation_mode
+    with project_change_source("webui"):
+        project = manager.create_project_metadata(
+            project_name,
+            title or manual_name,
+            style_prompt,
+            req.content_mode,
+            aspect_ratio=req.aspect_ratio,
+            default_duration=req.default_duration,
+            style_template_id=req.style_template_id,
+            extras=extras or None,
+            target_duration=req.target_duration,
+            brief=req.brief,
+            source_kind=req.source_kind,
+        )
+    return {"success": True, "name": project_name, "project": project}
 
 
 @router.get("/projects/{name}/video-capabilities")
@@ -588,10 +659,16 @@ async def get_project(
 ):
     """获取项目详情（含实时计算字段）"""
     try:
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                if await ProjectRepository(session, tenant_id=access.id).get_by_name(name) is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
 
         def _sync():
-            manager = get_project_manager()
-            calculator = get_status_calculator()
+            manager = get_tenant_project_manager(access.id)
+            calculator = StatusCalculator(manager)
             if not manager.project_exists(name):
                 raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
 
@@ -641,9 +718,16 @@ async def get_project(
 async def update_project(name: str, req: UpdateProjectRequest, _user: CurrentUser, _t: Translator):
     """更新项目元数据"""
     try:
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                repo = ProjectRepository(session, tenant_id=access.id)
+                if await repo.get_by_name(name) is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
 
         def _sync():
-            manager = get_project_manager()
+            manager = get_tenant_project_manager(access.id)
             if req.content_mode is not None:
                 raise HTTPException(
                     status_code=400,
@@ -816,12 +900,24 @@ async def update_project(name: str, req: UpdateProjectRequest, _user: CurrentUse
 async def delete_project(name: str, _user: CurrentUser, _t: Translator):
     """删除项目"""
     try:
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                repo = ProjectRepository(session, tenant_id=access.id)
+                if await repo.get_by_name(name) is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
 
         def _sync():
-            get_project_manager().delete_project_directory(name)
+            get_tenant_project_manager(access.id).delete_project_directory(name)
             return {"success": True, "message": _t("project_deleted", name=name)}
 
-        return await asyncio.to_thread(_sync)
+        result = await asyncio.to_thread(_sync)
+        async with async_session_factory() as session:
+            async with session.begin():
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                await ProjectRepository(session, tenant_id=access.id).delete_by_name(name)
+        return result
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
     except HTTPException:
