@@ -27,9 +27,11 @@ from lib.custom_provider.endpoints import (
 from lib.db import get_async_session
 from lib.db.base import dt_to_iso
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from lib.image_backends.base import ImageCapability
-from server.auth import CurrentUser
+from server.auth import CurrentUser, CurrentUserInfo
+from server.services.tenant_auth import ROLE_ADMIN, ROLE_VIEW, require_tenant_access
 
 
 def _validate_endpoint(value: str) -> str:
@@ -353,6 +355,19 @@ async def _invalidate_caches(request: Request) -> None:
         await worker.reload_limits()
 
 
+async def _prepare_tenant_session(
+    session: AsyncSession,
+    user: CurrentUserInfo,
+    *,
+    minimum_role: str,
+) -> str:
+    access = await require_tenant_access(session, user, minimum_role=minimum_role)
+    await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+    session.info["user_id"] = user.id
+    session.info["tenant_id"] = access.id
+    return access.id
+
+
 # ---------------------------------------------------------------------------
 # Provider CRUD
 # ---------------------------------------------------------------------------
@@ -364,6 +379,7 @@ async def list_providers(
     session: AsyncSession = Depends(get_async_session),
 ):
     """列出所有自定义供应商（含模型列表）。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_VIEW)
     repo = CustomProviderRepository(session, user_id=_user.id)
     pairs = await repo.list_providers_with_models()
     return {"providers": [_provider_to_response(p, models) for p, models in pairs]}
@@ -387,6 +403,7 @@ async def create_provider(
     session: AsyncSession = Depends(get_async_session),
 ):
     """创建自定义供应商，可同时创建模型列表。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     if body.models:
         _check_duplicate_model_ids(body.models, _t)
         _check_unique_defaults(body.models, _t)
@@ -417,6 +434,7 @@ async def get_provider(
     session: AsyncSession = Depends(get_async_session),
 ):
     """获取单个自定义供应商详情。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_VIEW)
     repo = CustomProviderRepository(session, user_id=_user.id)
     provider = await repo.get_provider(provider_id)
     if provider is None:
@@ -437,6 +455,7 @@ async def get_provider_credentials(
     仅 CurrentUser 鉴权,与现有 PATCH 接口对齐;日志不打印 body。
     多用户场景需重新评估细粒度授权。
     """
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CustomProviderRepository(session, user_id=_user.id)
     provider = await repo.get_provider(provider_id)
     if provider is None:
@@ -457,6 +476,7 @@ async def update_provider(
     session: AsyncSession = Depends(get_async_session),
 ):
     """更新自定义供应商配置。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CustomProviderRepository(session, user_id=_user.id)
     kwargs = {}
     if body.display_name is not None:
@@ -490,6 +510,7 @@ async def full_update_provider(
     session: AsyncSession = Depends(get_async_session),
 ):
     """原子更新供应商元数据 + 模型列表（单一事务）。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     _check_duplicate_model_ids(body.models, _t)
     _check_unique_defaults(body.models, _t)
     repo = CustomProviderRepository(session, user_id=_user.id)
@@ -524,6 +545,7 @@ async def delete_provider(
     session: AsyncSession = Depends(get_async_session),
 ):
     """删除自定义供应商（级联删除模型，清理悬空默认配置）。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CustomProviderRepository(session, user_id=_user.id)
     provider = await repo.get_provider(provider_id)
     if provider is None:
@@ -559,6 +581,7 @@ async def replace_models(
     session: AsyncSession = Depends(get_async_session),
 ):
     """替换供应商的整个模型列表。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     _check_duplicate_model_ids(body.models, _t)
     _check_unique_defaults(body.models, _t)
     repo = CustomProviderRepository(session, user_id=_user.id)
@@ -619,6 +642,7 @@ async def discover_anthropic_models_endpoint(
     凭据缺失时 fallback 到 active credential（AgentCredentialRepository）。
     """
     body_key = (body.api_key or "").strip()
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     needs_key = not body_key
     needs_url = body.base_url is None
 
@@ -626,7 +650,7 @@ async def discover_anthropic_models_endpoint(
     if needs_key or needs_url:
         from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 
-        cred = await AgentCredentialRepository(session).get_active(user_id=_user.id)
+        cred = await AgentCredentialRepository(session).get_active()
 
     api_key = body_key if not needs_key else (cred.api_key if cred else "").strip()
     if not api_key:
@@ -645,6 +669,7 @@ async def discover_models_by_id(
     session: AsyncSession = Depends(get_async_session),
 ):
     """使用已存储凭证发现指定供应商的可用模型。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CustomProviderRepository(session, user_id=_user.id)
     provider = await repo.get_provider(provider_id)
     if provider is None:
@@ -667,6 +692,7 @@ async def test_connection_by_id(
     provider_id: int, _user: CurrentUser, _t: Translator, session: AsyncSession = Depends(get_async_session)
 ):
     """使用已存储凭证测试指定供应商的连通性。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CustomProviderRepository(session, user_id=_user.id)
     provider = await repo.get_provider(provider_id)
     if provider is None:

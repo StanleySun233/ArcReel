@@ -26,10 +26,12 @@ from lib.config.repository import mask_secret
 from lib.config.resolver import ConfigResolver
 from lib.config.service import ConfigService
 from lib.db import get_async_session
+from lib.db.tenant_context import set_tenant_context
 from lib.httpx_shared import get_http_client
 from lib.i18n import Translator
-from server.auth import CurrentUser
+from server.auth import CurrentUser, CurrentUserInfo
 from server.routers._validators import validate_backend_value
+from server.services.tenant_auth import ROLE_ADMIN, ROLE_VIEW, require_tenant_access
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +177,19 @@ async def _build_options(svc: ConfigService, session: AsyncSession) -> _OptionsD
     return {**buckets, "provider_names": provider_names}  # type: ignore[return-value]
 
 
+async def _prepare_tenant_session(
+    session: AsyncSession,
+    user: CurrentUserInfo,
+    *,
+    minimum_role: str,
+) -> str:
+    access = await require_tenant_access(session, user, minimum_role=minimum_role)
+    await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+    session.info["user_id"] = user.id
+    session.info["tenant_id"] = access.id
+    return access.id
+
+
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
@@ -233,7 +248,8 @@ async def get_system_config(
     _user: CurrentUser,
     session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
-    svc = ConfigService(session, user_id=_user.id)
+    tenant_id = await _prepare_tenant_session(session, _user, minimum_role=ROLE_VIEW)
+    svc = ConfigService(session, user_id=_user.id, tenant_id=tenant_id)
     # Read all settings in a single query
     all_s = await svc.get_all_settings()
     video_generate_audio_raw = all_s.get("video_generate_audio", "")
@@ -248,7 +264,7 @@ async def get_system_config(
     if not anthropic_key:
         from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 
-        active_cred = await AgentCredentialRepository(session).get_active(user_id=_user.id)
+        active_cred = await AgentCredentialRepository(session, tenant_id=tenant_id).get_active()
         if active_cred is not None:
             anthropic_key = active_cred.api_key
 
@@ -333,7 +349,8 @@ async def patch_system_config(
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> dict[str, Any]:
-    svc = ConfigService(session, user_id=_user.id)
+    tenant_id = await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
+    svc = ConfigService(session, user_id=_user.id, tenant_id=tenant_id)
     patch: dict[str, Any] = {}
     for field_name in req.model_fields_set:
         patch[field_name] = getattr(req, field_name)

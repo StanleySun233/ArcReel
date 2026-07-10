@@ -20,12 +20,27 @@ from lib.config.repository import mask_secret
 from lib.db import get_async_session
 from lib.db.base import dt_to_iso
 from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
-from server.auth import CurrentUser
+from server.auth import CurrentUser, CurrentUserInfo
+from server.services.tenant_auth import ROLE_ADMIN, ROLE_VIEW, require_tenant_access
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/agent", tags=["Agent 配置"])
+
+
+async def _prepare_tenant_session(
+    session: AsyncSession,
+    user: CurrentUserInfo,
+    *,
+    minimum_role: str,
+) -> str:
+    access = await require_tenant_access(session, user, minimum_role=minimum_role)
+    await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+    session.info["user_id"] = user.id
+    session.info["tenant_id"] = access.id
+    return access.id
 
 
 # ── Response models ─────────────────────────────────────────────────
@@ -153,8 +168,9 @@ async def list_credentials(
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> CredentialListResponse:
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_VIEW)
     repo = AgentCredentialRepository(session)
-    creds = await repo.list_for_user()
+    creds = await repo.list_for_tenant()
     return CredentialListResponse(credentials=[_cred_to_response(c) for c in creds])
 
 
@@ -165,6 +181,7 @@ async def create_credential(
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> CredentialResponse:
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     if body.preset_id != CUSTOM_SENTINEL_ID:
         preset = get_preset(body.preset_id)
         if preset is None:
@@ -190,6 +207,7 @@ async def create_credential(
         sonnet_model=body.sonnet_model,
         opus_model=body.opus_model,
         subagent_model=body.subagent_model,
+        user_id=_user.id,
     )
     # 自动 active 策略：activate=True，或 (activate=None 且当前无 active)
     should_activate = body.activate is True
@@ -212,6 +230,7 @@ async def update_credential(
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> CredentialResponse:
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = AgentCredentialRepository(session)
     # exclude_unset 保留客户端显式传入的 None（用于清空 model/haiku_model 等可选覆盖项）
     # 必需字段 (display_name/base_url/api_key) 仍过滤 None：传 null 给它们没有意义
@@ -235,6 +254,7 @@ async def delete_credential(
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> None:
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = AgentCredentialRepository(session)
     try:
         deleted = await repo.delete(cred_id)
@@ -259,6 +279,7 @@ async def activate_credential(
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> ActivateResponse:
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = AgentCredentialRepository(session)
     try:
         await repo.set_active(cred_id)
@@ -357,6 +378,7 @@ async def test_credential(
     _t: Translator,
     session: AsyncSession = Depends(get_async_session),
 ) -> TestConnectionResponseModel:
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = AgentCredentialRepository(session)
     cred = await repo.get(cred_id)
     if cred is None:

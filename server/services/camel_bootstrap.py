@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from lib.config.service import ConfigService
 from lib.custom_provider import make_provider_id
 from lib.custom_provider.endpoints import ENDPOINT_REGISTRY
+from lib.db.models import Tenant
 from lib.db.models.user import User
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 
@@ -175,11 +176,12 @@ def _models_for_spec(spec: CamelMediaSpec) -> list[dict]:
 async def _upsert_provider(
     session: AsyncSession,
     user_id: str,
+    tenant_id: str,
     settings: CamelBootstrapSettings,
     spec: CamelMediaSpec,
     api_key: str,
 ):
-    repo = CustomProviderRepository(session, user_id=user_id)
+    repo = CustomProviderRepository(session, user_id=user_id, tenant_id=tenant_id)
     existing = next((p for p in await repo.list_providers() if p.display_name == spec.display_name), None)
     if existing is None:
         provider = await repo.create_provider(
@@ -200,14 +202,45 @@ async def _upsert_provider(
     return provider
 
 
-async def get_camel_bootstrap_status(session: AsyncSession, user_id: str) -> dict:
+async def _resolve_tenant_id(session: AsyncSession, user_id: str, tenant_id: str | None) -> str:
+    resolved = tenant_id or session.info.get("tenant_id")
+    if resolved:
+        session.info["tenant_id"] = str(resolved)
+        return str(resolved)
+    result = await session.execute(select(Tenant.id).where(Tenant.personal_for_user_id == user_id))
+    personal_tenant_id = result.scalar_one_or_none()
+    if personal_tenant_id is None:
+        raise HTTPException(status_code=403, detail="TENANT_ACCESS_REQUIRED")
+    session.info["tenant_id"] = personal_tenant_id
+    return personal_tenant_id
+
+
+async def _tenant_bootstrap_completed(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    tenant_id: str,
+    settings: CamelBootstrapSettings,
+) -> bool:
+    repo = CustomProviderRepository(session, user_id=user_id, tenant_id=tenant_id)
+    providers = await repo.list_providers()
+    provider_names = {provider.display_name for provider in providers}
+    if any(spec.display_name not in provider_names for spec in settings.media_specs):
+        return False
+    config = ConfigService(session, user_id=user_id, tenant_id=tenant_id)
+    for spec in settings.media_specs:
+        for key in spec.default_keys:
+            if not await config.get_setting(key, ""):
+                return False
+    return True
+
+
+async def get_camel_bootstrap_status(session: AsyncSession, user_id: str, tenant_id: str | None = None) -> dict:
     camel_user_id = camel_user_id_from_arc_user(user_id)
-    result = await session.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    completed = bool(user and user.camel_provider_bootstrap_completed_at)
-    if completed:
-        return {"needed": False, "completed": True}
+    resolved_tenant_id = await _resolve_tenant_id(session, user_id, tenant_id)
     settings = get_camel_bootstrap_settings()
+    if await _tenant_bootstrap_completed(session, user_id=user_id, tenant_id=resolved_tenant_id, settings=settings):
+        return {"needed": False, "completed": True}
     return {
         "needed": True,
         "completed": False,
@@ -230,6 +263,7 @@ async def complete_camel_provider_bootstrap(
     session: AsyncSession,
     *,
     user_id: str,
+    tenant_id: str | None = None,
     camel_user_id: str,
     access_token: str,
     mode: CamelBootstrapMode,
@@ -239,11 +273,14 @@ async def complete_camel_provider_bootstrap(
         raise HTTPException(status_code=400, detail="CaMeL user mismatch")
 
     settings = get_camel_bootstrap_settings()
+    resolved_tenant_id = await _resolve_tenant_id(session, user_id, tenant_id)
     provisioned = await _request_camel_tokens(settings, access_token, mode, idempotency_key)
     if provisioned.get("success") is not True:
         return {
             "completed": False,
-            "error": "camel_token_conflict" if provisioned.get("error") == "token_name_conflict" else "camel_token_error",
+            "error": "camel_token_conflict"
+            if provisioned.get("error") == "token_name_conflict"
+            else "camel_token_error",
             "conflicts": _camel_conflict_links(provisioned.get("conflicts")),
         }
 
@@ -255,14 +292,16 @@ async def complete_camel_provider_bootstrap(
     created_token_links = _token_deletion_links(settings, token_rows)
 
     repo_results = []
-    config = ConfigService(session, user_id=user_id)
+    config = ConfigService(session, user_id=user_id, tenant_id=resolved_tenant_id)
     try:
         for spec in settings.media_specs:
             token = token_by_media.get(spec.media)
             api_key = token.get("key") if isinstance(token, dict) else None
             if not isinstance(api_key, str) or not api_key:
                 raise HTTPException(status_code=502, detail="CaMeL token provisioning response was incomplete")
-            provider = await _upsert_provider(session, user_id, settings, spec, api_key)
+            provider = await _upsert_provider(session, user_id, resolved_tenant_id, settings, spec, api_key)
+            if provider is None:
+                raise HTTPException(status_code=502, detail="CaMeL provider bootstrap failed")
             provider_ref = f"{make_provider_id(provider.id)}/{spec.models[0]}"
             for key in spec.default_keys:
                 await config.set_setting(key, provider_ref)

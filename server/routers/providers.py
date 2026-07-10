@@ -27,9 +27,11 @@ from lib.config.url_utils import normalize_base_url
 from lib.db import get_async_session
 from lib.db.base import dt_to_iso
 from lib.db.repositories.credential_repository import CredentialRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.gemini_shared import VERTEX_SCOPES
 from lib.i18n import Translator
-from server.auth import CurrentUser
+from server.auth import CurrentUser, CurrentUserInfo
+from server.services.tenant_auth import ROLE_ADMIN, ROLE_VIEW, require_tenant_access
 
 if TYPE_CHECKING:
     from lib.db.models.credential import ProviderCredential
@@ -238,6 +240,19 @@ async def _invalidate_caches(request: Request) -> None:
         await worker.reload_limits()
 
 
+async def _prepare_tenant_session(
+    session: AsyncSession,
+    user: CurrentUserInfo,
+    *,
+    minimum_role: str,
+) -> str:
+    access = await require_tenant_access(session, user, minimum_role=minimum_role)
+    await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+    session.info["user_id"] = user.id
+    session.info["tenant_id"] = access.id
+    return access.id
+
+
 def _build_field(
     key: str,
     required: bool,
@@ -284,6 +299,7 @@ async def list_providers(
     session: AsyncSession = Depends(get_async_session),
 ) -> ProvidersListResponse:
     """返回所有供应商及其状态。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_VIEW)
     svc = ConfigService(session, user_id=_user.id)
     statuses = await svc.get_all_providers_status()
     providers = [
@@ -312,6 +328,7 @@ async def get_provider_config(
 ) -> ProviderConfigResponse:
     """返回单个供应商的配置字段（registry 元数据与 DB 值合并）。"""
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_VIEW)
 
     meta = PROVIDER_REGISTRY[provider_id]
     svc = ConfigService(session, user_id=_user.id)
@@ -371,6 +388,7 @@ async def patch_provider_config(
 ) -> Response:
     """更新供应商配置。值为 null 表示删除该键。"""
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
 
     svc = ConfigService(session, user_id=_user.id)
     for key, value in body.items():
@@ -408,6 +426,7 @@ async def list_credentials(
     session: AsyncSession = Depends(get_async_session),
 ) -> CredentialListResponse:
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CredentialRepository(session, user_id=_user.id)
     creds = await repo.list_by_provider(provider_id)
     return CredentialListResponse(credentials=[_cred_to_response(c) for c in creds])
@@ -423,6 +442,7 @@ async def create_credential(
     session: AsyncSession = Depends(get_async_session),
 ) -> CredentialResponse:
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CredentialRepository(session, user_id=_user.id)
     cred = await repo.create(
         provider=provider_id,
@@ -448,6 +468,7 @@ async def update_credential(
     session: AsyncSession = Depends(get_async_session),
 ) -> Response:
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CredentialRepository(session, user_id=_user.id)
     cred = await _get_credential_or_404(repo, provider_id, cred_id, _t)
     kwargs: dict = {}
@@ -479,6 +500,7 @@ async def delete_credential(
     session: AsyncSession = Depends(get_async_session),
 ) -> Response:
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CredentialRepository(session, user_id=_user.id)
     cred = await _get_credential_or_404(repo, provider_id, cred_id, _t)
     cred_path = cred.credentials_path  # 在 delete 前保存，避免 ORM 对象过期后无法访问
@@ -507,6 +529,7 @@ async def activate_credential(
     session: AsyncSession = Depends(get_async_session),
 ) -> Response:
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     repo = CredentialRepository(session, user_id=_user.id)
     await _get_credential_or_404(repo, provider_id, cred_id, _t)
     await repo.activate(cred_id, provider_id)
@@ -525,6 +548,7 @@ async def upload_vertex_credential(
     file: UploadFile = File(...),
 ) -> CredentialResponse:
     """上传 Vertex AI 服务账号 JSON 凭证文件，同时创建凭证记录。"""
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
     try:
         contents = await file.read(MAX_VERTEX_CREDENTIALS_BYTES + 1)
     except Exception:
@@ -845,6 +869,7 @@ async def test_provider_connection(
 ) -> ConnectionTestResponse:
     """调用供应商 API 验证连通性。可指定 credential_id 测试特定凭证。"""
     _validate_provider(provider_id, _t)
+    await _prepare_tenant_session(session, _user, minimum_role=ROLE_ADMIN)
 
     repo = CredentialRepository(session, user_id=_user.id)
     if credential_id is not None:

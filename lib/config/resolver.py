@@ -178,13 +178,17 @@ class ConfigResolver:
         session_factory: async_sessionmaker,
         *,
         user_id: str | None = None,
+        tenant_id: str | None = None,
         _bound_session: AsyncSession | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._bound_session = _bound_session
         self._user_id = user_id
+        self._tenant_id = tenant_id
         if self._bound_session is not None and user_id is not None:
             self._bound_session.info["user_id"] = user_id
+        if self._bound_session is not None and tenant_id is not None:
+            self._bound_session.info["tenant_id"] = tenant_id
 
     # ── Session 管理 ──
 
@@ -197,18 +201,34 @@ class ConfigResolver:
             async with self._session_factory() as sess:
                 if self._user_id is not None:
                     sess.info["user_id"] = self._user_id
-                yield ConfigResolver(self._session_factory, user_id=self._user_id, _bound_session=sess)
+                if self._tenant_id is not None:
+                    sess.info["tenant_id"] = self._tenant_id
+                yield ConfigResolver(
+                    self._session_factory,
+                    user_id=self._user_id,
+                    tenant_id=self._tenant_id,
+                    _bound_session=sess,
+                )
 
     @asynccontextmanager
     async def _open_session(self) -> AsyncIterator[tuple[AsyncSession, ConfigService]]:
         """获取 (session, ConfigService)，优先复用 bound session。"""
         if self._bound_session is not None:
-            yield self._bound_session, ConfigService(self._bound_session, user_id=self._user_id)
+            yield (
+                self._bound_session,
+                ConfigService(
+                    self._bound_session,
+                    user_id=self._user_id,
+                    tenant_id=self._tenant_id,
+                ),
+            )
         else:
             async with self._session_factory() as session:
                 if self._user_id is not None:
                     session.info["user_id"] = self._user_id
-                yield session, ConfigService(session, user_id=self._user_id)
+                if self._tenant_id is not None:
+                    session.info["tenant_id"] = self._tenant_id
+                yield session, ConfigService(session, user_id=self._user_id, tenant_id=self._tenant_id)
 
     # ── 公开 API ──
 
