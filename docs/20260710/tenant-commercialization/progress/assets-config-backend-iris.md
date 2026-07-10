@@ -8,24 +8,34 @@
 
 ## Acceptance Criteria
 
-- Provider config, credentials, custom providers, agent config, and API keys are tenant-scoped.
-- Tenant bootstrap completeness is based on tenant config/provider state, not user timestamp alone.
+- [x] Provider config, credentials, custom providers, agent config, and API keys are tenant-scoped.
+- [x] Tenant bootstrap completeness is based on tenant config/provider state, not user timestamp alone.
 - Asset libraries support tenant and personal scopes.
 - Asset bindings support snapshot import with `parent_id` and manual sync.
 - Cross-library import requires readable source and `member+` target permission.
 
 ## Subtasks
 
-- [ ] Tenant-scope provider/config/credential/API key storage.
-  - Commit: pending
-- [ ] Replace user-level bootstrap timestamp dependency.
-  - Commit: pending
+- [x] Tenant-scope provider/config/credential/API key storage.
+  - Commit: 571724b
+- [x] Replace user-level bootstrap timestamp dependency.
+  - Commit: 571724b
 - [ ] Implement asset library bindings, snapshots, and manual sync.
   - Commit: pending
-- [ ] Add config isolation and asset import/sync tests.
+- [x] Add config isolation tests.
+  - Commit: 571724b
+- [ ] Add asset import/sync tests.
   - Commit: pending
 
-**Ready for QA:** no
+**Story 7 Ready for QA:** yes
+**Story 8 Ready for QA:** no
+
+## Story 7 Verification
+
+- `pytest tests/test_tenant_config_isolation.py -q`: 8 passed.
+- `ruff check` on modified Story 7 files: passed.
+- `ruff format --check` on modified Story 7 files: passed.
+- `basedpyright` on modified Story 7 files: 0 errors, 0 warnings, 0 notes.
 
 ## Blockers
 
