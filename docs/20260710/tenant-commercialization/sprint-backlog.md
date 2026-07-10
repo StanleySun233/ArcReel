@@ -388,6 +388,30 @@ These gates happen before implementation agents start. They are not story worktr
 
 **QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. After merging Story10, integration acceptance also passed on `arcreel-acceptance-current-20260710220207` / `arcreel_acceptance_20260710220207` at merge commit `056e8b7`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, CaMeL contract smoke passed 6 checks, MinIO security smoke passed, MinIO restart persistence smoke passed, browser smoke passed CaMeL login/default personal space/listbox tenant switch/view-only project and asset UI/signed media preview/manual asset sync, frontend `pnpm lint && pnpm check` passed 107 test files and 925 tests, targeted backend regression passed 14 tests, and scenario runner passed 30 + 10 + 113 + 114 tests. Remaining file-id-only scope is tracked in `defects/defect-002-file-id-only-migration-gap.md`.
 
+### Story 11 - Strict File-Id-Only Project Media Closure
+
+**Slug:** strict-file-id-media
+**User value:** Commercial project media state has one authoritative file reference model, so generated image/video/audio and grid outputs cannot drift between legacy paths and `file_id`.
+**Status:** implementation complete
+**QA Status:** passed
+**PO Status:** pending
+
+**Acceptance Criteria**
+- [x] Storyboard, video, thumbnail, narration audio, reference-video, grid composite, and grid split cell writeback treat file IDs as authoritative when FileService records exist.
+- [x] Grid records persist `grid_image_file_id`; split cells persist `FrameCell.image_file_id`.
+- [x] Frontend grid, shot media, and reference-video preview consumers prefer file IDs and fetch backend signed URLs.
+- [x] Legacy path reads remain fallback only for non-tenant/not-yet-migrated data.
+- [x] Regression tests fail if grid split output lacks authoritative file IDs.
+
+**Engineering Subtasks**
+- [x] Story11: Add grid file-id fields to backend/frontend models. (depends: Story 5, Story 9)
+- [x] Story11: Write file IDs into generated asset fields when FileService records exist. (depends: FileService)
+- [x] Story11: Record grid composite and split cell outputs through FileService. (depends: GridManager)
+- [x] Story11: Make frontend media consumers prefer file IDs and backend signed URLs. (depends: file signing API)
+- [x] Story11: Add grid split file-id regression and run frontend/backend checks. (depends: implementation)
+
+**QA Evidence:** Story worktree `story/tenant-commercialization/strict-file-id-media` passed Python ruff check/format, targeted pytest `4 passed`, and frontend `pnpm check` with 107 test files and 925 tests. Implementation commit `c10d646`.
+
 ## File Ownership
 
 | File Path | Owner | Story | Parallel Policy |
@@ -460,6 +484,11 @@ These gates happen before implementation agents start. They are not story worktr
 | `server/routers/generate.py` | Dax | Story 9 | exclusive |
 | `server/routers/tasks.py` | Dax | Story 9 | exclusive |
 | `tests/**` | Quinn | Story 10 | QA may add/adjust tests after story implementation slices; story owners own their local tests before QA |
+| `lib/grid/models.py` | Story11 | Story 11 | exclusive during strict file-id closure |
+| `frontend/src/components/canvas/timeline/MediaCard.tsx` | Story11 | Story 11 | exclusive during strict file-id closure |
+| `frontend/src/components/canvas/timeline/GridPreviewPanel.tsx` | Story11 | Story 11 | exclusive during strict file-id closure |
+| `frontend/src/components/canvas/timeline/ShotDetail.tsx` | Story11 | Story 11 | exclusive during strict file-id closure |
+| `frontend/src/components/canvas/reference/UnitPreviewPanel.tsx` | Story11 | Story 11 | exclusive during strict file-id closure |
 
 ## Worktrees
 
@@ -477,6 +506,7 @@ These gates happen before implementation agents start. They are not story worktr
 | Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | merged | removed |
 | Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `integration/tenant-commercialization` | merged | removed |
 | Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `integration/tenant-commercialization` | pending | pending |
+| Story 11 - Strict File-Id-Only Project Media Closure | `story/tenant-commercialization/strict-file-id-media` | `../ArcReel-worktrees/tenant-commercialization/strict-file-id-media` | `integration/tenant-commercialization` | pending | pending |
 
 ## Blockers
 

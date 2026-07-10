@@ -467,17 +467,21 @@ def apply_unit_video_assets(
             ga = u.setdefault("generated_assets", {})
             if not isinstance(ga, dict):
                 raise ScriptEditError("generated_assets 必须是 dict")
-            ga["video_clip"] = f"reference_videos/{resource_id}.mp4"
             if video_file_id:
+                ga["video_clip"] = video_file_id
                 ga["video_clip_file_id"] = video_file_id
+            else:
+                ga["video_clip"] = f"reference_videos/{resource_id}.mp4"
             if video_uri:
                 ga["video_uri"] = video_uri
             else:
                 ga.pop("video_uri", None)
             if thumb_rel:
-                ga["video_thumbnail"] = thumb_rel
                 if thumb_file_id:
+                    ga["video_thumbnail"] = thumb_file_id
                     ga["video_thumbnail_file_id"] = thumb_file_id
+                else:
+                    ga["video_thumbnail"] = thumb_rel
             else:
                 ga.pop("video_thumbnail", None)
                 ga.pop("video_thumbnail_file_id", None)

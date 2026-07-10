@@ -41,6 +41,10 @@ export interface GridPreviewPanelProps {
 
 type GridStatus = GridGeneration["status"];
 
+function isFileId(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.startsWith("fil_");
+}
+
 function StatusBadge({ status, t }: { status: GridStatus; t: (key: string) => string }) {
   const STATUS_KEY: Record<GridStatus, string> = {
     pending: "grid_status_pending",
@@ -218,16 +222,36 @@ export function GridPreviewPanel({
 
   const isInProgress =
     grid?.status === "pending" || grid?.status === "generating" || grid?.status === "splitting";
+  const [signedGrid, setSignedGrid] = useState<{ id: string; url: string } | null>(null);
 
   // 优先使用持久化的 mtime 指纹做 cache-bust，跨页面刷新仍然有效；
   // 回退到 refreshKey 仅用于指纹尚未送达前的当次会话。
   const gridFp = useProjectsStore((s) =>
-    grid?.grid_image_path ? (s.assetFingerprints[grid.grid_image_path] ?? null) : null,
+    grid?.grid_image_path && !grid.grid_image_file_id ? (s.assetFingerprints[grid.grid_image_path] ?? null) : null,
   );
-  const imageUrl =
-    grid?.grid_image_path
+  const imageUrl = grid?.grid_image_file_id
+    ? signedGrid?.id === grid.grid_image_file_id
+      ? signedGrid.url
+      : null
+    : grid?.grid_image_path
       ? API.getFileUrl(projectName, grid.grid_image_path, gridFp ?? refreshKey)
       : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    const gridImageFileId = grid?.grid_image_file_id;
+    if (!isFileId(gridImageFileId)) return;
+    void API.getFileSignedUrl(gridImageFileId)
+      .then((res) => {
+        if (!cancelled) setSignedGrid({ id: gridImageFileId, url: res.url });
+      })
+      .catch(() => {
+        if (!cancelled) setSignedGrid(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [grid?.grid_image_file_id]);
 
   const refs = grid?.reference_images ?? [];
 

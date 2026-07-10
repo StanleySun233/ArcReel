@@ -1,5 +1,6 @@
 import contextlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -134,6 +135,26 @@ class _FakePM:
 
     def update_scene_asset(self, **kwargs):
         self.updated_assets.append(kwargs)
+        script_filename = kwargs.get("script_filename")
+        scene_id = kwargs.get("scene_id")
+        asset_type = kwargs.get("asset_type")
+        asset_path = kwargs.get("asset_path")
+        if not script_filename or not scene_id or not asset_type:
+            return
+        for item in self.script.get("segments", []):
+            if item.get("segment_id") == scene_id:
+                item.setdefault("generated_assets", {})[asset_type] = asset_path
+                return
+
+    def batch_update_scene_assets(self, *, project_name: str, script_filename: str, updates):
+        for scene_id, asset_type, asset_path in updates:
+            self.update_scene_asset(
+                project_name=project_name,
+                script_filename=script_filename,
+                scene_id=scene_id,
+                asset_type=asset_type,
+                asset_path=asset_path,
+            )
 
     def save_project(self, project_name: str, project: dict):
         self.project = project
@@ -180,6 +201,12 @@ class _FakeGenerator:
 
     def get_versions(self, resource_type, resource_id):
         return {"versions": [{"created_at": "2026-01-01T00:00:00Z"}]}
+
+    def ensure_current_tracked(self, resource_type, resource_id, file_path, prompt):
+        return None
+
+    def add_version(self, **kwargs):
+        return {"created_at": "2026-01-01T00:00:00Z"}
 
 
 def _prepare_files(tmp_path: Path):
@@ -865,6 +892,76 @@ class TestGenerationTasks:
         assert "storyboards/scene_E1S02.png" in fps
         assert all("outside" not in key for key in fps)
         assert all(not key.startswith("/") for key in fps)
+
+    async def test_execute_grid_task_records_grid_and_cell_file_ids(self, monkeypatch, tmp_path):
+        from PIL import Image
+
+        from lib.grid.models import GridGeneration
+        from lib.grid_manager import GridManager
+
+        project_path = _prepare_files(tmp_path)
+        (project_path / "grids").mkdir()
+        fake_pm = _FakePM(project_path)
+        monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: fake_pm)
+
+        grid = GridGeneration.create(
+            episode=1,
+            script_file="episode_1.json",
+            scene_ids=["E1S01", "E1S02"],
+            rows=1,
+            cols=2,
+            grid_size="grid_4",
+            provider="provider",
+            model="model",
+            prompt="grid prompt",
+        )
+        grid.id = "grid_1"
+        GridManager(project_path).save(grid)
+
+        class GridGenerator(_FakeGenerator):
+            async def generate_image_async(self, **kwargs):
+                self.image_calls.append(kwargs)
+                path = project_path / "grids" / "grid_1.png"
+                Image.new("RGB", (200, 100), color=(255, 0, 0)).save(path)
+                return path, 1
+
+        async def fake_record_output_file(**kwargs):
+            return f"fil_{kwargs['link_type']}_{kwargs['file_path'].stem}"
+
+        monkeypatch.setattr(generation_tasks, "get_media_generator", _async_return(GridGenerator()))
+        monkeypatch.setattr(
+            generation_tasks,
+            "_resolve_effective_image_backend",
+            _async_return(SimpleNamespace(provider_id="provider", model_id="model")),
+        )
+        monkeypatch.setattr(generation_tasks, "resolve_resolution", _async_return("2K"))
+        monkeypatch.setattr(generation_tasks, "_record_output_file", fake_record_output_file)
+
+        result = await generation_tasks.execute_grid_task(
+            "demo",
+            "grid_1",
+            {"prompt": "grid prompt", "script_file": "episode_1.json"},
+            user_id="usr_1",
+            tenant_id="ten_1",
+            task_id="tsk_1",
+        )
+
+        stored = GridManager(project_path).get("grid_1")
+        assert result["file_id"] == "fil_grid_image_grid_1"
+        assert stored is not None
+        assert stored.grid_image_file_id == "fil_grid_image_grid_1"
+        cell_file_ids = {
+            frame.next_scene_id: frame.image_file_id for frame in stored.frame_chain if frame.next_scene_id
+        }
+        assert cell_file_ids == {
+            "E1S01": "fil_storyboard_image_scene_E1S01",
+            "E1S02": "fil_storyboard_image_scene_E1S02",
+        }
+        assets_by_id = {item["segment_id"]: item["generated_assets"] for item in fake_pm.script["segments"][:2]}
+        assert assets_by_id["E1S01"]["storyboard_image"] == "fil_storyboard_image_scene_E1S01"
+        assert assets_by_id["E1S01"]["storyboard_image_file_id"] == "fil_storyboard_image_scene_E1S01"
+        assert assets_by_id["E1S02"]["storyboard_image"] == "fil_storyboard_image_scene_E1S02"
+        assert assets_by_id["E1S02"]["storyboard_image_file_id"] == "fil_storyboard_image_scene_E1S02"
 
     async def test_execute_task_validation_errors(self, tmp_path, monkeypatch):
         project_path = _prepare_files(tmp_path)
