@@ -20,12 +20,19 @@
   - Commit: 30ff915, 2a06c27
 - [x] Add `files` repository and signed URL endpoints.
   - Commit: 2a06c27, 672ceac
-- [ ] Convert upload/media output routes to file IDs.
-  - Commit: pending
-- [ ] Add private bucket, signed URL, and rollback tests.
-  - Commit: pending
+- [x] Convert upload/media output routes to file IDs.
+  - Commit: 2b3309e
+- [x] Add private bucket, signed URL, and rollback tests.
+  - Commit: 2b3309e
 
-**Ready for QA:** no
+**Verification**
+
+- `python -m pytest tests/test_minio_storage.py tests/test_file_service.py tests/test_files_api_minio.py tests/test_shot_uploads_minio.py -q` — 9 passed
+- `python -m ruff check lib/storage/__init__.py lib/storage/minio.py lib/files/__init__.py lib/files/service.py lib/db/repositories/file_repo.py server/routers/files.py server/routers/shot_uploads.py tests/test_minio_storage.py tests/test_file_service.py tests/test_files_api_minio.py tests/test_shot_uploads_minio.py` — passed
+- `python -m ruff format lib/storage/__init__.py lib/storage/minio.py lib/files/__init__.py lib/files/service.py lib/db/repositories/file_repo.py server/routers/files.py server/routers/shot_uploads.py tests/test_minio_storage.py tests/test_file_service.py tests/test_files_api_minio.py tests/test_shot_uploads_minio.py` — unchanged
+- `basedpyright lib/storage/minio.py lib/files/service.py lib/db/repositories/file_repo.py server/routers/files.py server/routers/shot_uploads.py tests/test_minio_storage.py tests/test_file_service.py tests/test_files_api_minio.py tests/test_shot_uploads_minio.py` — blocked by missing configured `.venv`; output reported 0 errors before exiting with environment error
+
+**Ready for QA:** yes
 
 ## Blockers
 
