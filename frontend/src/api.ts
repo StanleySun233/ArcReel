@@ -64,7 +64,7 @@ import type {
   TestConnectionResponse,
   UpdateAgentCredentialRequest,
 } from "@/types/agent-credential";
-import { getToken, clearToken } from "@/utils/auth";
+import { getToken, clearToken, recoverTenantAccess, type AuthTenant } from "@/utils/auth";
 import i18n from "./i18n";
 
 // ==================== Helper types ====================
@@ -78,6 +78,27 @@ export interface LoginResponse {
 /** Standard error response body from backend (mirrors FastAPI HTTPException detail). */
 export interface ErrorResponse {
   detail: string | { msg?: string }[];
+  error?: string;
+  fallback_tenant_id?: string;
+}
+
+export interface AuthMeResponse {
+  user: {
+    id: string;
+    username: string;
+    provider: string;
+  };
+  tenant: AuthTenant;
+}
+
+export interface AuthTenantsResponse {
+  tenants: AuthTenant[];
+}
+
+export interface TenantTokenResponse {
+  access_token: string;
+  token_type: string;
+  tenant: AuthTenant;
 }
 
 /**
@@ -391,7 +412,8 @@ class API {
    */
   static async request<T = unknown>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    tenantRecoveryAttempted = false,
   ): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
     const defaultOptions: RequestInit = {
@@ -407,6 +429,18 @@ class API {
       const error = await response
         .json()
         .catch(() => ({ detail: response.statusText })) as ErrorResponse;
+      if (response.status === 403 && !tenantRecoveryAttempted) {
+        const code = typeof error.error === "string"
+          ? error.error
+          : typeof error.detail === "string" ? error.detail : "";
+        if (code === "STALE_TENANT_ROLE" && await recoverTenantAccess("stale_role")) {
+          return this.request<T>(endpoint, options, true);
+        }
+        if (code === "TENANT_ACCESS_REVOKED") {
+          await recoverTenantAccess("access_revoked", error.fallback_tenant_id);
+          throw new Error("TENANT_ACCESS_REVOKED");
+        }
+      }
       let message = "请求失败";
       if (typeof error.detail === "string") {
         message = error.detail;
@@ -461,6 +495,25 @@ class API {
   static async startCamelBootstrap(mode: CamelBootstrapMode, from: string): Promise<CamelBootstrapStartResponse> {
     const params = new URLSearchParams({ mode, from });
     return this.request(`/camel/bootstrap/start-url?${params.toString()}`, { method: "POST" });
+  }
+
+  static async getAuthMe(): Promise<AuthMeResponse> {
+    return this.request("/auth/me");
+  }
+
+  static async listAuthTenants(): Promise<AuthTenantsResponse> {
+    return this.request("/auth/tenants");
+  }
+
+  static async switchTenantToken(tenantId: string): Promise<TenantTokenResponse> {
+    return this.request("/auth/tenant-token", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: tenantId }),
+    });
+  }
+
+  static async refreshCurrentTenantToken(): Promise<TenantTokenResponse> {
+    return this.request("/auth/refresh-current-tenant", { method: "POST" });
   }
 
 
