@@ -705,7 +705,7 @@ class TestGenerationTasks:
         fake_video_backend = object()
 
         class _FakeResolver:
-            def __init__(self, session_factory, *, user_id=None, _bound_session=None):
+            def __init__(self, session_factory, *, user_id=None, tenant_id=None, _bound_session=None):
                 self.session_factory = session_factory
 
             @contextlib.asynccontextmanager
@@ -746,7 +746,7 @@ class TestGenerationTasks:
         captured_user_ids = []
 
         class _FakeResolver:
-            def __init__(self, session_factory, *, user_id=None, _bound_session=None):
+            def __init__(self, session_factory, *, user_id=None, tenant_id=None, _bound_session=None):
                 self.session_factory = session_factory
                 captured_user_ids.append(user_id)
 
@@ -765,6 +765,7 @@ class TestGenerationTasks:
             "demo",
             payload=None,
             user_id="task-owner",
+            tenant_id="ten-test",
             require_image_backend=False,
         )
 
@@ -900,7 +901,7 @@ async def test_resolve_picks_t2i_from_payload_when_no_refs():
         "image_provider_t2i": "openai/gen-1",
         "image_provider_i2i": "openai/edit-1",
     }
-    resolved = await _resolve_effective_image_backend({}, payload, needs_i2i=False)
+    resolved = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=False)
     assert (resolved.provider_id, resolved.model_id) == ("openai", "gen-1")
 
 
@@ -910,7 +911,7 @@ async def test_resolve_picks_i2i_from_payload_when_refs():
         "image_provider_t2i": "openai/gen-1",
         "image_provider_i2i": "openai/edit-1",
     }
-    resolved = await _resolve_effective_image_backend({}, payload, needs_i2i=True)
+    resolved = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=True)
     assert (resolved.provider_id, resolved.model_id) == ("openai", "edit-1")
 
 
@@ -918,8 +919,8 @@ async def test_resolve_picks_i2i_from_payload_when_refs():
 async def test_resolve_falls_back_to_legacy_payload_image_provider():
     """payload 仅有旧 image_provider/image_model（历史任务）时两槽都用此值。"""
     payload = {"image_provider": "openai", "image_model": "legacy"}
-    t2i = await _resolve_effective_image_backend({}, payload, needs_i2i=False)
-    i2i = await _resolve_effective_image_backend({}, payload, needs_i2i=True)
+    t2i = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=False)
+    i2i = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=True)
     assert (t2i.provider_id, t2i.model_id) == ("openai", "legacy")
     assert (i2i.provider_id, i2i.model_id) == ("openai", "legacy")
 
@@ -930,8 +931,8 @@ async def test_resolve_reads_project_split_fields():
         "image_provider_t2i": "openai/proj-gen",
         "image_provider_i2i": "openai/proj-edit",
     }
-    t2i = await _resolve_effective_image_backend(project, {}, needs_i2i=False)
-    i2i = await _resolve_effective_image_backend(project, {}, needs_i2i=True)
+    t2i = await _resolve_effective_image_backend(project, {}, tenant_id="ten-test", needs_i2i=False)
+    i2i = await _resolve_effective_image_backend(project, {}, tenant_id="ten-test", needs_i2i=True)
     assert (t2i.provider_id, t2i.model_id) == ("openai", "proj-gen")
     assert (i2i.provider_id, i2i.model_id) == ("openai", "proj-edit")
 

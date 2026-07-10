@@ -33,6 +33,7 @@ class UsageTracker:
         generate_audio: bool = True,
         provider: str = PROVIDER_GEMINI,
         user_id: str = DEFAULT_USER_ID,
+        tenant_id: str | None = None,
         segment_id: str | None = None,
     ) -> int:
 
@@ -49,6 +50,7 @@ class UsageTracker:
                 generate_audio=generate_audio,
                 provider=provider,
                 user_id=user_id,
+                tenant_id=tenant_id,
                 segment_id=segment_id,
             )
 

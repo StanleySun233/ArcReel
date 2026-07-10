@@ -12,6 +12,7 @@ from lib.custom_provider import is_custom_provider, parse_provider_id
 from lib.db.base import DEFAULT_USER_ID, dt_to_iso, utc_now
 from lib.db.models.api_call import ApiCall
 from lib.db.repositories.base import BaseRepository, rowcount
+from lib.db.repositories.task_repo import DEFAULT_TENANT_ID
 from lib.providers import PROVIDER_GEMINI, CallType
 
 # 计费时长合理上限（24 小时），语义单点定义：repo 写入层是全部 backend 落账的最后防线，
@@ -85,12 +86,16 @@ class UsageRepository(BaseRepository):
         generate_audio: bool = True,
         provider: str = PROVIDER_GEMINI,
         user_id: str = DEFAULT_USER_ID,
+        tenant_id: str | None = None,
         segment_id: str | None = None,
     ) -> int:
         now = utc_now()
         prompt_truncated = prompt[:500] if prompt else None
+        resolved_tenant_id = str(tenant_id or self.session.info.get("tenant_id") or DEFAULT_TENANT_ID)
+        self.session.info["tenant_id"] = resolved_tenant_id
 
         row = ApiCall(
+            tenant_id=resolved_tenant_id,
             project_name=project_name,
             call_type=call_type,
             model=model,
