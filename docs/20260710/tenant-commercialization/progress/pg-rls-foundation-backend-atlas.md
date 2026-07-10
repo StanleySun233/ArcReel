@@ -23,9 +23,9 @@
 - [x] Convert DB fixtures to PostgreSQL-only.
   - Commit: 265f9b2
 - [x] Add tenant, membership, tenant-owned model columns, migrations, indexes, and RLS policies.
-  - Commit: pending
+  - Commit: 91a3fba
 - [x] Add deny-by-default and cross-tenant RLS tests.
-  - Commit: pending
+  - Commit: 91a3fba
 - [x] Convert SQLite-only Alembic tests to PostgreSQL.
   - Commit: 93423e0
 
