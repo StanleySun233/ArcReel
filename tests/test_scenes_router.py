@@ -2,7 +2,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
+from server.routers import _asset_router_factory as asset_router_factory
 from server.routers import scenes
+from server.services.tenant_auth import TenantAccess
 
 
 class _FakePM:
@@ -40,10 +42,20 @@ class _FakePM:
 
 def _client(monkeypatch, fake_pm):
     monkeypatch.setattr(scenes, "get_project_manager", lambda: fake_pm)
+    monkeypatch.setattr(asset_router_factory, "set_tenant_context", _set_context)
+    monkeypatch.setattr(asset_router_factory, "require_tenant_access", _access)
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
     app.include_router(scenes.router, prefix="/api/v1")
     return TestClient(app)
+
+
+async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
+    return TenantAccess(id="ten_test", name="Tenant", role="member", is_owner=False, personal=True)
+
+
+async def _set_context(_session, *, user_id, tenant_id):
+    return None
 
 
 class TestScenesRouter:
@@ -103,6 +115,8 @@ class TestScenesRouterDoesNotCollideWithProjects:
         fake_pm = _FakePM()
         monkeypatch.setattr(scenes, "get_project_manager", lambda: fake_pm)
         monkeypatch.setattr(projects_router, "get_project_manager", lambda: fake_pm)
+        monkeypatch.setattr(asset_router_factory, "set_tenant_context", _set_context)
+        monkeypatch.setattr(asset_router_factory, "require_tenant_access", _access)
 
         app = FastAPI()
         app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")

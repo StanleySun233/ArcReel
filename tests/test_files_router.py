@@ -1,5 +1,6 @@
 import json
 from io import BytesIO
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -33,6 +34,28 @@ async def _fake_create_backend(*args, **kwargs):
     return _FakeTextBackend()
 
 
+class _FakeTextGenerator:
+    async def generate(self, request, project_name=None):
+        from lib.text_backends.base import TextGenerationResult
+
+        return TextGenerationResult(text="cinematic, high contrast", provider="fake", model="fake-model")
+
+
+async def _fake_text_generator_create(*args, **kwargs):
+    return _FakeTextGenerator()
+
+
+class _FakeFileService:
+    _next = 0
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def create_file(self, **kwargs):
+        self.__class__._next += 1
+        return SimpleNamespace(file_id=f"fil_test_{self.__class__._next}")
+
+
 def _img_bytes(fmt="JPEG"):
     image = Image.new("RGB", (8, 8), (255, 0, 0))
     buf = BytesIO()
@@ -49,12 +72,14 @@ def _client(monkeypatch, tmp_path):
     pm.add_product("demo", "保温杯", "不锈钢保温杯")
 
     monkeypatch.setattr(files, "get_project_manager", lambda: pm)
+    monkeypatch.setattr(files, "FileService", _FakeFileService)
 
     async def _tenant_pm(*args, **kwargs):
         return pm
 
     monkeypatch.setattr(files, "_tenant_project_manager", _tenant_pm)
     monkeypatch.setattr("lib.text_generator.create_text_backend_for_task", _fake_create_backend)
+    monkeypatch.setattr("lib.text_generator.TextGenerator.create", _fake_text_generator_create)
 
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
@@ -125,21 +150,22 @@ class TestFilesRouter:
                 files={"file": ("alice.jpg", _img_bytes("JPEG"), "image/jpeg")},
             )
             assert character.status_code == 200
-            assert character.json()["path"] == "characters/Alice.jpg"
+            assert character.json()["filename"] == "Alice.jpg"
+            assert character.json()["file_id"].startswith("fil_test_")
 
             character_ref = client.post(
                 "/api/v1/projects/demo/upload/character_ref?name=Alice",
                 files={"file": ("alice_ref.webp", _img_bytes("WEBP"), "image/webp")},
             )
             assert character_ref.status_code == 200
-            assert character_ref.json()["path"] == "characters/refs/Alice.webp"
+            assert character_ref.json()["filename"] == "Alice.webp"
 
             clue = client.post(
                 "/api/v1/projects/demo/upload/prop?name=玉佩",
                 files={"file": ("prop.jpg", _img_bytes("JPEG"), "image/jpeg")},
             )
             assert clue.status_code == 200
-            assert clue.json()["path"] == "props/玉佩.jpg"
+            assert clue.json()["filename"] == "玉佩.jpg"
 
             # 分镜/视频上传走 shot_uploads 路由，通用上传不再支持 storyboard 类型
             legacy_storyboard = client.post(
@@ -218,7 +244,8 @@ class TestFilesRouter:
                 files={"file": ("photo.png", original, "image/png")},
             )
             assert resp.status_code == 200
-            path = resp.json()["path"]
+            filename = resp.json()["filename"]
+            path = f"products/refs/{filename}"
             assert path.startswith("products/refs/")
             assert path.endswith(".png")
 
@@ -238,7 +265,7 @@ class TestFilesRouter:
                     files={"file": (fname, _img_bytes("JPEG"), "image/jpeg")},
                 )
                 assert resp.status_code == 200
-                paths.append(resp.json()["path"])
+                paths.append(f"products/refs/{resp.json()['filename']}")
 
             assert len(set(paths)) == 2
             project = pm.load_project("demo")
@@ -276,7 +303,7 @@ class TestFilesRouter:
                 files={"file": ("sheet.jpg", _img_bytes("JPEG"), "image/jpeg")},
             )
             assert resp.status_code == 200
-            assert resp.json()["path"] == "products/保温杯.jpg"
+            assert resp.json()["filename"] == "保温杯.jpg"
             project = pm.load_project("demo")
             assert project["products"]["保温杯"]["product_sheet"] == "products/保温杯.jpg"
 
@@ -348,21 +375,21 @@ class TestFilesRouter:
                 files={"file": ("no_name.jpg", _img_bytes("JPEG"), "image/jpeg")},
             )
             assert ref_no_name.status_code == 200
-            assert ref_no_name.json()["path"] == "characters/refs/no_name.jpg"
+            assert ref_no_name.json()["filename"] == "no_name.jpg"
 
             clue_missing_entity = client.post(
                 "/api/v1/projects/demo/upload/prop?name=不存在道具",
                 files={"file": ("x.jpg", _img_bytes("JPEG"), "image/jpeg")},
             )
             assert clue_missing_entity.status_code == 200
-            assert clue_missing_entity.json()["path"] == "props/不存在道具.jpg"
+            assert clue_missing_entity.json()["filename"] == "不存在道具.jpg"
 
             character_missing_entity = client.post(
                 "/api/v1/projects/demo/upload/character?name=不存在角色",
                 files={"file": ("x.jpg", _img_bytes("JPEG"), "image/jpeg")},
             )
             assert character_missing_entity.status_code == 200
-            assert character_missing_entity.json()["path"] == "characters/不存在角色.jpg"
+            assert character_missing_entity.json()["filename"] == "不存在角色.jpg"
 
     def test_source_decode_and_draft_mode_helpers(self, tmp_path, monkeypatch):
         client, pm = _client(monkeypatch, tmp_path)
@@ -862,10 +889,20 @@ def _client_with_pm_raising(monkeypatch, sentinel: str):
     def _raise():
         raise RuntimeError(sentinel)
 
+    async def _tenant_pm(*args, **kwargs):
+        return _raise()
+
     monkeypatch.setattr(files, "get_project_manager", _raise)
+    monkeypatch.setattr(files, "_tenant_project_manager", _tenant_pm)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
     app.include_router(files.router, prefix="/api/v1")
     return TestClient(app)
 

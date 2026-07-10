@@ -136,6 +136,51 @@ class TestGenerationQueue:
         assert alpha_list["total"] == 1
         assert beta_list["total"] == 1
 
+    async def test_active_task_dedupe_is_scoped_by_tenant_and_project_id(self, queue):
+        first = await queue.enqueue_task(
+            project_name="proj-alpha",
+            task_type="character",
+            media_type="image",
+            resource_id="Alice",
+            payload={"prompt": "alpha"},
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+        same_project = await queue.enqueue_task(
+            project_name="proj-alpha",
+            task_type="character",
+            media_type="image",
+            resource_id="Alice",
+            payload={"prompt": "alpha retry"},
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+        other_project = await queue.enqueue_task(
+            project_name="proj-beta",
+            task_type="character",
+            media_type="image",
+            resource_id="Alice",
+            payload={"prompt": "beta"},
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+        other_tenant = await queue.enqueue_task(
+            project_name="proj-alpha",
+            task_type="character",
+            media_type="image",
+            resource_id="Alice",
+            payload={"prompt": "other tenant"},
+            tenant_id="ten_other",
+            requested_by_user_id="camel:alice",
+        )
+
+        assert same_project["deduped"] is True
+        assert same_project["task_id"] == first["task_id"]
+        assert other_project["deduped"] is False
+        assert other_project["task_id"] != first["task_id"]
+        assert other_tenant["deduped"] is False
+        assert other_tenant["task_id"] != first["task_id"]
+
     async def test_worker_lease_takeover(self, queue):
         first_ok = await queue.acquire_or_renew_worker_lease(
             name="default",

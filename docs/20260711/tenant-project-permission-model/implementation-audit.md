@@ -1,91 +1,131 @@
-# 租户项目权限实现审计
+# Tenant Project Permission Implementation Audit
 
-**日期:** 20260711
-**状态:** in-progress
+**Date:** 20260711
+**Status:** in progress
 
-## 已完成
+## Verified in this pass
 
-### Issued Tokens 禁用
+### Issued Tokens disabled, business code retained
 
-结论：已按当前发行版禁用 Issued Tokens，并保留原业务实现。
+The Issued Tokens feature is disabled at invocation boundaries and the existing business implementation remains in place for future development.
 
-证据：
+Evidence:
 
-- `server/routers/api_keys.py` 保留 create/list/delete 业务代码，在入口调用 `_require_issued_tokens_enabled()`，当前统一返回 `403 feature_disabled`。
-- `server/auth.py` 不再把 `arc-` token 作为 Bearer API key 认证入口。
-- `frontend/src/components/pages/ApiKeysTab.tsx` 保留原 UI/创建/删除逻辑，当前通过 `ISSUED_TOKENS_ENABLED` 禁用加载、创建、删除入口。
-- `frontend/src/components/pages/OpenClawModal.tsx` 的获取 API token 按钮 disabled。
-- `tests/test_api_keys_router.py` 覆盖 `/api-keys` 统一 403。
-- `tests/test_auth_api_key.py` 覆盖 `arc-` token 不走 Issued Token 认证分流。
-- 验证命令：
-  - `DATABASE_URL=postgresql+asyncpg://arcreel_app:arcreel_app_dev_password@127.0.0.1:15432/arcreel python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py -q`
-  - `python -m ruff check server/auth.py server/routers/api_keys.py tests/test_api_keys_router.py tests/test_auth_api_key.py`
-  - `cd frontend && pnpm check`
+- `server/routers/api_keys.py` keeps create/list/update/delete implementation paths behind `ISSUED_TOKENS_ENABLED = False`.
+- `server/auth.py` rejects `arc-` Bearer tokens with `403 feature_disabled` while keeping `_verify_api_key`.
+- `frontend/src/components/pages/ApiKeysTab.tsx` keeps the UI and disables actions through `ISSUED_TOKENS_ENABLED = false`.
+- Tests:
+  - `tests/test_api_keys_router.py`
+  - `tests/test_auth_api_key.py`
 
-## 未完成差距
+### Project identity is now route-id based on the main workspace path
 
-### Phase 1 - 后端 ProjectContext 和项目 ID 化
+The project list, create, detail, update, delete, frontend project cards, create-project navigation, task filters, file routes, assistant routes, and project event stream now use project id as the route key.
 
-当前证据：
+Evidence:
 
-- `lib/db/repositories/project_repo.py` 仍以 `get_by_name/touch_local_path/delete_by_name` 为主。
-- `server/routers/projects.py` 路由仍大量使用 `/projects/{name}`。
-- 项目本地路径仍通过 `_project_json_local_path(manager, project_name)` 生成，指向项目名目录。
-- `ProjectManager` 调用仍以 project name 为主要参数。
+- `server/routers/projects.py` resolves project rows by `id` for the main CRUD path.
+- Project creation stores local project JSON under tenant-scoped project-id paths.
+- `frontend/src/types/project.ts` requires `ProjectSummary.id`.
+- `frontend/src/components/pages/ProjectsPage.tsx` links and deletes by `project.id`.
+- `frontend/src/components/pages/CreateProjectModal.tsx` navigates and uploads style image by `resp.id`.
+- `frontend/src/api.ts` uses `project_id` query parameters for task list/stats/SSE.
 
-需要完成：
+### File and project media routes bind files to project id
 
-- 增加 `get_by_id/touch_local_path_by_id/delete_by_id`。
-- 项目 API route 参数统一改为 `{project_id}`。
-- ProjectContextResolver 以 `tenant_id + project_id` 查询项目并返回 `project_name/project_root/project_json_path`。
-- 项目路径统一为 `_tenants/{tenant_id}/projects/{project_id}/project.json`。
-- 删除项目权限收敛为 owner/admin。
+Project file upload, source import, source read/update/delete, static project file serving, and file listing use `project_id`. Media uploads return `file_id` and do not expose local server paths.
 
-### Phase 2 - 前端项目 ID 路由和租户上下文
+Evidence:
 
-当前证据：
+- `server/routers/files.py` route parameters for project file/source operations are `project_id`.
+- Project media uploads write `FileLinkSpec(resource_type="project", resource_id=project_id, ...)`.
+- `tests/test_files_api_minio.py` asserts project media upload creates a project file link with the route id.
+- `tests/test_files_router.py` now validates media upload responses by `filename/file_id` and verifies local metadata separately.
 
-- `frontend/src/api.ts` 仍发送 `project_name` query 参数。
-- `frontend/src/types/project.ts`、`workspace.ts`、`assistant.ts`、`task.ts` 仍有 `project_name` 字段。
+### Assistant routes enforce tenant permissions and project-id session ownership
 
-需要完成：
+Assistant send/list/get/delete/entries/interrupt/answer/skills routes validate the current tenant membership before using the assistant service. Session ownership compares the stored session project key against the route `project_id`.
 
-- route、store、localStorage、SSE、task polling 统一使用 `project_id`。
-- 项目名只作为展示字段。
+Permission split:
 
-### Phase 3 - 任务、生成、Agent、文件链路上下文化
+- viewer: list sessions, get session, read entries, stream entries, list skills
+- member/admin: send, delete session, interrupt, answer pending questions
 
-当前证据：
+Evidence:
 
-- `server/routers/generate.py` 路由仍是 `/projects/{project_name}/generate/...`。
-- `server/routers/tasks.py` 仍按 `project_name` 过滤、SSE、取消任务。
-- `server/routers/assistant.py` 会话所有权仍比较 `session.project_name`。
-- `server/routers/files.py`、`reference_videos.py`、`grids.py` 等链路仍有 `project_name` 参数。
+- `server/routers/assistant.py` calls `_require_tenant_role`.
+- `server/agent_runtime/service.py` already resolves project cwd through tenant-aware `ProjectManager`.
+- `server/agent_runtime/session_manager.py` provides scoped project roots to SDK options.
+- `tests/test_assistant_routes.py` covers route contract and project-id forwarding.
 
-需要完成：
+### Project event stream is tenant-checked
 
-- 任务入队持久化和读取统一用 `tenant_id + project_id`。
-- Worker 读项目和配置时使用任务上下文，不按项目名查。
-- Agent session 持久化 `tenant_id/project_id/user_id`。
-- 文件和资产绑定使用 `tenant_id/project_id/entity_type/entity_id`。
+Project event SSE now validates current tenant membership through backend membership lookup instead of trusting the JWT tenant snapshot alone.
 
-### Phase 4 - 用量统计按租户和项目分组
+Evidence:
 
-当前证据：
+- `server/routers/project_events.py` calls `require_tenant_access(..., minimum_role=ROLE_VIEW)` and sets tenant context before resolving the stream.
 
-- `server/routers/usage.py` 仍接受 `project_name` query 参数。
-- 前端 usage API 仍有 `projectName` filter。
+### Project asset CRUD is tenant/project-id aware
 
-需要完成：
+Character, scene, prop, and product project asset CRUD routes use `project_id` and require member permissions for writes.
 
-- 用量事实表和查询 API 使用 `project_id`。
-- 聚合按 project_id 分组，project name 只作为展示 join 字段。
+Evidence:
 
-## 下一步串行顺序
+- `server/routers/_asset_router_factory.py`
+- `server/routers/characters.py`
+- `server/routers/scenes.py`
+- `server/routers/props.py`
+- `server/routers/products.py`
 
-1. 后端 ProjectRepository 和 ProjectContextResolver。
-2. `server/routers/projects.py` 项目 CRUD/API 改成 project_id。
-3. 前端项目 API/types/store 改成 project_id。
-4. generate/tasks/assistant/files/usage 链路逐段迁移。
-5. 本机 API 场景测试。
-6. agent-browser 人工路径测试。
+## Verification completed
+
+Backend:
+
+- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter -q`
+  - Result: 200 passed
+- `python -m ruff check <changed backend files and tests>`
+  - Result: passed
+- `basedpyright <changed backend route files>`
+  - Result: 0 errors, 0 warnings; command exits non-zero because project config references a missing `.venv` path.
+
+Frontend:
+
+- `pnpm check`
+  - Result: typecheck passed, lint passed, 925 tests passed.
+
+## Remaining gaps
+
+### Full API scenario test is not complete
+
+The local service at `127.0.0.1:1241` was not running during this pass. No server process was started because project rules prohibit starting services without explicit user authorization.
+
+Required scenario still pending:
+
+- Login as the provided CaMeL user.
+- Create a narration project with AI manga/comic style.
+- Import `~/月亮与六便士第一章一.txt`.
+- Use the right-side assistant to create 3 characters, 3 scenes, 3 props.
+- Generate images for characters/scenes/props.
+- Create 1 episode.
+
+### Browser scenario test is not complete
+
+`agent-browser` testing requires a running local ArcReel web service. This remains pending until the service is available or explicit authorization is given to start it.
+
+### Remaining old `project_name` storage names
+
+Some persistence models and task/session payload fields still use `project_name` as a historical column or response field name while carrying project id values. These need a separate schema-level cleanup if the final storage vocabulary must also be renamed to `project_id`.
+
+### Non-core project subroutes still need full audit
+
+The current pass focused on the scenario-critical path: project CRUD, files/source upload, project assets, generation entry points, tasks, assistant, and project event SSE.
+
+The following route families still require a dedicated project-id audit before this can be called complete:
+
+- script review
+- versions
+- grids
+- reference video units
+- cost estimation
+- usage grouping and display

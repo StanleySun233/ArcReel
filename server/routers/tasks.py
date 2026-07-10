@@ -76,12 +76,12 @@ def _transform_task_event(raw_event: dict, stats: dict) -> dict:
 async def get_task_stats(
     _user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    project_name: str | None = None,
+    project_id: str | None = None,
 ):
     access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
     stats = await queue.get_task_stats(
-        project_name=project_name,
+        project_name=project_id,
         tenant_id=access.id,
         requested_by_user_id=_user.id,
     )
@@ -93,7 +93,7 @@ async def list_tasks(
     _user: CurrentUser,
     _t: Translator,
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    project_name: str | None = None,
+    project_id: str | None = None,
     status: str | None = None,
     task_type: str | None = None,
     source: str | None = None,
@@ -103,7 +103,7 @@ async def list_tasks(
     access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
     result = await queue.list_tasks(
-        project_name=project_name,
+        project_name=project_id,
         status=status,
         task_type=task_type,
         source=source,
@@ -116,9 +116,9 @@ async def list_tasks(
     return result
 
 
-@router.get("/projects/{project_name}/tasks")
+@router.get("/projects/{project_id}/tasks")
 async def list_project_tasks(
-    project_name: str,
+    project_id: str,
     _user: CurrentUser,
     _t: Translator,
     session: Annotated[AsyncSession, Depends(get_async_session)],
@@ -131,7 +131,7 @@ async def list_project_tasks(
     access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
     result = await queue.list_tasks(
-        project_name=project_name,
+        project_name=project_id,
         status=status,
         task_type=task_type,
         source=source,
@@ -149,7 +149,7 @@ async def stream_tasks(
     request: Request,
     _user: CurrentUserFlexible,
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    project_name: str | None = None,
+    project_id: str | None = None,
     last_event_id: int | None = Query(default=None, ge=0),
     last_event_header: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> AsyncIterator[ServerSentEvent]:
@@ -165,12 +165,12 @@ async def stream_tasks(
     cursor = max(0, int(cursor))
 
     scope = {"tenant_id": access.id, "requested_by_user_id": _user.id}
-    latest_event_id = await queue.get_latest_event_id(project_name=project_name, **scope)
+    latest_event_id = await queue.get_latest_event_id(project_name=project_id, **scope)
     snapshot_last_event_id = max(cursor, latest_event_id) if resume_requested else latest_event_id
     snapshot = {
-        "project_name": project_name,
-        "tasks": await queue.get_recent_tasks_snapshot(project_name=project_name, limit=1000, **scope),
-        "stats": await queue.get_task_stats(project_name=project_name, **scope),
+        "project_id": project_id,
+        "tasks": await queue.get_recent_tasks_snapshot(project_name=project_id, limit=1000, **scope),
+        "stats": await queue.get_task_stats(project_name=project_id, **scope),
         "last_event_id": snapshot_last_event_id,
         "generated_at": _utc_now_iso(),
     }
@@ -183,12 +183,12 @@ async def stream_tasks(
 
         events = await queue.get_events_since(
             last_event_id=cursor,
-            project_name=project_name,
+            project_name=project_id,
             limit=200,
             **scope,
         )
         if events:
-            batch_stats = await queue.get_task_stats(project_name=project_name, **scope)
+            batch_stats = await queue.get_task_stats(project_name=project_id, **scope)
             for event in events:
                 cursor = int(event["id"])
                 transformed = _transform_task_event(event, batch_stats)
@@ -232,31 +232,31 @@ async def cancel_task(
     return result
 
 
-@router.get("/projects/{project_name}/tasks/cancel-all-preview")
+@router.get("/projects/{project_id}/tasks/cancel-all-preview")
 async def cancel_all_preview(
-    project_name: str,
+    project_id: str,
     _user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
     queue = get_task_queue()
     queued_count = await queue.get_cancel_all_preview(
-        project_name,
+        project_id,
         tenant_id=access.id,
         requested_by_user_id=_user.id,
     )
     return {"queued_count": queued_count}
 
 
-@router.post("/projects/{project_name}/tasks/cancel-all")
+@router.post("/projects/{project_id}/tasks/cancel-all")
 async def cancel_all_queued(
-    project_name: str,
+    project_id: str,
     _user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
     queue = get_task_queue()
-    result = await queue.cancel_all_queued(project_name, tenant_id=access.id, requested_by_user_id=_user.id)
+    result = await queue.cancel_all_queued(project_id, tenant_id=access.id, requested_by_user_id=_user.id)
     return result
 
 

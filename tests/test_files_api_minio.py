@@ -6,9 +6,10 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from PIL import Image
+from sqlalchemy import select
 
 from lib.db import get_async_session
-from lib.db.models import Project, Tenant, TenantMembership, User
+from lib.db.models import FileLink, Project, Tenant, TenantMembership, User
 from lib.files import FileLinkSpec, FileService
 from lib.project_manager import ProjectManager
 from server.auth import CurrentUserInfo, get_current_user
@@ -108,6 +109,9 @@ async def test_project_media_upload_route_returns_file_id_without_local_path(
     assert body["filename"] == "Alice.png"
     assert "path" not in body
     assert "url" not in body
+    links = (await async_session.execute(select(FileLink).where(FileLink.file_id == body["file_id"]))).scalars().all()
+    project_links = [link for link in links if link.resource_type == "project"]
+    assert [link.resource_id for link in project_links] == ["demo"]
 
 
 @pytest.mark.asyncio

@@ -2,7 +2,7 @@
 认证核心模块
 
 提供密码生成、JWT token 创建/验证、凭据校验等功能。
-同时支持 API Key 认证（`arc-` 前缀的 Bearer token）。
+保留 API Key 认证（`arc-` 前缀的 Bearer token）实现，当前入口默认禁用。
 """
 
 import hashlib
@@ -319,6 +319,7 @@ def ensure_auth_password(env_path: str | None = None) -> str:
 
 API_KEY_PREFIX = "arc-"
 API_KEY_CACHE_TTL = 300  # 5 分钟
+ISSUED_TOKEN_AUTH_ENABLED = False
 
 # LRU 缓存：key_hash → (payload_dict | None, expires_at_timestamp)
 # payload 为 None 表示 key 不存在或已过期（负缓存）
@@ -480,6 +481,8 @@ def _verify_and_get_payload(token: str) -> dict:
 
 
 async def _verify_and_get_payload_async(token: str) -> dict:
+    if token.startswith(API_KEY_PREFIX) and not ISSUED_TOKEN_AUTH_ENABLED:
+        raise HTTPException(status_code=403, detail="feature_disabled")
     return _verify_and_get_payload(token)
 
 

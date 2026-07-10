@@ -58,7 +58,7 @@ class _FakePM:
         return ["ready", "empty", "broken"]
 
     def project_exists(self, name):
-        return name in {"ready", "broken"}
+        return name in self.project_data
 
     def load_project(self, name):
         if name == "broken":
@@ -251,12 +251,23 @@ def _client(monkeypatch, fake_pm, fake_calc):
         def __init__(self, _session, *, tenant_id):
             self.tenant_id = tenant_id
 
+        def _rows(self):
+            return getattr(fake_pm, "project_rows", {name: name for name in fake_pm.list_projects()})
+
         async def list_all(self):
-            return [SimpleNamespace(name=name) for name in fake_pm.list_projects()]
+            return [SimpleNamespace(id=project_id, name=name) for project_id, name in self._rows().items()]
 
         async def get_by_name(self, name):
-            if name in set(fake_pm.list_projects()) | {"exists", "remove-me", "ad-ready"} | fake_pm.created:
-                return SimpleNamespace(name=name)
+            if name in set(self._rows().values()) | {"exists", "remove-me", "ad-ready"} | fake_pm.created:
+                return SimpleNamespace(id=name, name=name)
+            return None
+
+        async def get_by_id(self, project_id):
+            rows = self._rows()
+            if project_id in rows:
+                return SimpleNamespace(id=project_id, name=rows[project_id])
+            if project_id in {"exists", "remove-me", "ad-ready"} | fake_pm.created:
+                return SimpleNamespace(id=project_id, name=project_id)
             return None
 
         async def create(self, *, project_id, name, created_by_user_id, local_path):
@@ -269,6 +280,9 @@ def _client(monkeypatch, fake_pm, fake_calc):
             )
 
         async def delete_by_name(self, name):
+            return True
+
+        async def delete_by_id(self, project_id):
             return True
 
     async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
@@ -432,6 +446,22 @@ class TestProjectsRouter:
 
             get_script_missing = client.get("/api/v1/projects/ready/scripts/missing.json")
             assert get_script_missing.status_code == 404
+
+    def test_project_detail_uses_id_not_display_name(self, tmp_path, monkeypatch):
+        fake_pm = _FakePM(tmp_path)
+        fake_pm.project_data["proj-alpha"] = {"title": "Alpha", "style": "", "episodes": []}
+        fake_pm.project_rows = {"proj-alpha": "Duplicated Display Name"}
+        (tmp_path / "proj-alpha").mkdir(parents=True, exist_ok=True)
+        client = _client(monkeypatch, fake_pm, _FakeCalc())
+
+        with client:
+            detail = client.get("/api/v1/projects/proj-alpha")
+            by_name = client.get("/api/v1/projects/Duplicated%20Display%20Name")
+
+        assert detail.status_code == 200
+        assert detail.json()["id"] == "proj-alpha"
+        assert detail.json()["name"] == "Duplicated Display Name"
+        assert by_name.status_code == 404
 
     def test_create_ad_project(self, tmp_path, monkeypatch):
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())

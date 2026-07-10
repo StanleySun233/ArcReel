@@ -181,9 +181,9 @@ async def download_file_content(
     return Response(content.data, media_type=content.content_type)
 
 
-@router.get("/files/{project_name}/{path:path}")
+@router.get("/files/{project_id}/{path:path}")
 async def serve_project_file(
-    project_name: str,
+    project_id: str,
     path: str,
     request: Request,
     current_user: CurrentUser,
@@ -195,7 +195,7 @@ async def serve_project_file(
         manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = manager.get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
             file_path = project_dir / path
 
             if not file_path.exists():
@@ -218,7 +218,7 @@ async def serve_project_file(
 
         return FileResponse(file_path, headers=headers)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
 
 @router.get("/global-assets/{asset_type}/{filename}")
@@ -244,9 +244,9 @@ async def serve_global_asset(asset_type: str, filename: str, _t: Translator):
     return FileResponse(str(path))
 
 
-@router.post("/projects/{project_name}/upload/{upload_type}")
+@router.post("/projects/{project_id}/upload/{upload_type}")
 async def upload_file(
-    project_name: str,
+    project_id: str,
     upload_type: str,
     current_user: CurrentUser,
     _t: Translator,
@@ -259,7 +259,7 @@ async def upload_file(
     上传文件
 
     Args:
-        project_name: 项目名称
+        project_id: Project ID
         upload_type: 上传类型 (source/character/character_ref/scene/prop/product/product_ref)
         file: 上传的文件
         name: 可选，用于角色/场景/道具/产品名称（自动更新元数据）；product_ref 必填；
@@ -279,28 +279,26 @@ async def upload_file(
             detail=_t("unsupported_image_type", ext=ext, allowed=", ".join(ALLOWED_EXTENSIONS[upload_type])),
         )
 
-    manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
-
-    # Source 分支早返 — 走 SourceLoader 规范化
-    if upload_type == "source":
-        return await _handle_source_upload(
-            project_name=project_name,
-            file=file,
-            on_conflict=on_conflict,
-            _t=_t,
-            manager=manager,
-        )
-
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
+        if upload_type == "source":
+            return await _handle_source_upload(
+                project_id=project_id,
+                file=file,
+                on_conflict=on_conflict,
+                _t=_t,
+                manager=manager,
+            )
+
         content = await file.read()
 
         def _sync():
-            project_dir = manager.get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
 
             # 产品原图列表是这些文件的唯一指针：产品不存在就拒收，避免落下不可见的孤儿文件
             # （character_ref 等单图类型路径确定、可容忍资产后建，不受此约束）。
             if upload_type == "product_ref":
-                products = manager.load_project(project_name).get("products") or {}
+                products = manager.load_project(project_id).get("products") or {}
                 if not name or name not in products:
                     raise HTTPException(status_code=404, detail=_t("product_not_found", name=name or ""))
 
@@ -401,14 +399,14 @@ async def upload_file(
             if upload_type == "character" and name:
                 try:
                     with project_change_source("webui"):
-                        manager.update_project_character_sheet(project_name, name, f"characters/{filename}")
+                        manager.update_project_character_sheet(project_id, name, f"characters/{filename}")
                 except KeyError:
                     pass  # 角色不存在，忽略
 
             if upload_type == "character_ref" and name:
                 try:
                     with project_change_source("webui"):
-                        manager.update_character_reference_image(project_name, name, f"characters/refs/{filename}")
+                        manager.update_character_reference_image(project_id, name, f"characters/refs/{filename}")
                 except KeyError:
                     pass  # 角色不存在，忽略
 
@@ -416,7 +414,7 @@ async def upload_file(
                 try:
                     with project_change_source("webui"):
                         manager.update_scene_sheet(
-                            project_name,
+                            project_id,
                             name,
                             f"scenes/{filename}",
                         )
@@ -427,7 +425,7 @@ async def upload_file(
                 try:
                     with project_change_source("webui"):
                         manager.update_prop_sheet(
-                            project_name,
+                            project_id,
                             name,
                             f"props/{filename}",
                         )
@@ -438,7 +436,7 @@ async def upload_file(
                 try:
                     with project_change_source("webui"):
                         manager.update_product_sheet(
-                            project_name,
+                            project_id,
                             name,
                             f"products/{filename}",
                         )
@@ -449,7 +447,7 @@ async def upload_file(
                 try:
                     with project_change_source("webui"):
                         manager.add_product_reference_image(
-                            project_name,
+                            project_id,
                             name,
                             f"products/refs/{filename}",
                         )
@@ -468,10 +466,10 @@ async def upload_file(
             content_type=file.content_type,
             created_by_user_id=current_user.id,
             links=[
-                FileLinkSpec(resource_type="project", resource_id=project_name, link_type=upload_type),
+                FileLinkSpec(resource_type="project", resource_id=project_id, link_type=upload_type),
                 FileLinkSpec(
                     resource_type="tenant_library",
-                    resource_id=current_user.tenant_id or "",
+                    resource_id=manager.tenant_id or current_user.tenant_id or "",
                     link_type=upload_type,
                 ),
             ],
@@ -484,7 +482,7 @@ async def upload_file(
         }
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:
@@ -494,7 +492,7 @@ async def upload_file(
 
 async def _handle_source_upload(
     *,
-    project_name: str,
+    project_id: str,
     file: UploadFile,
     on_conflict: OnConflict,
     _t: Translator,
@@ -504,9 +502,9 @@ async def _handle_source_upload(
     original_filename = _require_filename(file, _t)
 
     try:
-        project_dir = manager.get_project_path(project_name)
+        project_dir = manager.get_project_path(project_id)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
     source_dir = project_dir / "source"
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -580,7 +578,7 @@ async def _handle_source_upload(
         "success": True,
         "filename": result.normalized_path.name,
         "path": relative_path,
-        "url": f"/api/v1/files/{project_name}/{relative_path}",
+        "url": f"/api/v1/files/{project_id}/{relative_path}",
         "normalized": True,
         "original_kept": result.raw_path is not None,
         "original_filename": result.original_filename,
@@ -589,19 +587,19 @@ async def _handle_source_upload(
     }
 
 
-@router.get("/projects/{project_name}/files")
+@router.get("/projects/{project_id}/files")
 async def list_project_files(
-    project_name: str,
+    project_id: str,
     current_user: CurrentUser,
     _t: Translator,
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """列出项目中的所有文件"""
-    manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = manager.get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
 
             files = {
                 "source": [],
@@ -632,7 +630,7 @@ async def list_project_files(
                         entry = {
                             "name": f.name,
                             "size": f.stat().st_size,
-                            "url": f"/api/v1/files/{project_name}/{subdir}/{f.name}",
+                            "url": f"/api/v1/files/{project_id}/{subdir}/{f.name}",
                         }
                         if subdir == "source":
                             entry["raw_filename"] = raw_by_stem.get(Path(f.name).stem)
@@ -643,7 +641,7 @@ async def list_project_files(
         return await asyncio.to_thread(_sync)
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:
@@ -651,9 +649,9 @@ async def list_project_files(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.get("/projects/{project_name}/source/{filename}")
+@router.get("/projects/{project_id}/source/{filename}")
 async def get_source_file(
-    project_name: str,
+    project_id: str,
     filename: str,
     current_user: CurrentUser,
     _t: Translator,
@@ -664,7 +662,7 @@ async def get_source_file(
         manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = manager.get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
             source_path = project_dir / "source" / filename
 
             if not source_path.exists():
@@ -682,7 +680,7 @@ async def get_source_file(
         return PlainTextResponse(content)
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail=_t("invalid_encoding"))
     except HTTPException:
@@ -692,9 +690,9 @@ async def get_source_file(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.put("/projects/{project_name}/source/{filename}")
+@router.put("/projects/{project_id}/source/{filename}")
 async def update_source_file(
-    project_name: str,
+    project_id: str,
     filename: str,
     current_user: CurrentUser,
     _t: Translator,
@@ -706,7 +704,7 @@ async def update_source_file(
         manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = manager.get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
             source_dir = project_dir / "source"
             source_dir.mkdir(parents=True, exist_ok=True)
             source_path = source_dir / filename
@@ -723,7 +721,7 @@ async def update_source_file(
         return await asyncio.to_thread(_sync)
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:
@@ -731,9 +729,9 @@ async def update_source_file(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.delete("/projects/{project_name}/source/{filename}")
+@router.delete("/projects/{project_id}/source/{filename}")
 async def delete_source_file(
-    project_name: str,
+    project_id: str,
     filename: str,
     current_user: CurrentUser,
     _t: Translator,
@@ -744,7 +742,7 @@ async def delete_source_file(
         manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = manager.get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
             source_path = project_dir / "source" / filename
 
             # 安全检查：确保路径在项目目录内
@@ -769,7 +767,7 @@ async def delete_source_file(
         return await asyncio.to_thread(_sync)
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:

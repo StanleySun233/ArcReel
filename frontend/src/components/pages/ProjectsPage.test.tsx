@@ -54,6 +54,7 @@ describe("ProjectsPage", () => {
     vi.spyOn(API, "listProjects").mockResolvedValue({
       projects: [
         {
+          id: "proj-demo",
           name: "demo",
           title: "Demo Project",
           style: "Anime",
@@ -85,6 +86,7 @@ describe("ProjectsPage", () => {
     vi.spyOn(API, "listProjects").mockResolvedValue({
       projects: [
         {
+          id: "proj-demo",
           name: "demo",
           title: "Custom Demo",
           style: "",
@@ -113,6 +115,7 @@ describe("ProjectsPage", () => {
     vi.spyOn(API, "listProjects").mockResolvedValue({
       projects: [
         {
+          id: "proj-demo",
           name: "demo",
           title: "Empty Style Demo",
           style: "",
@@ -193,6 +196,7 @@ describe("ProjectsPage", () => {
       .mockResolvedValueOnce({
         projects: [
           {
+            id: "proj-team-demo",
             name: "team-demo",
             title: "Team Demo",
             style: "",
@@ -231,6 +235,7 @@ describe("ProjectsPage", () => {
       .mockResolvedValueOnce({
         projects: [
           {
+            id: "proj-imported-demo",
             name: "imported-demo",
             title: "Imported Demo",
             style: "Anime",
@@ -336,6 +341,7 @@ describe("ProjectsPage", () => {
       .mockResolvedValueOnce({
         projects: [
           {
+            id: "proj-demo",
             name: "demo",
             title: "Demo",
             style: "Anime",

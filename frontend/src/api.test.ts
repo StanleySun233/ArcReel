@@ -551,12 +551,12 @@ describe("API", () => {
 
       expect(requestSpy).toHaveBeenCalledWith("/tasks/task%20id");
       expect(requestSpy).toHaveBeenCalledWith(
-        "/tasks?project_name=demo&status=running&task_type=video&source=webui&page=2&page_size=10",
+        "/tasks?project_id=demo&status=running&task_type=video&source=webui&page=2&page_size=10",
       );
       expect(requestSpy).toHaveBeenCalledWith(
         "/projects/demo/tasks?status=failed&task_type=image&source=agent&page=3&page_size=20",
       );
-      expect(requestSpy).toHaveBeenCalledWith("/tasks/stats?project_name=demo");
+      expect(requestSpy).toHaveBeenCalledWith("/tasks/stats?project_id=demo");
       expect(requestSpy).toHaveBeenCalledWith(
         "/projects/demo/assistant/sessions?status=running",
       );
@@ -1036,7 +1036,7 @@ describe("API", () => {
       });
 
       expect(instances[0].url).toBe(
-        "/api/v1/tasks/stream?project_name=demo&last_event_id=42",
+        "/api/v1/tasks/stream?project_id=demo&last_event_id=42",
       );
 
       const es = instances[0];
@@ -1078,7 +1078,7 @@ describe("API", () => {
       vi.stubGlobal("EventSource", EventSourceMock as unknown as typeof EventSource);
 
       API.openTaskStream({ projectName: "demo", lastEventId: "0" });
-      expect(instances[0].url).toBe("/api/v1/tasks/stream?project_name=demo");
+      expect(instances[0].url).toBe("/api/v1/tasks/stream?project_id=demo");
     });
   });
 

@@ -10,7 +10,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
+from server.routers import _asset_router_factory as asset_router_factory
 from server.routers import characters
+from server.services.tenant_auth import TenantAccess
 from tests.conftest import make_translator
 
 # 兜底 500 的默认 locale 文案：测试未覆盖 get_translator，端点回落到 DEFAULT_LOCALE("zh")，
@@ -48,10 +50,20 @@ class _FakePM:
 def _client(monkeypatch):
     fake_pm = _FakePM()
     monkeypatch.setattr(characters, "get_project_manager", lambda: fake_pm)
+    monkeypatch.setattr(asset_router_factory, "set_tenant_context", _set_context)
+    monkeypatch.setattr(asset_router_factory, "require_tenant_access", _access)
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
     app.include_router(characters.router, prefix="/api/v1")
     return TestClient(app), fake_pm
+
+
+async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
+    return TenantAccess(id="ten_test", name="Tenant", role="member", is_owner=False, personal=True)
+
+
+async def _set_context(_session, *, user_id, tenant_id):
+    return None
 
 
 class TestAssetRouterFactory:
@@ -165,6 +177,8 @@ class TestAssetRouterNoLeak:
             "get_project_manager",
             lambda: (_ for _ in ()).throw(RuntimeError("LEAK_add")),
         )
+        monkeypatch.setattr(asset_router_factory, "set_tenant_context", _set_context)
+        monkeypatch.setattr(asset_router_factory, "require_tenant_access", _access)
         app = FastAPI()
         app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
         app.include_router(characters.router, prefix="/api/v1")
@@ -180,6 +194,8 @@ class TestAssetRouterNoLeak:
             "get_project_manager",
             lambda: (_ for _ in ()).throw(RuntimeError("LEAK_update")),
         )
+        monkeypatch.setattr(asset_router_factory, "set_tenant_context", _set_context)
+        monkeypatch.setattr(asset_router_factory, "require_tenant_access", _access)
         app = FastAPI()
         app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
         app.include_router(characters.router, prefix="/api/v1")
@@ -195,6 +211,8 @@ class TestAssetRouterNoLeak:
             "get_project_manager",
             lambda: (_ for _ in ()).throw(RuntimeError("LEAK_delete")),
         )
+        monkeypatch.setattr(asset_router_factory, "set_tenant_context", _set_context)
+        monkeypatch.setattr(asset_router_factory, "require_tenant_access", _access)
         app = FastAPI()
         app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
         app.include_router(characters.router, prefix="/api/v1")

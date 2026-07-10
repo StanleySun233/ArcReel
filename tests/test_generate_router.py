@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import generate
+from server.services.tenant_auth import TenantAccess
 
 
 class _FakeQueue:
@@ -113,8 +114,14 @@ def _prepare_files(tmp_path: Path) -> Path:
 
 def _client(monkeypatch, fake_pm, fake_queue):
     monkeypatch.setattr(generate, "get_project_manager", lambda: fake_pm)
+    monkeypatch.setattr(generate, "get_tenant_project_manager", lambda _tenant_id: fake_pm)
     monkeypatch.setattr("lib.generation_queue.get_generation_queue", lambda: fake_queue)
     monkeypatch.setattr(generate, "get_generation_queue", lambda: fake_queue)
+
+    async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
+        return TenantAccess(id="ten_test", name="Tenant", role="member", is_owner=False, personal=True)
+
+    monkeypatch.setattr(generate, "require_tenant_access", _access)
 
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
@@ -435,6 +442,11 @@ class TestUnexpectedErrorMapsTo500:
             raise RuntimeError(sentinel)
 
         monkeypatch.setattr(generate, "get_project_manager", _boom)
+        monkeypatch.setattr(generate, "get_tenant_project_manager", lambda _tenant_id: _boom())
+        async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
+            return TenantAccess(id="ten_test", name="Tenant", role="member", is_owner=False, personal=True)
+
+        monkeypatch.setattr(generate, "require_tenant_access", _access)
         app = FastAPI()
         app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
         app.include_router(generate.router, prefix="/api/v1")

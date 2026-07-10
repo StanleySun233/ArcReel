@@ -2,7 +2,8 @@
 
 from unittest.mock import AsyncMock, patch
 
-from fastapi import FastAPI
+import pytest
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from lib.i18n import get_translator
@@ -11,10 +12,16 @@ from server.routers import assistant
 from tests.conftest import make_translator
 from tests.factories import make_session_meta
 
-PROJECT = "demo"
-PREFIX = f"/api/v1/projects/{PROJECT}/assistant"
+PROJECT_ID = "proj-demo"
+PREFIX = f"/api/v1/projects/{PROJECT_ID}/assistant"
 
 _FAKE_USER = CurrentUserInfo(id="default", sub="testuser", role="admin")
+
+
+@pytest.fixture(autouse=True)
+def _allow_tenant_access():
+    with patch.object(assistant, "_require_tenant_role", new=AsyncMock()):
+        yield
 
 
 def _override_translator():
@@ -32,7 +39,7 @@ def _build_client() -> TestClient:
     app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     app.dependency_overrides[get_current_user_flexible] = lambda: _FAKE_USER
     app.dependency_overrides[get_translator] = _override_translator
-    app.include_router(assistant.router, prefix="/api/v1/projects/{project_name}/assistant")
+    app.include_router(assistant.router, prefix="/api/v1/projects/{project_id}/assistant")
     return TestClient(app)
 
 
@@ -83,7 +90,7 @@ class TestAssistantRoutes:
         }
 
         # Mock get_session for ownership validation
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
         with (
             patch.object(
                 assistant.assistant_service,
@@ -114,6 +121,28 @@ class TestAssistantRoutes:
 
         _assert_generic_500(response, "LEAK_send")
 
+    def test_send_uses_project_id_from_route(self):
+        send_mock = AsyncMock(return_value={"status": "accepted", "session_id": "session-1", "entry": None})
+        with patch.object(assistant.assistant_service, "send_or_create", new=send_mock):
+            with _build_client() as client:
+                response = client.post(f"{PREFIX}/sessions/send", json={"content": "hi"})
+
+        assert response.status_code == 200
+        assert send_mock.await_args.args[0] == PROJECT_ID
+
+    def test_send_preserves_tenant_permission_error(self):
+        send_mock = AsyncMock()
+        with (
+            patch.object(assistant, "_require_tenant_role", new=AsyncMock(side_effect=HTTPException(403, "denied"))),
+            patch.object(assistant.assistant_service, "send_or_create", new=send_mock),
+        ):
+            with _build_client() as client:
+                response = client.post(f"{PREFIX}/sessions/send", json={"content": "hi"})
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "denied"
+        send_mock.assert_not_awaited()
+
     def test_list_sessions_unexpected_error_no_leak(self):
         with patch.object(
             assistant.assistant_service,
@@ -137,7 +166,7 @@ class TestAssistantRoutes:
         _assert_generic_500(response, "LEAK_get")
 
     def test_delete_session_unexpected_error_no_leak(self):
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
         with (
             patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
             patch.object(
@@ -152,7 +181,7 @@ class TestAssistantRoutes:
         _assert_generic_500(response, "LEAK_delete")
 
     def test_interrupt_unexpected_error_no_leak(self):
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
         with (
             patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
             patch.object(
@@ -167,7 +196,7 @@ class TestAssistantRoutes:
         _assert_generic_500(response, "LEAK_interrupt")
 
     def test_answer_question_unexpected_error_no_leak(self):
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT)
+        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
         with (
             patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
             patch.object(

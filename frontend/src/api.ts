@@ -529,7 +529,7 @@ class API {
 
   static async createProject(
     payload: CreateProjectPayload,
-  ): Promise<{ success: boolean; name: string; project: ProjectData }> {
+  ): Promise<{ success: boolean; id: string; name: string; project: ProjectData }> {
     return this.request("/projects", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -1459,7 +1459,7 @@ class API {
     filters: TaskListFilters = {}
   ): Promise<{ items: TaskItem[]; total: number; page: number; page_size: number }> {
     const params = new URLSearchParams();
-    if (filters.projectName) params.append("project_name", filters.projectName);
+    if (filters.projectName) params.append("project_id", filters.projectName);
     if (filters.status) params.append("status", filters.status);
     if (filters.taskType) params.append("task_type", filters.taskType);
     if (filters.source) params.append("source", filters.source);
@@ -1489,7 +1489,7 @@ class API {
     projectName: string | null = null
   ): Promise<{ stats: TaskStats }> {
     const params = new URLSearchParams();
-    if (projectName) params.append("project_name", projectName);
+    if (projectName) params.append("project_id", projectName);
     const query = params.toString();
     return this.request(`/tasks/stats${query ? "?" + query : ""}`);
   }
@@ -1537,7 +1537,7 @@ class API {
   static openTaskStream(options: TaskStreamOptions = {}): EventSource {
     const params = new URLSearchParams();
     if (options.projectName)
-      params.append("project_name", options.projectName);
+      params.append("project_id", options.projectName);
     const parsedLastEventId = Number(options.lastEventId);
     if (Number.isFinite(parsedLastEventId) && parsedLastEventId > 0) {
       params.append("last_event_id", String(parsedLastEventId));

@@ -425,11 +425,11 @@ async def list_projects(_user: CurrentUser):
         calculator = StatusCalculator(manager)
         projects = []
         for row in rows:
+            project_id = row.id
             name = row.name
             try:
-                # 尝试加载项目元数据
-                if manager.project_exists(name):
-                    project = manager.load_project(name)
+                if manager.project_exists(project_id):
+                    project = manager.load_project(project_id)
                     # 一次性预加载每集剧本，喂给 cover + status 两路下游，去除重复 JSON I/O。
                     # key 为 episode['script_file'] 原值（match resolve_project_cover /
                     # StatusCalculator 对 key 的期望）。任何一集加载失败都不影响列表：
@@ -440,14 +440,14 @@ async def list_projects(_user: CurrentUser):
                         if not script_file:
                             continue
                         try:
-                            preloaded_scripts[script_file] = manager.load_script(name, script_file)
+                            preloaded_scripts[script_file] = manager.load_script(project_id, script_file)
                         except (FileNotFoundError, OSError, json.JSONDecodeError, ValueError) as load_err:
                             # 与 resolve_project_cover / StatusCalculator._load_episode_script
                             # 对齐：I/O 缺失 + JSON/schema 解析失败 → 跳过此集，继续预加载其他集；
                             # 非预期异常（RuntimeError/MemoryError 等）让其冒泡到外层 try，走 basic info 兜底行。
                             logger.debug(
                                 "list_projects 预加载剧本失败 project=%s script=%s err=%s",
-                                name,
+                                project_id,
                                 script_file,
                                 load_err,
                             )
@@ -455,14 +455,16 @@ async def list_projects(_user: CurrentUser):
                     # 封面走 resolve_project_cover fallback 链：
                     # video_thumbnail → storyboard_image → scene_sheet → character_sheet
                     # —— 兼顾 reference / grid / storyboard 三种生成模式。
-                    thumbnail = resolve_project_cover(manager, name, project, preloaded_scripts=preloaded_scripts)
+                    thumbnail = resolve_project_cover(manager, project_id, project, preloaded_scripts=preloaded_scripts)
 
-                    # 使用 StatusCalculator 计算进度（读时计算）
-                    status = calculator.calculate_project_status(name, project, preloaded_scripts=preloaded_scripts)
+                    status = calculator.calculate_project_status(
+                        project_id, project, preloaded_scripts=preloaded_scripts
+                    )
 
                     raw_title = project.get("title")
                     projects.append(
                         {
+                            "id": project_id,
                             "name": name,
                             # title 缺失/为 None/类型异常时统一归一为空串,前端 i18n
                             # 兜底显示「未命名项目」,确保接口契约始终返回 str。
@@ -478,6 +480,7 @@ async def list_projects(_user: CurrentUser):
                     # 没有 project.json 的项目
                     projects.append(
                         {
+                            "id": project_id,
                             "name": name,
                             "title": "",
                             "style": "",
@@ -489,7 +492,15 @@ async def list_projects(_user: CurrentUser):
                 # 出错时返回基本信息
                 logger.warning("加载项目 '%s' 元数据失败: %s", name, e)
                 projects.append(
-                    {"name": name, "title": "", "style": "", "thumbnail": None, "status": {}, "error": str(e)}
+                    {
+                        "id": project_id,
+                        "name": name,
+                        "title": "",
+                        "style": "",
+                        "thumbnail": None,
+                        "status": {},
+                        "error": str(e),
+                    }
                 )
 
         return {"projects": projects}
@@ -655,9 +666,9 @@ async def get_video_capabilities(
         ) from exc
 
 
-@router.get("/projects/{name}")
+@router.get("/projects/{project_id}")
 async def get_project(
-    name: str,
+    project_id: str,
     _user: CurrentUser,
     _t: Translator,
 ):
@@ -667,19 +678,20 @@ async def get_project(
             async with session.begin():
                 access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
                 await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
-                if await ProjectRepository(session, tenant_id=access.id).get_by_name(name) is None:
-                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+                row = await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id)
+                if row is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+                project_name = row.name
 
         def _sync():
             manager = get_tenant_project_manager(access.id)
             calculator = StatusCalculator(manager)
-            if not manager.project_exists(name):
-                raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+            if not manager.project_exists(project_id):
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
-            project = manager.load_project(name)
+            project = manager.load_project(project_id)
 
-            # 注入计算字段（不写入 JSON，仅用于 API 响应）
-            project = calculator.enrich_project(name, project)
+            project = calculator.enrich_project(project_id, project)
 
             # 加载所有剧本并注入计算字段
             scripts = {}
@@ -687,7 +699,7 @@ async def get_project(
                 script_file = ep.get("script_file", "")
                 if script_file:
                     try:
-                        script = manager.load_script(name, script_file)
+                        script = manager.load_script(project_id, script_file)
                         script = calculator.enrich_script(script)
                         key = (
                             script_file.replace("scripts/", "", 1)
@@ -696,13 +708,14 @@ async def get_project(
                         )
                         scripts[key] = script
                     except FileNotFoundError:
-                        logger.debug("剧本文件不存在，跳过: %s/%s", name, script_file)
+                        logger.debug("剧本文件不存在，跳过: %s/%s", project_id, script_file)
 
-            # 计算媒体文件指纹（用于前端内容寻址缓存）
-            project_path = manager.get_project_path(name)
+            project_path = manager.get_project_path(project_id)
             fingerprints = compute_asset_fingerprints(project_path)
 
             return {
+                "id": project_id,
+                "name": project_name,
                 "project": project,
                 "scripts": scripts,
                 "asset_fingerprints": fingerprints,
@@ -710,7 +723,7 @@ async def get_project(
 
         return await asyncio.to_thread(_sync)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:
@@ -718,17 +731,18 @@ async def get_project(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.patch("/projects/{name}")
-async def update_project(name: str, req: UpdateProjectRequest, _user: CurrentUser, _t: Translator):
+@router.patch("/projects/{project_id}")
+async def update_project(project_id: str, req: UpdateProjectRequest, _user: CurrentUser, _t: Translator):
     """更新项目元数据"""
     try:
         async with async_session_factory() as session:
             async with session.begin():
                 access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
                 await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
-                repo = ProjectRepository(session, tenant_id=access.id)
-                if await repo.get_by_name(name) is None:
-                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+                row = await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id)
+                if row is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+                project_name = row.name
 
         def _sync():
             manager = get_tenant_project_manager(access.id)
@@ -887,12 +901,16 @@ async def update_project(name: str, req: UpdateProjectRequest, _user: CurrentUse
                     project["episodes"] = new_episodes
 
             with project_change_source("webui"):
-                # update_project 已在持锁窗口内统一应用迁移，返回升级后字段，无需二次 load_project
-                return {"success": True, "project": manager.update_project(name, _mutate)}
+                return {
+                    "success": True,
+                    "id": project_id,
+                    "name": project_name,
+                    "project": manager.update_project(project_id, _mutate),
+                }
 
         return await asyncio.to_thread(_sync)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:
@@ -900,30 +918,31 @@ async def update_project(name: str, req: UpdateProjectRequest, _user: CurrentUse
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.delete("/projects/{name}")
-async def delete_project(name: str, _user: CurrentUser, _t: Translator):
+@router.delete("/projects/{project_id}")
+async def delete_project(project_id: str, _user: CurrentUser, _t: Translator):
     """删除项目"""
     try:
         async with async_session_factory() as session:
             async with session.begin():
                 access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
                 await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
-                repo = ProjectRepository(session, tenant_id=access.id)
-                if await repo.get_by_name(name) is None:
-                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+                row = await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id)
+                if row is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+                project_name = row.name
 
         def _sync():
-            get_tenant_project_manager(access.id).delete_project_directory(name)
-            return {"success": True, "message": _t("project_deleted", name=name)}
+            get_tenant_project_manager(access.id).delete_project_directory(project_id)
+            return {"success": True, "message": _t("project_deleted", name=project_name)}
 
         result = await asyncio.to_thread(_sync)
         async with async_session_factory() as session:
             async with session.begin():
                 await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
-                await ProjectRepository(session, tenant_id=access.id).delete_by_name(name)
+                await ProjectRepository(session, tenant_id=access.id).delete_by_id(project_id)
         return result
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:

@@ -41,6 +41,10 @@ def get_project_manager() -> ProjectManager:
     return pm
 
 
+def get_tenant_project_manager(tenant_id: str) -> ProjectManager:
+    return ProjectManager(app_data_dir(), tenant_id=tenant_id)
+
+
 # ==================== 请求模型 ====================
 
 
@@ -79,9 +83,9 @@ class GenerateProductRequest(BaseModel):
 # ==================== 分镜图生成 ====================
 
 
-@router.post("/projects/{project_name}/generate/storyboard/{segment_id}")
+@router.post("/projects/{project_id}/generate/storyboard/{segment_id}")
 async def generate_storyboard(
-    project_name: str,
+    project_id: str,
     segment_id: str,
     req: GenerateStoryboardRequest,
     _user: CurrentUser,
@@ -97,8 +101,9 @@ async def generate_storyboard(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            get_project_manager().load_project(project_name)
-            script = get_project_manager().load_script(project_name, req.script_file)
+            manager = get_tenant_project_manager(access.id)
+            manager.load_project(project_id)
+            script = manager.load_script(project_id, req.script_file)
             items, id_field, _, _, _ = get_storyboard_items(script)
             resolved = find_storyboard_item(items, id_field, segment_id)
             if resolved is None:
@@ -118,10 +123,9 @@ async def generate_storyboard(
         except TaskSpecValidationError as e:
             raise HTTPException(status_code=400, detail=_t(e.code, **e.params))
 
-        # 入队
         queue = get_generation_queue()
         result = await queue.enqueue_task(
-            project_name=project_name,
+            project_name=project_id,
             task_type=spec.task_type,
             media_type=spec.media_type,
             resource_id=spec.resource_id,
@@ -154,9 +158,9 @@ async def generate_storyboard(
 # ==================== 视频生成 ====================
 
 
-@router.post("/projects/{project_name}/generate/video/{segment_id}")
+@router.post("/projects/{project_id}/generate/video/{segment_id}")
 async def generate_video(
-    project_name: str,
+    project_id: str,
     segment_id: str,
     req: GenerateVideoRequest,
     _user: CurrentUser,
@@ -172,15 +176,15 @@ async def generate_video(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            pm_local = get_project_manager()
-            pm_local.load_project(project_name)
-            project_path = pm_local.get_project_path(project_name)
+            pm_local = get_tenant_project_manager(access.id)
+            pm_local.load_project(project_id)
+            project_path = pm_local.get_project_path(project_id)
 
             # 与 worker 一致：优先读取 generated_assets.storyboard_image，回退默认路径。
             # 旧宫格项目 storyboard_image 指向 scene_{id}_first.png，仍可正常解析。
             storyboard_rel: str | None = None
             try:
-                script = pm_local.load_script(project_name, req.script_file)
+                script = pm_local.load_script(project_id, req.script_file)
                 items, id_field, _, _, _ = get_storyboard_items(script)
                 resolved = find_storyboard_item(items, id_field, segment_id)
                 if resolved:
@@ -224,10 +228,9 @@ async def generate_video(
         except TaskSpecValidationError as e:
             raise HTTPException(status_code=400, detail=_t(e.code, **e.params))
 
-        # 入队（provider 由服务层根据配置自动解析，调用方无需传递）
         queue = get_generation_queue()
         result = await queue.enqueue_task(
-            project_name=project_name,
+            project_name=project_id,
             task_type=spec.task_type,
             media_type=spec.media_type,
             resource_id=spec.resource_id,
@@ -285,7 +288,7 @@ def _narration_text(segment: dict) -> str:
 
 async def _enqueue_tts_segment(
     *,
-    project_name: str,
+    project_id: str,
     segment_id: str,
     script_file: str,
     user_id: str,
@@ -305,7 +308,7 @@ async def _enqueue_tts_segment(
 
     queue = get_generation_queue()
     return await queue.enqueue_task(
-        project_name=project_name,
+        project_name=project_id,
         task_type=spec.task_type,
         media_type=spec.media_type,
         resource_id=spec.resource_id,
@@ -319,9 +322,9 @@ async def _enqueue_tts_segment(
     )
 
 
-@router.post("/projects/{project_name}/generate/tts/{segment_id}")
+@router.post("/projects/{project_id}/generate/tts/{segment_id}")
 async def generate_tts(
-    project_name: str,
+    project_id: str,
     segment_id: str,
     req: GenerateTtsRequest,
     _user: CurrentUser,
@@ -336,9 +339,9 @@ async def generate_tts(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync() -> tuple[dict, dict]:
-            pm_local = get_project_manager()
-            _project = pm_local.load_project(project_name)
-            script = pm_local.load_script(project_name, req.script_file)
+            pm_local = get_tenant_project_manager(access.id)
+            _project = pm_local.load_project(project_id)
+            script = pm_local.load_script(project_id, req.script_file)
             items, id_field, _, _, _ = get_storyboard_items(script)
             resolved = find_storyboard_item(items, id_field, segment_id)
             if resolved is None:
@@ -353,7 +356,7 @@ async def generate_tts(
         provider_id = await _require_audio_provider_configured(project, _t, user_id=_user.id, tenant_id=access.id)
 
         result = await _enqueue_tts_segment(
-            project_name=project_name,
+            project_id=project_id,
             segment_id=segment_id,
             script_file=req.script_file,
             user_id=_user.id,
@@ -379,9 +382,9 @@ async def generate_tts(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.post("/projects/{project_name}/generate/tts")
+@router.post("/projects/{project_id}/generate/tts")
 async def generate_tts_batch(
-    project_name: str,
+    project_id: str,
     req: GenerateTtsRequest,
     _user: CurrentUser,
     _t: Translator,
@@ -392,9 +395,9 @@ async def generate_tts_batch(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync() -> tuple[dict, list[str]]:
-            pm_local = get_project_manager()
-            _project = pm_local.load_project(project_name)
-            script = pm_local.load_script(project_name, req.script_file)
+            pm_local = get_tenant_project_manager(access.id)
+            _project = pm_local.load_project(project_id)
+            script = pm_local.load_script(project_id, req.script_file)
             items, id_field, _, _, _ = get_storyboard_items(script)
             missing: list[str] = []
             for item in items:
@@ -418,7 +421,7 @@ async def generate_tts_batch(
         task_ids: list[str] = []
         for seg_id in missing_ids:
             result = await _enqueue_tts_segment(
-                project_name=project_name,
+                project_id=project_id,
                 segment_id=seg_id,
                 script_file=req.script_file,
                 user_id=_user.id,
@@ -457,7 +460,7 @@ _ASSET_GENERATE_I18N: dict[str, dict[str, str]] = {
 async def _enqueue_asset_generation(
     *,
     asset_type: str,
-    project_name: str,
+    project_id: str,
     resource_name: str,
     prompt: str,
     user_id: str,
@@ -469,7 +472,7 @@ async def _enqueue_asset_generation(
     keys = _ASSET_GENERATE_I18N[asset_type]
 
     def _sync():
-        project = get_project_manager().load_project(project_name)
+        project = get_tenant_project_manager(tenant_id).load_project(project_id)
         if resource_name not in project.get(spec.bucket_key, {}):
             raise HTTPException(status_code=404, detail=_t(keys["not_found"], name=resource_name))
 
@@ -487,7 +490,7 @@ async def _enqueue_asset_generation(
 
     queue = get_generation_queue()
     result = await queue.enqueue_task(
-        project_name=project_name,
+        project_name=project_id,
         task_type=task_spec.task_type,
         media_type=task_spec.media_type,
         resource_id=task_spec.resource_id,
@@ -505,9 +508,9 @@ async def _enqueue_asset_generation(
     }
 
 
-@router.post("/projects/{project_name}/generate/character/{char_name}")
+@router.post("/projects/{project_id}/generate/character/{char_name}")
 async def generate_character(
-    project_name: str,
+    project_id: str,
     char_name: str,
     req: GenerateCharacterRequest,
     _user: CurrentUser,
@@ -519,7 +522,7 @@ async def generate_character(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="character",
-            project_name=project_name,
+            project_id=project_id,
             resource_name=char_name,
             prompt=req.prompt,
             user_id=_user.id,
@@ -535,9 +538,9 @@ async def generate_character(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.post("/projects/{project_name}/generate/scene/{scene_name}")
+@router.post("/projects/{project_id}/generate/scene/{scene_name}")
 async def generate_scene(
-    project_name: str,
+    project_id: str,
     scene_name: str,
     req: GenerateSceneRequest,
     _user: CurrentUser,
@@ -549,7 +552,7 @@ async def generate_scene(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="scene",
-            project_name=project_name,
+            project_id=project_id,
             resource_name=scene_name,
             prompt=req.prompt,
             user_id=_user.id,
@@ -565,9 +568,9 @@ async def generate_scene(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.post("/projects/{project_name}/generate/prop/{prop_name}")
+@router.post("/projects/{project_id}/generate/prop/{prop_name}")
 async def generate_prop(
-    project_name: str,
+    project_id: str,
     prop_name: str,
     req: GeneratePropRequest,
     _user: CurrentUser,
@@ -579,7 +582,7 @@ async def generate_prop(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="prop",
-            project_name=project_name,
+            project_id=project_id,
             resource_name=prop_name,
             prompt=req.prompt,
             user_id=_user.id,
@@ -595,9 +598,9 @@ async def generate_prop(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.post("/projects/{project_name}/generate/product/{product_name}")
+@router.post("/projects/{project_id}/generate/product/{product_name}")
 async def generate_product(
-    project_name: str,
+    project_id: str,
     product_name: str,
     req: GenerateProductRequest,
     _user: CurrentUser,
@@ -609,7 +612,7 @@ async def generate_product(
         access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="product",
-            project_name=project_name,
+            project_id=project_id,
             resource_name=product_name,
             prompt=req.prompt,
             user_id=_user.id,

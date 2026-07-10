@@ -86,7 +86,7 @@ class TestTasksRouterMore:
             request=request,
             _user=CurrentUserInfo(id="default", sub="testuser", role="admin"),
             session=object(),
-            project_name="demo",
+            project_id="demo",
             last_event_id=None,
             last_event_header=" 7 ",
         )
@@ -120,7 +120,7 @@ class TestTasksRouterMore:
             request=request,
             _user=CurrentUserInfo(id="default", sub="testuser", role="admin"),
             session=object(),
-            project_name="demo",
+            project_id="demo",
             last_event_id=0,
             last_event_header=None,
         )

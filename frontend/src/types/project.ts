@@ -168,6 +168,7 @@ export interface ProjectData {
  * has no project.json or encounters an error during loading.
  */
 export interface ProjectSummary {
+  id: string;
   name: string;
   title: string;
   style: string;
@@ -204,6 +205,7 @@ export interface ExportDiagnostics {
 
 export interface ImportProjectResponse {
   success: boolean;
+  id?: string;
   project_name: string;
   project: ProjectData;
   warnings: string[];

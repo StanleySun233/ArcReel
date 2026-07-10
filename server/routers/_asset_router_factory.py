@@ -21,10 +21,13 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict
 
 from lib.asset_types import ASSET_SPECS, validate_asset_name
+from lib.db import async_session_factory
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from lib.project_change_hints import project_change_source
 from lib.project_manager import ProjectManager
 from server.auth import CurrentUser
+from server.services.tenant_auth import ROLE_MEMBER, require_tenant_access
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +72,7 @@ class _CreateRequest(BaseModel):
 def build_asset_router(
     *,
     asset_type: str,
-    pm_getter: Callable[[], ProjectManager],
+    pm_getter: Callable[..., ProjectManager],
 ) -> APIRouter:
     """构造单一类型的项目级资产 CRUD 路由。
 
@@ -81,14 +84,27 @@ def build_asset_router(
     spec = ASSET_SPECS[asset_type]
     keys = _I18N_KEYS[asset_type]
     result_key = asset_type
-    update_fields: tuple[str, ...] = ("description", spec.media_file_field, *spec.extra_string_fields)
+    update_fields: tuple[str, ...] = ("description", spec.sheet_field, spec.media_file_field, *spec.extra_string_fields)
     update_list_fields: tuple[str, ...] = spec.extra_list_fields
 
     router = APIRouter()
 
-    @router.post(f"/projects/{{project_name}}/{spec.subdir}")
+    def _manager(tenant_id: str) -> ProjectManager:
+        try:
+            return pm_getter(tenant_id)
+        except TypeError:
+            return pm_getter()
+
+    async def _require_member(_user: CurrentUser):
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                return access
+
+    @router.post(f"/projects/{{project_id}}/{spec.subdir}")
     async def add_entry(
-        project_name: str,
+        project_id: str,
         req: _CreateRequest,
         _user: CurrentUser,
         _t: Translator,
@@ -107,36 +123,39 @@ def build_asset_router(
             if value is not None and not _is_string_list(value):
                 raise HTTPException(status_code=422, detail=f"field '{field}' must be a list of strings")
         try:
+            access = await _require_member(_user)
 
             def _sync():
-                manager = pm_getter()
+                manager = _manager(access.id)
                 entry: dict[str, Any] = {
                     "description": req.description,
                     spec.media_file_field: extras.get(spec.media_file_field, ""),
                 }
+                if spec.sheet_field in extras:
+                    entry[spec.sheet_field] = extras[spec.sheet_field]
                 for field in spec.extra_string_fields:
                     entry[field] = extras.get(field, "")
                 for field in spec.extra_list_fields:
                     entry[field] = list(extras.get(field) or [])
                 with project_change_source("webui"):
-                    ok = manager._add_asset(asset_type, project_name, name, entry)
+                    ok = manager._add_asset(asset_type, project_id, name, entry)
                 if not ok:
                     raise HTTPException(status_code=409, detail=_t(keys["exists"], name=name))
-                data = manager.load_project(project_name)
+                data = manager.load_project(project_id)
                 return {"success": True, result_key: data[spec.bucket_key][name]}
 
             return await asyncio.to_thread(_sync)
         except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
         except HTTPException:
             raise
         except Exception:
             logger.exception("请求处理失败")
             raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
-    @router.patch(f"/projects/{{project_name}}/{spec.subdir}/{{entry_name}}")
+    @router.patch(f"/projects/{{project_id}}/{spec.subdir}/{{entry_name}}")
     async def update_entry(
-        project_name: str,
+        project_id: str,
         entry_name: str,
         req: dict[str, Any],
         _user: CurrentUser,
@@ -155,9 +174,10 @@ def build_asset_router(
                 raise HTTPException(status_code=422, detail=f"field '{field}' must be a list of strings")
 
         try:
+            access = await _require_member(_user)
 
             def _sync():
-                manager = pm_getter()
+                manager = _manager(access.id)
                 result: dict[str, Any] = {}
 
                 def _mutate(project):
@@ -171,26 +191,27 @@ def build_asset_router(
                     result.update(entry)
 
                 with project_change_source("webui"):
-                    manager.update_project(project_name, _mutate)
+                    manager.update_project(project_id, _mutate)
                 return {"success": True, result_key: result}
 
             return await asyncio.to_thread(_sync)
         except KeyError:
             raise HTTPException(status_code=404, detail=_t(keys["not_found"], name=entry_name))
         except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
         except HTTPException:
             raise
         except Exception:
             logger.exception("请求处理失败")
             raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
-    @router.delete(f"/projects/{{project_name}}/{spec.subdir}/{{entry_name}}")
-    async def delete_entry(project_name: str, entry_name: str, _user: CurrentUser, _t: Translator):
+    @router.delete(f"/projects/{{project_id}}/{spec.subdir}/{{entry_name}}")
+    async def delete_entry(project_id: str, entry_name: str, _user: CurrentUser, _t: Translator):
         try:
+            access = await _require_member(_user)
 
             def _sync():
-                manager = pm_getter()
+                manager = _manager(access.id)
 
                 def _mutate(project):
                     bucket = project.get(spec.bucket_key) or {}
@@ -199,14 +220,14 @@ def build_asset_router(
                     del bucket[entry_name]
 
                 with project_change_source("webui"):
-                    manager.update_project(project_name, _mutate)
+                    manager.update_project(project_id, _mutate)
                 return {"success": True, "message": _t(keys["deleted"], name=entry_name)}
 
             return await asyncio.to_thread(_sync)
         except KeyError:
             raise HTTPException(status_code=404, detail=_t(keys["not_found"], name=entry_name))
         except FileNotFoundError:
-            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
         except HTTPException:
             raise
         except Exception:

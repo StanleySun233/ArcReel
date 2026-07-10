@@ -13,11 +13,14 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from pydantic import BaseModel, Field
 
 from lib import PROJECT_ROOT
+from lib.db import async_session_factory
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator, get_locale
 from server.agent_runtime.models import SessionMeta
 from server.agent_runtime.service import AssistantService
 from server.agent_runtime.session_manager import AgentStartupError, SessionCapacityError
-from server.auth import CurrentUser, CurrentUserFlexible
+from server.auth import CurrentUser, CurrentUserFlexible, CurrentUserInfo
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
 
@@ -28,25 +31,34 @@ def get_assistant_service() -> AssistantService:
     return assistant_service
 
 
+async def _require_tenant_role(user: CurrentUserInfo, minimum_role: str) -> None:
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, user, minimum_role=minimum_role)
+            await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+
+
 async def _validate_session_ownership(
-    service: AssistantService, session_id: str, project_name: str, _t: Callable[..., str]
+    service: AssistantService, session_id: str, project_id: str, _t: Callable[..., str]
 ) -> "SessionMeta":
     """Validate session belongs to the specified project and return it."""
     session = await service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail=_t("session_not_found", session_id=session_id))
-    if session.project_name != project_name:
+    if session.project_name != project_id:
         raise HTTPException(status_code=404, detail=_t("session_not_found", session_id=session_id))
     return session
 
 
 async def _assistant_service_for_stream(
-    project_name: str,
+    project_id: str,
     session_id: str,
+    _user: CurrentUserFlexible,
     _t: Translator,
 ) -> tuple[AssistantService, SessionMeta]:
+    await _require_tenant_role(_user, ROLE_VIEW)
     service = get_assistant_service()
-    meta = await _validate_session_ownership(service, session_id, project_name, _t)
+    meta = await _validate_session_ownership(service, session_id, project_id, _t)
     return service, meta
 
 
@@ -69,16 +81,17 @@ class AnswerQuestionRequest(BaseModel):
 
 @router.post("/sessions/send")
 async def send_message(
-    project_name: str,
+    project_id: str,
     req: SendRequest,
     request: Request,
     _user: CurrentUser,
     _t: Translator,
 ):
     try:
+        await _require_tenant_role(_user, ROLE_MEMBER)
         service = get_assistant_service()
         result = await service.send_or_create(
-            project_name,
+            project_id,
             req.content,
             session_id=req.session_id,
             images=req.images,
@@ -99,6 +112,8 @@ async def send_message(
             status_code=502,
             detail=_t("agent_startup_failed", details=str(exc)),
         )
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("请求处理失败")
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
@@ -106,7 +121,7 @@ async def send_message(
 
 @router.get("/sessions")
 async def list_sessions(
-    project_name: str,
+    project_id: str,
     _user: CurrentUser,
     _t: Translator,
     status: Literal["idle", "running", "completed", "error", "interrupted"] | None = None,
@@ -114,8 +129,9 @@ async def list_sessions(
     offset: int = Query(default=0, ge=0),
 ):
     try:
+        await _require_tenant_role(_user, ROLE_VIEW)
         sessions = await get_assistant_service().list_sessions(
-            project_name=project_name, status=status, limit=limit, offset=offset
+            project_name=project_id, status=status, limit=limit, offset=offset
         )
         return {"sessions": [s.model_dump() for s in sessions]}
     except HTTPException:
@@ -126,10 +142,11 @@ async def list_sessions(
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(project_name: str, session_id: str, _user: CurrentUser, _t: Translator):
+async def get_session(project_id: str, session_id: str, _user: CurrentUser, _t: Translator):
     try:
+        await _require_tenant_role(_user, ROLE_VIEW)
         service = get_assistant_service()
-        session = await _validate_session_ownership(service, session_id, project_name, _t)
+        session = await _validate_session_ownership(service, session_id, project_id, _t)
         return session.model_dump()
     except HTTPException:
         raise
@@ -139,10 +156,11 @@ async def get_session(project_name: str, session_id: str, _user: CurrentUser, _t
 
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(project_name: str, session_id: str, _user: CurrentUser, _t: Translator):
+async def delete_session(project_id: str, session_id: str, _user: CurrentUser, _t: Translator):
     try:
+        await _require_tenant_role(_user, ROLE_MEMBER)
         service = get_assistant_service()
-        await _validate_session_ownership(service, session_id, project_name, _t)
+        await _validate_session_ownership(service, session_id, project_id, _t)
         deleted = await service.delete_session(session_id)
         if not deleted:
             raise HTTPException(status_code=404, detail=_t("session_not_found", session_id=session_id))
@@ -155,7 +173,7 @@ async def delete_session(project_name: str, session_id: str, _user: CurrentUser,
 
 
 @router.get("/sessions/{session_id}/messages")
-async def list_messages(project_name: str, session_id: str, _user: CurrentUser, _t: Translator):
+async def list_messages(project_id: str, session_id: str, _user: CurrentUser, _t: Translator):
     raise HTTPException(
         status_code=410,
         detail=_t("interface_offline"),
@@ -163,7 +181,7 @@ async def list_messages(project_name: str, session_id: str, _user: CurrentUser, 
 
 
 @router.get("/sessions/{session_id}/snapshot")
-async def get_snapshot(project_name: str, session_id: str, _user: CurrentUser, _t: Translator):
+async def get_snapshot(project_id: str, session_id: str, _user: CurrentUser, _t: Translator):
     raise HTTPException(
         status_code=410,
         detail=_t("interface_offline"),
@@ -172,7 +190,7 @@ async def get_snapshot(project_name: str, session_id: str, _user: CurrentUser, _
 
 @router.get("/sessions/{session_id}/entries")
 async def list_entries(
-    project_name: str,
+    project_id: str,
     session_id: str,
     _user: CurrentUser,
     _t: Translator,
@@ -180,8 +198,9 @@ async def list_entries(
 ):
     """冷读会话事件日志（历史回放；``after`` 为 seq 游标）。"""
     try:
+        await _require_tenant_role(_user, ROLE_VIEW)
         service = get_assistant_service()
-        meta = await _validate_session_ownership(service, session_id, project_name, _t)
+        meta = await _validate_session_ownership(service, session_id, project_id, _t)
         return await service.list_session_entries(session_id, meta=meta, after_seq=after)
     except HTTPException:
         raise
@@ -194,10 +213,9 @@ async def list_entries(
 
 @router.get("/sessions/{session_id}/entries/stream", response_class=EventSourceResponse)
 async def stream_entries(
-    project_name: str,
+    project_id: str,
     session_id: str,
     request: Request,
-    _user: CurrentUserFlexible,
     _t: Translator,
     after: int = Query(default=-1, ge=-1),
     deps: tuple[AssistantService, SessionMeta] = Depends(_assistant_service_for_stream),
@@ -226,10 +244,11 @@ async def stream_entries(
 
 
 @router.post("/sessions/{session_id}/interrupt")
-async def interrupt_session(project_name: str, session_id: str, _user: CurrentUser, _t: Translator):
+async def interrupt_session(project_id: str, session_id: str, _user: CurrentUser, _t: Translator):
     try:
+        await _require_tenant_role(_user, ROLE_MEMBER)
         service = get_assistant_service()
-        meta = await _validate_session_ownership(service, session_id, project_name, _t)
+        meta = await _validate_session_ownership(service, session_id, project_id, _t)
         result = await service.interrupt_session(session_id, meta=meta)
         return result
     except HTTPException:
@@ -245,7 +264,7 @@ async def interrupt_session(project_name: str, session_id: str, _user: CurrentUs
 
 @router.post("/sessions/{session_id}/questions/{question_id}/answer")
 async def answer_question(
-    project_name: str,
+    project_id: str,
     session_id: str,
     question_id: str,
     req: AnswerQuestionRequest,
@@ -255,8 +274,9 @@ async def answer_question(
     if not req.answers:
         raise HTTPException(status_code=400, detail=_t("answers_required"))
     try:
+        await _require_tenant_role(_user, ROLE_MEMBER)
         service = get_assistant_service()
-        meta = await _validate_session_ownership(service, session_id, project_name, _t)
+        meta = await _validate_session_ownership(service, session_id, project_id, _t)
         result = await service.answer_user_question(
             session_id=session_id,
             question_id=question_id,
@@ -276,7 +296,7 @@ async def answer_question(
 
 
 @router.get("/sessions/{session_id}/stream")
-async def stream_events(project_name: str, session_id: str, _user: CurrentUserFlexible, _t: Translator):
+async def stream_events(project_id: str, session_id: str, _user: CurrentUserFlexible, _t: Translator):
     raise HTTPException(
         status_code=410,
         detail=_t("interface_offline"),
@@ -284,12 +304,13 @@ async def stream_events(project_name: str, session_id: str, _user: CurrentUserFl
 
 
 @router.get("/skills")
-async def list_skills(project_name: str, _user: CurrentUser, _t: Translator):
+async def list_skills(project_id: str, _user: CurrentUser, _t: Translator):
     try:
-        skills = get_assistant_service().list_available_skills(project_name=project_name)
+        await _require_tenant_role(_user, ROLE_VIEW)
+        skills = get_assistant_service().list_available_skills(project_name=project_id)
         return {"skills": skills}
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:

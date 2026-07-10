@@ -380,7 +380,7 @@ function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete, canWrite }
   return (
     <article className="group relative overflow-hidden rounded-[12px] border border-hairline bg-bg-grad-a/85 transition-[transform,border-color,box-shadow] duration-150 motion-safe:hover:-translate-y-0.5 hover:border-accent/45 hover:shadow-[0_18px_40px_-22px_oklch(0_0_0_/_0.6),0_0_0_1px_var(--color-accent-soft)] focus-within:border-accent/60 focus-within:shadow-[0_0_0_2px_var(--color-accent-soft)]">
       <Link
-        href={`/app/projects/${project.name}`}
+        href={`/app/projects/${project.id}`}
         className="block w-full text-left text-text no-underline outline-none"
         aria-label={`${projectDisplayName} · ${styleLabel}${phaseLabel ? ` · ${phaseLabel}` : ""}`}
       >
@@ -658,7 +658,7 @@ function NowEditingCard({ project, styleLabel, phaseLabels, t }: NowEditingCardP
         <div className="flex-1" />
         <div className="relative mt-4 flex justify-end">
           <Link
-            href={`/app/projects/${project.name}`}
+            href={`/app/projects/${project.id}`}
             className="inline-flex items-center gap-2 rounded-[7px] px-4 py-2.5 text-[12px] font-semibold no-underline transition-transform motion-safe:hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             style={ACCENT_BUTTON_STYLE}
           >
@@ -1227,7 +1227,7 @@ export function ProjectsPage() {
 
       const autoFixedCount = result.diagnostics.auto_fixed.length;
       const warningCount = result.diagnostics.warnings.length;
-      const navigateTo = `/app/projects/${result.project_name}`;
+      const navigateTo = `/app/projects/${result.id ?? result.project_name}`;
       if (warningCount > 0 || autoFixedCount > 0) {
         useAppStore
           .getState()
@@ -1294,7 +1294,7 @@ export function ProjectsPage() {
     const projectDisplayName = deletingProject.title || deletingProject.name;
     setDeleteLoading(true);
     try {
-      await API.deleteProject(deletingProject.name);
+      await API.deleteProject(deletingProject.id);
       await fetchProjects();
       useAppStore.getState().pushToast(t("common:deleted"), "success");
     } catch (err) {
@@ -1354,7 +1354,7 @@ export function ProjectsPage() {
 
   const styleLabels = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const p of projects) map[p.name] = styleLabelOf(p, t);
+    for (const p of projects) map[p.id] = styleLabelOf(p, t);
     return map;
   }, [projects, t]);
 
@@ -1378,7 +1378,7 @@ export function ProjectsPage() {
   const restProjects = useMemo(
     () =>
       featured
-        ? filteredProjects.filter((p) => p.name !== featured.name)
+        ? filteredProjects.filter((p) => p.id !== featured.id)
         : filteredProjects,
     [featured, filteredProjects],
   );
@@ -1456,7 +1456,7 @@ export function ProjectsPage() {
                 </div>
                 <NowEditingCard
                   project={featured}
-                  styleLabel={styleLabels[featured.name] ?? ""}
+                  styleLabel={styleLabels[featured.id] ?? ""}
                   phaseLabels={phaseLabels}
                   t={t}
                 />
@@ -1494,9 +1494,9 @@ export function ProjectsPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {restProjects.map((project) => (
                     <ProjectCard
-                      key={project.name}
+                      key={project.id}
                       project={project}
-                      styleLabel={styleLabels[project.name] ?? ""}
+                      styleLabel={styleLabels[project.id] ?? ""}
                       phaseLabels={phaseLabels}
                       t={t}
                       onDelete={() => setDeletingProject(project)}

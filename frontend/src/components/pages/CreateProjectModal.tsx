@@ -293,7 +293,7 @@ export function CreateProjectModal() {
       // Upload style image if in custom mode
       if (style.mode === "custom" && style.uploadedFile) {
         try {
-          await API.uploadStyleImage(resp.name, style.uploadedFile);
+          await API.uploadStyleImage(resp.id, style.uploadedFile);
         } catch {
           useAppStore.getState().pushToast(
             t("dashboard:style_upload_failed_hint"),
@@ -303,7 +303,7 @@ export function CreateProjectModal() {
       }
 
       setShowCreateModal(false);
-      navigate(`/app/projects/${resp.name}`);
+      navigate(`/app/projects/${resp.id}`);
     } catch (err) {
       useAppStore.getState().pushToast(
         `${t("dashboard:create_project_failed")}${errMsg(err)}`,

@@ -79,6 +79,7 @@ describe("CreateProjectModal", () => {
     vi.spyOn(API, "listCustomProviders").mockResolvedValue({ providers: [] });
     vi.spyOn(API, "createProject").mockResolvedValue({
       success: true,
+      id: "proj-demo",
       name: "demo-proj",
       project: {} as never,
     });
@@ -147,7 +148,7 @@ describe("CreateProjectModal", () => {
         default_duration: null,
       })
     );
-    expect(navigateMock).toHaveBeenCalledWith("/app/projects/demo-proj");
+    expect(navigateMock).toHaveBeenCalledWith("/app/projects/proj-demo");
   });
 
   it("goes back from step 2 to step 1 preserving title", async () => {
@@ -202,7 +203,7 @@ describe("CreateProjectModal", () => {
     expect(API.createProject).toHaveBeenCalledWith(expect.objectContaining({
       style_template_id: null,
     }));
-    await waitFor(() => expect(API.uploadStyleImage).toHaveBeenCalledWith("demo-proj", file));
+    await waitFor(() => expect(API.uploadStyleImage).toHaveBeenCalledWith("proj-demo", file));
   });
 
   it("允许在 custom tab 未上传文件时创建项目（风格为可选）", async () => {
@@ -240,6 +241,7 @@ describe("CreateProjectModal ad mode", () => {
     vi.spyOn(API, "listCustomProviders").mockResolvedValue({ providers: [] });
     vi.spyOn(API, "createProject").mockResolvedValue({
       success: true,
+      id: "proj-ad",
       name: "ad-proj",
       project: {} as never,
     });
@@ -272,7 +274,7 @@ describe("CreateProjectModal ad mode", () => {
     );
     const payload = vi.mocked(API.createProject).mock.calls[0][0];
     expect("default_duration" in payload).toBe(false);
-    expect(navigateMock).toHaveBeenCalledWith("/app/projects/ad-proj");
+    expect(navigateMock).toHaveBeenCalledWith("/app/projects/proj-ad");
   });
 
   it("does not send target_duration for narration projects", async () => {

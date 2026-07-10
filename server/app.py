@@ -553,7 +553,7 @@ app.include_router(script_review.router, prefix="/api/v1", tags=["剧本审核 g
 app.include_router(shot_uploads.router, prefix="/api/v1", tags=["镜头上传"])
 app.include_router(versions.router, prefix="/api/v1", tags=["版本管理"])
 app.include_router(usage.router, prefix="/api/v1", tags=["费用统计"])
-app.include_router(assistant.router, prefix="/api/v1/projects/{project_name}/assistant", tags=["助手会话"])
+app.include_router(assistant.router, prefix="/api/v1/projects/{project_id}/assistant", tags=["助手会话"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["任务队列"])
 app.include_router(project_events.router, prefix="/api/v1", tags=["项目变更流"])
 app.include_router(providers.router, prefix="/api/v1", tags=["供应商管理"])
