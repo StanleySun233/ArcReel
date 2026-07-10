@@ -21,7 +21,7 @@
 - [ ] Convert project media references to file IDs.
   - Commit: pending
 - [ ] Add tenant-aware generation enqueue and worker writeback.
-  - Commit: pending
+  - Commit: b8393b9 (queue/task tenant snapshot + tenant-scoped repository queries)
 - [ ] Add project and task tenant isolation tests.
   - Commit: pending
 
