@@ -26,6 +26,8 @@
   - Commit: pending
 - [ ] Add deny-by-default and cross-tenant RLS tests.
   - Commit: pending
+- [x] Convert SQLite-only Alembic tests to PostgreSQL.
+  - Commit: pending
 
 **Ready for QA:** no
 

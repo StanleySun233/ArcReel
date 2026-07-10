@@ -1,6 +1,7 @@
 """Alembic environment configuration for PostgreSQL asyncpg."""
 
 import asyncio
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -57,7 +58,9 @@ def do_run_migrations(connection) -> None:
 async def run_async_migrations() -> None:
     """Run migrations using an async engine."""
     url = get_database_url()
-    connectable = create_async_engine(url, poolclass=pool.NullPool)
+    schema = os.environ.get("ARCREEL_TEST_DB_SCHEMA", "").strip()
+    connect_args = {"server_settings": {"search_path": schema}} if schema else {}
+    connectable = create_async_engine(url, poolclass=pool.NullPool, connect_args=connect_args)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
