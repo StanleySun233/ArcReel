@@ -30,6 +30,9 @@
 | `PATCH /api/v1/projects/{name}/script-scenes/{scene_id}` | `PATCH /api/v1/projects/{project_id}/script-scenes/{scene_id}` | drama 场景编辑 |
 | `PATCH /api/v1/projects/{name}/segments/{segment_id}` | `PATCH /api/v1/projects/{project_id}/segments/{segment_id}` | narration 片段编辑 |
 | `PATCH /api/v1/projects/{name}/episodes/{episode}` | `PATCH /api/v1/projects/{project_id}/episodes/{episode}` | 分集标题编辑 |
+| `GET /api/v1/projects/{name}/episodes/{episode}/script-review` | `GET /api/v1/projects/{project_id}/episodes/{episode}/script-review` | step1 审核读取 |
+| `PUT /api/v1/projects/{name}/episodes/{episode}/script-review/content` | `PUT /api/v1/projects/{project_id}/episodes/{episode}/script-review/content` | step1 审核内容保存 |
+| `POST /api/v1/projects/{name}/episodes/{episode}/script-review/confirm` | `POST /api/v1/projects/{project_id}/episodes/{episode}/script-review/confirm` | step1 审核确认 |
 | `POST /api/v1/projects/{name}/source` | `POST /api/v1/projects/{project_id}/source` | 源文件或源文本导入 |
 | `GET /api/v1/projects/{name}/events/stream` | `GET /api/v1/projects/{project_id}/events/stream` | SSE channel 使用 project_id |
 | `POST /api/v1/projects/{name}/assistant/sessions/send` | `POST /api/v1/projects/{project_id}/assistant/sessions/send` | Agent cwd 使用 project_id |

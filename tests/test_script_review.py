@@ -8,13 +8,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-from lib import script_review
+import lib.script_review as script_review
 from lib.json_io import atomic_write_json
 from lib.project_manager import ProjectManager
+from server.auth import CurrentUserInfo, get_current_user
+import server.routers.script_review as script_review_router
 from server.services.script_review import ScriptReviewError, ScriptReviewService
+from server.services.tenant_auth import TenantAccess
 
 
 def _drama_step1() -> dict:
@@ -321,6 +327,74 @@ class TestLegacyEnumeration:
         project_path = pm.get_project_path("demo")
         assert ScriptReviewService(pm).get_state("demo", 1)["status"] == "confirmed"
         assert script_review.gate_blocks_step2(project_path, pm.load_project("demo"), 1) is False
+
+
+def _router_client(monkeypatch, pm: ProjectManager) -> TestClient:
+    monkeypatch.setattr(script_review_router, "get_tenant_project_manager", lambda _tenant_id: pm)
+
+    class _Begin:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    class _Session:
+        def begin(self):
+            return _Begin()
+
+    class _SessionContext:
+        async def __aenter__(self):
+            return _Session()
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    class _Repo:
+        def __init__(self, _session, *, tenant_id):
+            self.tenant_id = tenant_id
+
+        async def get_by_id(self, project_id):
+            if project_id == "demo":
+                return SimpleNamespace(id="demo", name="duplicated-display-name")
+            return None
+
+    async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _set_context(_session, *, user_id, tenant_id):
+        return None
+
+    monkeypatch.setattr(script_review_router, "async_session_factory", lambda: _SessionContext())
+    monkeypatch.setattr(script_review_router, "ProjectRepository", _Repo)
+    monkeypatch.setattr(script_review_router, "require_tenant_access", _access)
+    monkeypatch.setattr(script_review_router, "set_tenant_context", _set_context)
+
+    app = FastAPI()
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
+    app.include_router(script_review_router.router, prefix="/api/v1")
+    return TestClient(app)
+
+
+class TestScriptReviewRouter:
+    def test_routes_resolve_by_project_id_not_display_name(self, tmp_path, monkeypatch):
+        pm = _make_project(tmp_path, "drama")
+        _write_step1(pm, "drama", _drama_step1())
+        client = _router_client(monkeypatch, pm)
+
+        with client:
+            by_id = client.get("/api/v1/projects/demo/episodes/1/script-review")
+            by_name = client.get("/api/v1/projects/duplicated-display-name/episodes/1/script-review")
+
+        assert by_id.status_code == 200
+        assert by_id.json()["status"] == "pending_review"
+        assert by_name.status_code == 404
 
     def test_step1_step2_review_matching_confirmed(self, tmp_path):
         pm = _make_project(tmp_path, "drama")

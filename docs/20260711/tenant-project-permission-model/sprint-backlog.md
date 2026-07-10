@@ -51,7 +51,8 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [x] 项目文件路径改为 `_tenants/{tenant_id}/projects/{project_id}/project.json`。
 - [x] `projects` 表保持 `unique(tenant_id, name)`，但已修复路径的业务查询走 `project_id`。
 - [x] cost estimation 路由按 `project_id` 解析。
-- [ ] 非主链路 project 子路由仍需专项审计：script review、versions、grids、reference video、usage、project export。
+- [x] script review 路由按 `project_id` 解析，读/写权限分离。
+- [ ] 非主链路 project 子路由仍需专项审计：versions、grids、reference video、usage、project export。
 - [ ] 跨租户同名项目端到端测试通过。
 
 ### Phase 2 - 前端项目 ID 路由和租户上下文

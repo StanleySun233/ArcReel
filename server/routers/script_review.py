@@ -11,10 +11,14 @@ import logging
 from fastapi import APIRouter, Body, HTTPException
 
 from lib.app_data_dir import app_data_dir
+from lib.db import async_session_factory
+from lib.db.repositories.project_repo import ProjectRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from lib.project_manager import ProjectManager
 from server.auth import CurrentUser
 from server.services.script_review import ScriptReviewError, ScriptReviewService
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,21 @@ pm = ProjectManager(app_data_dir())
 
 def get_project_manager() -> ProjectManager:
     return pm
+
+
+def get_tenant_project_manager(tenant_id: str) -> ProjectManager:
+    return ProjectManager(app_data_dir(), tenant_id=tenant_id)
+
+
+async def _script_review_service(project_id: str, user: CurrentUser, _t: Translator, *, minimum_role: str):
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, user, minimum_role=minimum_role)
+            await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+            row = await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+    return ScriptReviewService(get_tenant_project_manager(access.id))
 
 
 # gate 领域错误码 → (HTTP 状态, i18n key)。invalid_content / episode_not_found 带参数另行注入。
@@ -52,21 +71,21 @@ def _raise_review_error(exc: ScriptReviewError, episode: int, _t: Translator) ->
     raise HTTPException(status_code=status, detail=detail)
 
 
-@router.get("/projects/{project_name}/episodes/{episode}/script-review")
-async def get_script_review(project_name: str, episode: int, _user: CurrentUser, _t: Translator):
+@router.get("/projects/{project_id}/episodes/{episode}/script-review")
+async def get_script_review(project_id: str, episode: int, _user: CurrentUser, _t: Translator):
     """读取该集 step1 结构化中间态 + 审核状态（供 web 渲染与编辑）。"""
     try:
-        service = ScriptReviewService(get_project_manager())
-        return await asyncio.to_thread(service.get_state, project_name, episode)
+        service = await _script_review_service(project_id, _user, _t, minimum_role=ROLE_VIEW)
+        return await asyncio.to_thread(service.get_state, project_id, episode)
     except ScriptReviewError as exc:
         _raise_review_error(exc, episode, _t)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
 
-@router.put("/projects/{project_name}/episodes/{episode}/script-review/content")
+@router.put("/projects/{project_id}/episodes/{episode}/script-review/content")
 async def update_script_review_content(
-    project_name: str,
+    project_id: str,
     episode: int,
     _user: CurrentUser,
     _t: Translator,
@@ -74,21 +93,21 @@ async def update_script_review_content(
 ):
     """保存手动 / agent 编辑后的结构化中间态，并使该集重新进入待审。"""
     try:
-        service = ScriptReviewService(get_project_manager())
-        return await asyncio.to_thread(service.save_content, project_name, episode, content)
+        service = await _script_review_service(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+        return await asyncio.to_thread(service.save_content, project_id, episode, content)
     except ScriptReviewError as exc:
         _raise_review_error(exc, episode, _t)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
 
-@router.post("/projects/{project_name}/episodes/{episode}/script-review/confirm")
-async def confirm_script_review(project_name: str, episode: int, _user: CurrentUser, _t: Translator):
+@router.post("/projects/{project_id}/episodes/{episode}/script-review/confirm")
+async def confirm_script_review(project_id: str, episode: int, _user: CurrentUser, _t: Translator):
     """用户显式确认 step1 内容，放行 step2 视觉生成。"""
     try:
-        service = ScriptReviewService(get_project_manager())
-        return await asyncio.to_thread(service.confirm, project_name, episode)
+        service = await _script_review_service(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+        return await asyncio.to_thread(service.confirm, project_id, episode)
     except ScriptReviewError as exc:
         _raise_review_error(exc, episode, _t)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
