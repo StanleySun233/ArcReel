@@ -9,6 +9,40 @@ Coverage labels:
 - Automated frontend: Vitest/Playwright.
 - Manual: browser or deployed-stack verification with recorded evidence.
 
+## Coverage Completeness Index
+
+Each commercialized function must have at least three test scenarios, including at least one denial/corner case where the function has an authorization, consistency, rollback, or stale-state failure mode.
+
+| Function Area | Scenario IDs | Count | Required Corner Cases |
+|---------------|--------------|-------|-----------------------|
+| Auth and tenant selection | AUTH-01..AUTH-08 | 8 | missing membership, stale role, revoked tenant, invalid OAuth scheme |
+| CaMeL provider/API key bootstrap | CAMEL-01..CAMEL-09 | 9 | conflict, wrong client, missing scope, local partial failure |
+| Membership and roles | ROLE-01..ROLE-09 | 9 | owner invariant, member overreach, view denial, cache invalidation |
+| PostgreSQL RLS | RLS-01..RLS-06 | 6 | missing context, cross-tenant read/write denial, worker context |
+| Files and MinIO | FILE-01..FILE-08 | 8 | private bucket, signed URL denial/expiry, DB failure after object write |
+| Projects | PROJ-01..PROJ-08 | 8 | duplicate same tenant, view edit denial, legacy path rejection |
+| Asset libraries | ASSET-01..ASSET-09 | 9 | no source read, sync without confirm, source unavailable |
+| Provider configuration and API keys | CFG-01..CFG-07 | 7 | tenant isolation, removed key owner, API key cannot manage keys |
+| Generation, tasks, usage | GEN-01..GEN-08 | 8 | view enqueue denial, role revoked after enqueue, SSE/dedupe isolation |
+| Frontend end-to-end | UI-01..UI-08 | 8 | stale role interceptor, revoked access fallback, view-only UI |
+| Release smoke | SMOKE-01..SMOKE-04 | 4 | empty bootstrap, cross-tenant attack, restart persistence |
+
+## Scripted Acceptance Strategy
+
+Story 10 must convert this matrix into two executable suites:
+
+1. Backend scenario suite:
+   - Starts from an explicitly initialized PostgreSQL/Redis/MinIO state.
+   - Calls ArcReel APIs directly with tenant tokens and API keys.
+   - Recreates initialization on every full rerun instead of relying on a partially initialized database.
+   - Fails fast on a scenario bug, fixes the implementation, then reruns the full suite from initialization.
+2. Browser scenario suite:
+   - Uses `agent-browser` against a locally running ArcReel frontend.
+   - Exercises login callback, tenant switching, member management, role-gated UI, upload/signing, asset/project/generation flows.
+   - Records screenshots or structured browser observations for every manual-only release smoke.
+
+No scenario is considered accepted unless its result is tied back to one ID in this matrix.
+
 ## Auth And Tenant Selection
 
 | ID | Scenario | Setup | Expected Result | Coverage | Owner |
