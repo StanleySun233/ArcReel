@@ -11,24 +11,29 @@ import shutil
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib.app_data_dir import app_data_dir
 from lib.asset_types import GLOBAL_LIBRARY_ASSET_TYPES
+from lib.db import get_async_session
 from lib.episode_paths import (
     REFERENCE_VIDEO_STEP1_FILENAME,
     STEP1_FILENAMES,
     episode_drafts_dir,
     step1_read_candidates,
 )
+from lib.files import FileLinkSpec, FileService
 from lib.i18n import Translator
 from lib.image_utils import normalize_uploaded_image, validate_image_bytes
 from lib.project_change_hints import emit_project_change_batch, project_change_source
 from lib.project_manager import ProjectManager, effective_mode
+from lib.storage import get_storage_service
 from lib.source_loader import (
     ConflictError,
     CorruptFileError,
@@ -40,6 +45,7 @@ from lib.source_loader import (
     UnsupportedFormatError,
 )
 from server.auth import CurrentUser
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
 
@@ -67,6 +73,51 @@ ALLOWED_EXTENSIONS = {
     "product": [".png", ".jpg", ".jpeg", ".webp"],
     "product_ref": [".png", ".jpg", ".jpeg", ".webp"],
 }
+
+
+@router.post("/files")
+async def upload_private_file(
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    file: UploadFile = File(...),
+    alias: str | None = Form(None),
+    purpose: str = Form("upload"),
+):
+    access = await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
+    filename = alias or _require_filename(file, _t)
+    content = await file.read()
+    record = await FileService(session, get_storage_service()).create_file(
+        content=content,
+        alias=filename,
+        content_type=file.content_type,
+        created_by_user_id=current_user.id,
+        links=[FileLinkSpec(resource_type="tenant_library", resource_id=access.id, link_type=purpose)],
+    )
+    await session.commit()
+    return {
+        "file_id": record.file_id,
+        "alias": record.alias,
+        "mime_type": record.content_type,
+        "size_bytes": record.size_bytes,
+    }
+
+
+@router.get("/files/{file_id}/signed-url")
+async def get_file_signed_url(
+    file_id: str,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    await require_tenant_access(session, current_user, minimum_role=ROLE_VIEW)
+    url = await FileService(session, get_storage_service()).signed_url_for_user(
+        file_id=file_id,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+    )
+    if url is None:
+        raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
+    return {"file_id": file_id, "url": url, "expires_in": 300}
 
 
 @router.get("/files/{project_name}/{path:path}")
