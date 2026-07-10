@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -322,6 +323,49 @@ async def test_camel_bootstrap_conflict_does_not_create_local_providers(
     assert "camel-oauth-token" not in redirect_location
 
     assert await CustomProviderRepository(session, user_id="camel:123").list_providers() == []
+
+
+@pytest.mark.asyncio
+async def test_request_camel_tokens_accepts_structured_400_business_error(monkeypatch: pytest.MonkeyPatch):
+    from server.services import camel_bootstrap
+
+    configure_bootstrap_env(monkeypatch)
+    settings = camel_bootstrap.get_camel_bootstrap_settings()
+
+    class FakeClient:
+        def __init__(self, timeout: float):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, url: str, headers: dict, json: dict):
+            return httpx.Response(
+                400,
+                request=httpx.Request("POST", url),
+                json={
+                    "success": False,
+                    "error": "token_name_conflict",
+                    "conflicts": [
+                        {
+                            "media": "image",
+                            "name": "camel-arcreel-123-image",
+                            "key": "sk-should-not-be-exposed",
+                            "delete_url": "https://camel.example/token/camel-arcreel-123-image",
+                        }
+                    ],
+                },
+            )
+
+    monkeypatch.setattr(camel_bootstrap.httpx, "AsyncClient", FakeClient)
+
+    result = await camel_bootstrap._request_camel_tokens(settings, "oauth-token", "create", "idem-1")
+
+    assert result["success"] is False
+    assert result["error"] == "token_name_conflict"
 
 
 @pytest.mark.asyncio

@@ -156,7 +156,6 @@ async def _request_camel_tokens(
                 headers={"Authorization": f"Bearer {access_token}"},
                 json=payload,
             )
-            response.raise_for_status()
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="CaMeL token provisioning request failed") from exc
     try:
@@ -165,6 +164,8 @@ async def _request_camel_tokens(
         raise HTTPException(status_code=502, detail="CaMeL token provisioning response was invalid") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=502, detail="CaMeL token provisioning response was invalid")
+    if response.status_code >= 400 and body.get("success") is not False:
+        raise HTTPException(status_code=502, detail="CaMeL token provisioning request failed")
     return body
 
 
