@@ -12,6 +12,7 @@ import httpx
 import jwt
 from fastapi import HTTPException
 from sqlalchemy import select
+from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
 from lib.db import async_session_factory
@@ -20,6 +21,7 @@ from server.auth import create_token, get_token_secret
 
 CAMEL_STATE_COOKIE_NAME = "arcreel_camel_oauth_state"
 CAMEL_STATE_TTL_SECONDS = 600
+CAMEL_OAUTH_CALLBACK_PATH = "/api/v1/auth/camel/callback"
 CamelOAuthIntent = Literal["login", "provider_bootstrap", "provider_repair"]
 
 
@@ -30,13 +32,14 @@ class CamelOAuthSettings:
     client_id: str
     client_secret: str
     redirect_uri: str
+    redirect_hosts: tuple[str, ...]
     scopes: str
     bootstrap_scopes: str
     repair_max_age_seconds: str
 
     @property
     def configured(self) -> bool:
-        return bool(self.base_url and self.client_id and self.client_secret and self.redirect_uri)
+        return bool(self.base_url and self.client_id and self.client_secret and (self.redirect_uri or self.redirect_hosts))
 
     @property
     def authorize_url(self) -> str:
@@ -56,6 +59,7 @@ class CamelOAuthState:
     nonce: str
     intent: CamelOAuthIntent
     return_path: str
+    redirect_uri: str
     user_id: str | None = None
     idempotency_key: str | None = None
 
@@ -81,6 +85,7 @@ def get_camel_oauth_settings() -> CamelOAuthSettings:
         client_id=os.environ.get("CAMEL_OAUTH_CLIENT_ID", "").strip(),
         client_secret=os.environ.get("CAMEL_OAUTH_CLIENT_SECRET", "").strip(),
         redirect_uri=os.environ.get("CAMEL_OAUTH_REDIRECT_URI", "").strip(),
+        redirect_hosts=_split_env_values(os.environ.get("CAMEL_OAUTH_REDIRECT_HOSTS", "")),
         scopes=os.environ.get("CAMEL_OAUTH_SCOPES", "profile email").strip(),
         bootstrap_scopes=os.environ.get("CAMEL_OAUTH_BOOTSTRAP_SCOPES", "profile email arcreel:token-provision").strip(),
         repair_max_age_seconds=os.environ.get("CAMEL_OAUTH_REPAIR_MAX_AGE_SECONDS", "").strip(),
@@ -98,6 +103,29 @@ def _require_settings() -> CamelOAuthSettings:
     return settings
 
 
+def _split_env_values(raw: str) -> tuple[str, ...]:
+    values: list[str] = []
+    for item in raw.replace("\n", ",").replace(" ", ",").split(","):
+        value = item.strip()
+        if value:
+            values.append(value)
+    return tuple(values)
+
+
+def _camel_redirect_uri(settings: CamelOAuthSettings, request: Request) -> str:
+    host = request.url.netloc.strip().lower()
+    allowed_hosts = {candidate.lower() for candidate in settings.redirect_hosts}
+    if host and host in allowed_hosts:
+        forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip()
+        scheme = forwarded_proto or request.url.scheme or "http"
+        if scheme not in {"http", "https"}:
+            raise HTTPException(status_code=400, detail="Invalid OAuth redirect scheme")
+        return f"{scheme}://{host}{CAMEL_OAUTH_CALLBACK_PATH}"
+    if settings.redirect_uri:
+        return settings.redirect_uri
+    raise HTTPException(status_code=400, detail="Current host is not allowed for CaMeL OAuth")
+
+
 def safe_return_path(raw: str | None) -> str:
     if not raw:
         return "/app/projects"
@@ -113,6 +141,7 @@ def _encode_state_cookie(state: CamelOAuthState) -> str:
         "state": state.nonce,
         "intent": state.intent,
         "from": state.return_path,
+        "redirect_uri": state.redirect_uri,
         "iat": now,
         "exp": now + CAMEL_STATE_TTL_SECONDS,
     }
@@ -139,29 +168,33 @@ def _decode_state_cookie(state: str, state_cookie: str | None) -> CamelOAuthStat
         nonce=state,
         intent=cast(CamelOAuthIntent, intent),
         return_path=safe_return_path(payload.get("from")),
+        redirect_uri=str(payload.get("redirect_uri") or ""),
         user_id=payload.get("user_id"),
         idempotency_key=payload.get("idempotency_key"),
     )
 
 
 def build_camel_authorization_redirect(
+    request: Request,
     from_path: str | None,
     intent: CamelOAuthIntent = "login",
     user_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> RedirectResponse:
     settings = _require_settings()
+    redirect_uri = _camel_redirect_uri(settings, request)
     oauth_state = CamelOAuthState(
         nonce=secrets.token_urlsafe(32),
         intent=intent,
         return_path=safe_return_path(from_path),
+        redirect_uri=redirect_uri,
         user_id=user_id,
         idempotency_key=idempotency_key,
     )
     params = {
         "response_type": "code",
         "client_id": settings.client_id,
-        "redirect_uri": settings.redirect_uri,
+        "redirect_uri": redirect_uri,
         "scope": settings.scopes if intent == "login" else settings.bootstrap_scopes,
         "state": oauth_state.nonce,
     }
@@ -174,19 +207,19 @@ def build_camel_authorization_redirect(
         max_age=CAMEL_STATE_TTL_SECONDS,
         httponly=True,
         samesite="lax",
-        secure=settings.redirect_uri.startswith("https://"),
+        secure=redirect_uri.startswith("https://"),
     )
     return response
 
 
-async def _fetch_camel_exchange(settings: CamelOAuthSettings, code: str) -> CamelOAuthExchange:
+async def _fetch_camel_exchange(settings: CamelOAuthSettings, code: str, redirect_uri: str) -> CamelOAuthExchange:
     async with httpx.AsyncClient(timeout=15.0) as client:
         token_response = await client.post(
             settings.token_url,
             data={
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": settings.redirect_uri,
+                "redirect_uri": redirect_uri,
                 "client_id": settings.client_id,
                 "client_secret": settings.client_secret,
             },
@@ -287,8 +320,11 @@ async def _handle_provider_intent_with_token(
 async def complete_camel_oauth_callback(code: str, state: str, state_cookie: str | None) -> RedirectResponse:
     settings = _require_settings()
     oauth_state = _decode_state_cookie(state, state_cookie)
+    redirect_uri = oauth_state.redirect_uri or settings.redirect_uri
+    if not redirect_uri:
+        raise HTTPException(status_code=400, detail="Missing OAuth redirect URI")
     try:
-        exchange = await _fetch_camel_exchange(settings, code)
+        exchange = await _fetch_camel_exchange(settings, code, redirect_uri)
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="CaMeL OAuth request failed")
     if oauth_state.intent == "login":

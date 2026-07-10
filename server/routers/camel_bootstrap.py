@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 from starlette.responses import RedirectResponse
@@ -26,12 +26,14 @@ async def bootstrap_status(
 
 @router.get("/start")
 async def bootstrap_start(
+    request: Request,
     _user: CurrentUser,
     mode: Literal["create", "repair"] = "create",
     from_path: Annotated[str | None, Query(alias="from")] = None,
 ) -> RedirectResponse:
     intent = "provider_repair" if mode == "repair" else "provider_bootstrap"
     return build_camel_authorization_redirect(
+        request,
         from_path,
         intent=intent,
         user_id=_user.id,
@@ -41,12 +43,14 @@ async def bootstrap_start(
 
 @router.post("/start-url")
 async def bootstrap_start_url(
+    request: Request,
     _user: CurrentUser,
     mode: Literal["create", "repair"] = "create",
     from_path: Annotated[str | None, Query(alias="from")] = None,
 ) -> JSONResponse:
     intent = "provider_repair" if mode == "repair" else "provider_bootstrap"
     redirect = build_camel_authorization_redirect(
+        request,
         from_path,
         intent=intent,
         user_id=_user.id,

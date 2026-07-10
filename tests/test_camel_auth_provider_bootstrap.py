@@ -37,10 +37,15 @@ def build_app() -> FastAPI:
     return app
 
 
-async def post_start_url(app: FastAPI, params: dict[str, str]) -> httpx.Response:
+async def post_start_url(
+    app: FastAPI,
+    params: dict[str, str],
+    base_url: str = "https://testserver",
+    headers: dict[str, str] | None = None,
+) -> httpx.Response:
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
-        return await client.post("/api/v1/camel/bootstrap/start-url", params=params)
+    async with httpx.AsyncClient(transport=transport, base_url=base_url) as client:
+        return await client.post("/api/v1/camel/bootstrap/start-url", params=params, headers=headers)
 
 
 def decoded_state_cookie(response):
@@ -89,6 +94,43 @@ async def test_start_url_create_returns_authorization_url_and_provider_bootstrap
     assert state_payload["from"] == "/app/projects?camel=1"
     assert state_payload["state"] == query["state"][0]
     assert state_payload["idempotency_key"].startswith("arc-bootstrap-")
+
+
+@pytest.mark.asyncio
+async def test_start_url_uses_current_allowed_host_for_redirect_uri(monkeypatch):
+    configure_oauth_env(monkeypatch)
+    monkeypatch.delenv("CAMEL_OAUTH_REDIRECT_URI")
+    monkeypatch.setenv("CAMEL_OAUTH_REDIRECT_HOSTS", "dream.camel-hub.com,dream.camel-hub.cn")
+
+    response = await post_start_url(
+        build_app(),
+        {"mode": "create", "from": "/app/projects"},
+        base_url="http://dream.camel-hub.cn",
+        headers={"x-forwarded-proto": "https"},
+    )
+
+    assert response.status_code == 200
+    query = authorization_query(response)
+    state_payload = decoded_state_cookie(response)
+    assert query["redirect_uri"] == ["https://dream.camel-hub.cn/api/v1/auth/camel/callback"]
+    assert state_payload["redirect_uri"] == "https://dream.camel-hub.cn/api/v1/auth/camel/callback"
+
+
+@pytest.mark.asyncio
+async def test_start_url_rejects_invalid_forwarded_proto(monkeypatch):
+    configure_oauth_env(monkeypatch)
+    monkeypatch.delenv("CAMEL_OAUTH_REDIRECT_URI")
+    monkeypatch.setenv("CAMEL_OAUTH_REDIRECT_HOSTS", "dream.camel-hub.cn")
+
+    response = await post_start_url(
+        build_app(),
+        {"mode": "create", "from": "/app/projects"},
+        base_url="http://dream.camel-hub.cn",
+        headers={"x-forwarded-proto": "javascript"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Invalid OAuth redirect scheme"
 
 
 @pytest.mark.asyncio

@@ -7,7 +7,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from starlette.responses import RedirectResponse
@@ -123,9 +123,10 @@ async def verify(
 
 @router.get("/auth/camel/start")
 async def camel_start(
+    request: Request,
     from_path: Annotated[str | None, Query(alias="from")] = None,
 ) -> RedirectResponse:
-    return build_camel_authorization_redirect(from_path, intent="login")
+    return build_camel_authorization_redirect(request, from_path, intent="login")
 
 
 @router.get("/auth/camel/callback")
