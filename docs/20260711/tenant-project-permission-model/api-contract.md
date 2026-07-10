@@ -50,6 +50,9 @@
 | `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/reorder` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/reorder` | 重排参考视频单元要求 member/admin |
 | `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}/generate` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/generate` | 参考视频单元生成要求 member/admin |
 | `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}/upload-video` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/upload-video` | 手动上传参考单元视频要求 member/admin |
+| `POST /api/v1/projects/{name}/export/token` | `POST /api/v1/projects/{project_id}/export/token` | 导出 token 签发允许 viewer |
+| `GET /api/v1/projects/{name}/export` | `GET /api/v1/projects/{project_id}/export` | 下载 token 绑定 `tenant_id:project_id` |
+| `GET /api/v1/projects/{name}/export/jianying-draft` | `GET /api/v1/projects/{project_id}/export/jianying-draft` | 剪映草稿导出使用 token 中 tenant 对应项目仓库 |
 
 项目响应字段：
 

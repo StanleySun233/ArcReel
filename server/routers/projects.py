@@ -44,7 +44,7 @@ from lib.project_context import project_json_local_path
 from lib.project_manager import EpisodeScriptReboundError, ProjectManager, SourceKind
 from lib.status_calculator import StatusCalculator
 from lib.style_templates import is_known_template, resolve_template_prompt
-from server.auth import CurrentUser, create_download_token, verify_download_token, verify_token
+from server.auth import CurrentUser, create_download_token, verify_token
 from server.routers._reorder import full_permutation_error
 from server.routers._validators import validate_backend_value
 from server.services.project_archive import (
@@ -276,9 +276,9 @@ async def import_project_archive(
             _cleanup_temp_file(upload_path)
 
 
-@router.post("/projects/{name}/export/token")
+@router.post("/projects/{project_id}/export/token")
 async def create_export_token(
-    name: str,
+    project_id: str,
     current_user: CurrentUser,
     _t: Translator,
     scope: str = Query("full"),
@@ -291,18 +291,18 @@ async def create_export_token(
             async with session.begin():
                 access = await require_tenant_access(session, current_user, minimum_role=ROLE_VIEW)
                 await set_tenant_context(session, user_id=current_user.id, tenant_id=access.id)
-                if await ProjectRepository(session, tenant_id=access.id).get_by_name(name) is None:
-                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+                if await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id) is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
         def _sync():
             manager = get_tenant_project_manager(access.id)
-            if not manager.project_exists(name):
-                raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
-            return get_tenant_archive_service(access.id).get_export_diagnostics(name, scope=scope)
+            if not manager.project_exists(project_id):
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+            return get_tenant_archive_service(access.id).get_export_diagnostics(project_id, scope=scope)
 
         diagnostics = await asyncio.to_thread(_sync)
         username = current_user.sub
-        download_token = create_download_token(username, f"{access.id}:{name}", user_id=current_user.id)
+        download_token = create_download_token(username, f"{access.id}:{project_id}", user_id=current_user.id)
         return {
             "download_token": download_token,
             "expires_in": 300,
@@ -315,9 +315,9 @@ async def create_export_token(
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.get("/projects/{name}/export")
+@router.get("/projects/{project_id}/export")
 async def export_project_archive(
-    name: str,
+    project_id: str,
     _t: Translator,
     download_token: str = Query(...),
     scope: str = Query("full"),
@@ -331,15 +331,15 @@ async def export_project_archive(
         if payload is None or payload.get("purpose") != "download":
             raise ValueError("invalid download token")
         project_claim = str(payload.get("project") or "")
-        tenant_id, sep, token_project_name = project_claim.partition(":")
-        if not sep or token_project_name != name:
+        tenant_id, sep, token_project_id = project_claim.partition(":")
+        if not sep or token_project_id != project_id:
             raise ValueError("tenant_id missing")
     except ValueError:
         raise HTTPException(status_code=403, detail=_t("download_token_mismatch"))
 
     try:
         archive_path, download_name = await asyncio.to_thread(
-            lambda: get_tenant_archive_service(str(tenant_id)).export_project(name, scope=scope)
+            lambda: get_tenant_archive_service(str(tenant_id)).export_project(project_id, scope=scope)
         )
         return FileResponse(
             archive_path,
@@ -348,7 +348,7 @@ async def export_project_archive(
             background=BackgroundTask(_cleanup_temp_file, str(archive_path)),
         )
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:
@@ -359,10 +359,10 @@ async def export_project_archive(
 # --- 剪映草稿导出 ---
 
 
-def get_jianying_draft_service() -> JianyingDraftService:
+def get_jianying_draft_service(project_manager: ProjectManager | None = None) -> JianyingDraftService:
     from server.services.jianying_draft_service import JianyingDraftService
 
-    return JianyingDraftService(get_project_manager())
+    return JianyingDraftService(project_manager or get_project_manager())
 
 
 def _validate_draft_path(draft_path: str, _t: Callable[..., str]) -> str:
@@ -376,9 +376,9 @@ def _validate_draft_path(draft_path: str, _t: Callable[..., str]) -> str:
     return draft_path.strip()
 
 
-@router.get("/projects/{name}/export/jianying-draft")
+@router.get("/projects/{project_id}/export/jianying-draft")
 def export_jianying_draft(
-    name: str,
+    project_id: str,
     _t: Translator,
     episode: int = Query(..., description="集数编号"),
     draft_path: str = Query(..., description="用户本地剪映草稿目录"),
@@ -388,11 +388,14 @@ def export_jianying_draft(
     """导出指定集的剪映草稿 ZIP"""
     import jwt as pyjwt
 
-    # 1. 验证 download_token
     try:
-        verify_download_token(download_token, name)
-    except pyjwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail=_t("download_expired"))
+        payload = verify_token(download_token)
+        if payload is None or payload.get("purpose") != "download":
+            raise pyjwt.InvalidTokenError("invalid download token")
+        project_claim = str(payload.get("project") or "")
+        tenant_id, sep, token_project_id = project_claim.partition(":")
+        if not sep or token_project_id != project_id:
+            raise ValueError("download token mismatch")
     except ValueError:
         raise HTTPException(status_code=403, detail=_t("download_token_mismatch"))
     except pyjwt.InvalidTokenError:
@@ -402,10 +405,10 @@ def export_jianying_draft(
     draft_path = _validate_draft_path(draft_path, _t)
 
     # 3. 调用服务
-    svc = get_jianying_draft_service()
+    svc = get_jianying_draft_service(get_tenant_project_manager(str(tenant_id)))
     try:
         zip_path = svc.export_episode_draft(
-            project_name=name,
+            project_name=project_id,
             episode=episode,
             draft_path=draft_path,
             use_draft_info_name=(jianying_version != "5"),
@@ -415,10 +418,10 @@ def export_jianying_draft(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception:
-        logger.exception("剪映草稿导出失败: project=%s episode=%d", name, episode)
+        logger.exception("剪映草稿导出失败: project=%s episode=%d", project_id, episode)
         raise HTTPException(status_code=500, detail=_t("jianying_export_failed"))
 
-    download_name = f"{name}_episode_{episode}_jianying_draft.zip"
+    download_name = f"{project_id}_episode_{episode}_jianying_draft.zip"
 
     return FileResponse(
         path=str(zip_path),

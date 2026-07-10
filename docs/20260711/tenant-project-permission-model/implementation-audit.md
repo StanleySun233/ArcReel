@@ -20,7 +20,7 @@ Evidence:
 
 ### Project identity is now route-id based on the main workspace path
 
-The project list, create, detail, update, delete, video capability route, cost estimation route, manual shot upload route, script review route, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, project event stream, version routes, grid routes, and reference video unit routes now use project id as the route key.
+The project list, create, detail, update, delete, video capability route, cost estimation route, manual shot upload route, script review route, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, project event stream, version routes, grid routes, reference video unit routes, project archive export, and Jianying draft export now use project id as the route key.
 
 Evidence:
 
@@ -32,6 +32,8 @@ Evidence:
 - `server/routers/versions.py` resolves project rows by `id`; version reads require viewer access and restores require member access.
 - `server/routers/grids.py` resolves project rows by `id`; grid list/detail require viewer access and generate/regenerate require member access.
 - `server/routers/reference_videos.py` resolves project rows by `id`; unit list requires viewer access and all mutating/generation/upload endpoints require member access.
+- `server/routers/projects.py` export token/archive/Jianying draft routes use `project_id`; download tokens bind `tenant_id:project_id` and export services use the token tenant's project repository.
+- `server/services/jianying_draft_service.py` supports the current pyJianYingDraft track API through `TrackSpec`.
 - Project creation stores local project JSON under tenant-scoped project-id paths.
 - `frontend/src/types/project.ts` requires `ProjectSummary.id`.
 - `frontend/src/components/pages/ProjectsPage.tsx` links and deletes by `project.id`.
@@ -98,8 +100,8 @@ Evidence:
 
 Backend:
 
-- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py -q`
-  - Result: 335 passed
+- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py tests/test_projects_archive_routes.py tests/test_jianying_draft_routes.py -q`
+  - Result: 352 passed
 - `python -m ruff check <changed backend files and tests>`
   - Result: passed
 - `basedpyright <changed backend route files>`

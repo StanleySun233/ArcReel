@@ -58,6 +58,7 @@ def _client(monkeypatch, pm: ProjectManager) -> TestClient:
     from server.routers import projects as proj_mod
 
     monkeypatch.setattr(proj_mod, "pm", pm)
+    monkeypatch.setattr(proj_mod, "get_tenant_project_manager", lambda _tenant_id: pm)
 
     from server.app import app
 
@@ -73,7 +74,7 @@ class TestJianyingDraftExport:
         _setup_project(pm)
         client = _client(monkeypatch, pm)
 
-        token = create_download_token("testuser", "demo")
+        token = create_download_token("testuser", "ten_test:demo")
         response = client.get(
             "/api/v1/projects/demo/export/jianying-draft",
             params={
@@ -100,7 +101,7 @@ class TestJianyingDraftExport:
         _setup_project(pm)
         client = _client(monkeypatch, pm)
 
-        token = create_download_token("testuser", "demo")
+        token = create_download_token("testuser", "ten_test:demo")
         response = client.get(
             "/api/v1/projects/demo/export/jianying-draft",
             params={"episode": 99, "draft_path": "/tmp", "download_token": token},
@@ -143,7 +144,7 @@ class TestJianyingDraftExport:
         )
 
         client = _client(monkeypatch, pm)
-        token = create_download_token("testuser", "empty")
+        token = create_download_token("testuser", "ten_test:empty")
         response = client.get(
             "/api/v1/projects/empty/export/jianying-draft",
             params={"episode": 1, "draft_path": "/tmp", "download_token": token},
@@ -168,7 +169,7 @@ class TestJianyingDraftExport:
         _setup_project(pm)
         client = _client(monkeypatch, pm)
 
-        token = create_download_token("testuser", "demo")
+        token = create_download_token("testuser", "ten_test:demo")
         response = client.get(
             "/api/v1/projects/demo/export/jianying-draft",
             params={"episode": 1, "draft_path": "", "download_token": token},
@@ -181,7 +182,7 @@ class TestJianyingDraftExport:
         _setup_project(pm)
         client = _client(monkeypatch, pm)
 
-        token = create_download_token("testuser", "demo")
+        token = create_download_token("testuser", "ten_test:demo")
         response = client.get(
             "/api/v1/projects/demo/export/jianying-draft",
             params={"episode": 1, "draft_path": "/tmp/\x00bad", "download_token": token},
@@ -194,7 +195,7 @@ class TestJianyingDraftExport:
         _setup_project(pm)
         client = _client(monkeypatch, pm)
 
-        token = create_download_token("testuser", "demo")
+        token = create_download_token("testuser", "ten_test:demo")
         response = client.get(
             "/api/v1/projects/demo/export/jianying-draft",
             params={"episode": 1, "draft_path": "x" * 1025, "download_token": token},
@@ -207,7 +208,7 @@ class TestJianyingDraftExport:
         _setup_project(pm)
         client = _client(monkeypatch, pm)
 
-        token = create_download_token("testuser", "other_project")
+        token = create_download_token("testuser", "ten_test:other_project")
         response = client.get(
             "/api/v1/projects/demo/export/jianying-draft",
             params={"episode": 1, "draft_path": "/tmp", "download_token": token},

@@ -75,6 +75,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [x] 宫格图生成/查询/重生成按当前 tenant 和 `project_id` 解析。
 - [x] 参考视频单元列表/派生/增删改/重排/生成/上传按当前 tenant 和 `project_id` 解析。
 - [x] 手动镜头上传按当前 tenant 和 `project_id` 写回项目，并用 `project_id` 写 file_links。
+- [x] 项目归档导出和剪映草稿导出使用 `project_id`，下载 token 绑定 `tenant_id:project_id`。
 - [ ] `tasks` 持久化 `tenant_id/project_id/requested_by_user_id`。
 - [ ] worker 使用任务持久化上下文读取项目、租户配置、provider credential。
 - [x] `assistant` routes 使用 `project_id`。

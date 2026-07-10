@@ -23,6 +23,7 @@ from pyJianYingDraft import (
     TextSegment,
     TextShadow,
     TextStyle,
+    TrackSpec,
     TrackType,
     TransitionType,
     VideoMaterial,
@@ -43,6 +44,17 @@ _SUBTITLE_TEXT_FIELDS: dict[str, str] = {
     "narration": "novel_text",
     "ad": "voiceover_text",
 }
+
+
+def _add_track(script_file: Any, track_type: TrackType, name: str | None = None) -> None:
+    add_track = getattr(script_file, "add_track", None)
+    if callable(add_track):
+        if name is None:
+            add_track(track_type)
+        else:
+            add_track(track_type, name)
+        return
+    script_file.append_track(TrackSpec(track_type, name))
 
 # 字幕由有序 span 派生（而非单字段）的内容模式。drama 从 utterances 派生 subtitle_spans；
 # ad + reference_video 路径虽也产 span，但 content_mode 仍是 ad（已在 _SUBTITLE_TEXT_FIELDS），
@@ -289,7 +301,7 @@ class JianyingDraftService:
         script_file = folder.create_draft(draft_name, width=width, height=height, allow_replace=True)
 
         # 视频轨
-        script_file.add_track(TrackType.video)
+        _add_track(script_file, TrackType.video)
 
         # 字幕轨：注册为字幕模式的内容模式生成（narration / ad 单字段、drama 从 utterances 派生 span）
         has_subtitle = _has_subtitle_track(content_mode)
@@ -299,7 +311,7 @@ class JianyingDraftService:
         subtitle_position: ClipSettings | None = None
         is_portrait = height > width
         if has_subtitle:
-            script_file.add_track(TrackType.text, "字幕")
+            _add_track(script_file, TrackType.text, "字幕")
             text_style = TextStyle(
                 size=12.0 if is_portrait else 8.0,
                 color=(1.0, 1.0, 1.0),
@@ -411,7 +423,7 @@ class JianyingDraftService:
                 continue
             # 音轨仅在确有有效片段时创建，避免全部被过滤后留下空轨
             if not narration_track_added:
-                script_file.add_track(TrackType.audio, "旁白")
+                _add_track(script_file, TrackType.audio, "旁白")
                 narration_track_added = True
             audio_seg = AudioSegment(audio_material, trange(start_us, duration_us))
             script_file.add_segment(audio_seg, "旁白")

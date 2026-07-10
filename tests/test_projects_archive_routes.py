@@ -2,6 +2,7 @@ import json
 import os
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 from lib.project_manager import ProjectManager
 from server.auth import CurrentUserInfo, create_download_token, create_token, get_current_user
 from server.routers import projects
+from server.services.tenant_auth import TenantAccess
 
 
 def _write_text(path: Path, content: str) -> None:
@@ -78,8 +80,34 @@ def _create_demo_project(pm: ProjectManager) -> None:
 
 def _client(monkeypatch, pm: ProjectManager) -> TestClient:
     monkeypatch.setattr(projects, "get_project_manager", lambda: pm)
+    monkeypatch.setattr(projects, "get_tenant_project_manager", lambda _tenant_id: pm)
+
+    async def _fake_access(*args, **kwargs):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _fake_set_context(*args, **kwargs):
+        return None
+
+    class _ProjectRepo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def get_by_id(self, project_id):
+            if not pm.project_exists(project_id):
+                return None
+            return SimpleNamespace(id=project_id, name="Demo", tenant_id="ten_test")
+
+    monkeypatch.setattr(projects, "require_tenant_access", _fake_access)
+    monkeypatch.setattr(projects, "set_tenant_context", _fake_set_context)
+    monkeypatch.setattr(projects, "ProjectRepository", _ProjectRepo)
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
     app.include_router(projects.router, prefix="/api/v1")
     return TestClient(app)
 
@@ -91,7 +119,7 @@ class TestProjectArchiveRoutes:
         client = _client(monkeypatch, pm)
 
         with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
-            token = create_download_token("testuser", "demo")
+            token = create_download_token("testuser", "ten_test:demo")
             with client:
                 response = client.get(f"/api/v1/projects/demo/export?download_token={token}")
 
@@ -125,7 +153,7 @@ class TestProjectArchiveRoutes:
         assert any("project.json" in error for error in response.json()["errors"])
         assert "diagnostics" in response.json()
 
-    def test_import_route_returns_conflict_payload_for_secondary_confirmation(
+    def test_import_route_rejects_legacy_local_path_archive(
         self,
         tmp_path,
         monkeypatch,
@@ -135,7 +163,7 @@ class TestProjectArchiveRoutes:
         client = _client(monkeypatch, pm)
 
         with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
-            token = create_download_token("testuser", "demo")
+            token = create_download_token("testuser", "ten_test:demo")
             with client:
                 export_response = client.get(f"/api/v1/projects/demo/export?download_token={token}")
                 response = client.post(
@@ -149,9 +177,9 @@ class TestProjectArchiveRoutes:
                     },
                 )
 
-        assert response.status_code == 409
-        assert response.json()["detail"] == "检测到项目编号冲突"
-        assert response.json()["conflict_project_name"] == "demo"
+        assert response.status_code == 400
+        assert response.json()["detail"] == "导入包校验失败"
+        assert any("必须是 file_id" in error for error in response.json()["errors"])
 
     def test_export_token_endpoint(self, tmp_path, monkeypatch):
         pm = ProjectManager(tmp_path / "projects")
@@ -192,7 +220,7 @@ class TestProjectArchiveRoutes:
         client = _client(monkeypatch, pm)
 
         with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
-            download_token = create_download_token("admin", "demo")
+            download_token = create_download_token("admin", "ten_test:demo")
             with client:
                 response = client.get(
                     f"/api/v1/projects/demo/export?download_token={download_token}",
@@ -207,7 +235,7 @@ class TestProjectArchiveRoutes:
         client = _client(monkeypatch, pm)
 
         with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
-            download_token = create_download_token("admin", "other-project")
+            download_token = create_download_token("admin", "ten_test:other-project")
             with client:
                 response = client.get(
                     f"/api/v1/projects/demo/export?download_token={download_token}",
@@ -240,7 +268,7 @@ class TestProjectArchiveRoutes:
         client = _client(monkeypatch, pm)
 
         with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
-            download_token = create_download_token("admin", "demo")
+            download_token = create_download_token("admin", "ten_test:demo")
             with client:
                 response = client.get(
                     f"/api/v1/projects/demo/export?download_token={download_token}&scope=invalid",
