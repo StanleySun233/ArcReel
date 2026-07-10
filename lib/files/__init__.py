@@ -1,3 +1,3 @@
-from lib.files.service import FileLinkSpec, FileRecord, FileService
+from lib.files.service import FileContent, FileLinkSpec, FileRecord, FileService
 
-__all__ = ["FileLinkSpec", "FileRecord", "FileService"]
+__all__ = ["FileContent", "FileLinkSpec", "FileRecord", "FileService"]

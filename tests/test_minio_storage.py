@@ -50,3 +50,23 @@ async def test_minio_storage_put_get_stat_delete_and_signs_private_object_url() 
     assert url.startswith("https://files.example.test/arcreel-files/abc.png?")
     assert "X-Amz-Signature=" in url
     assert "X-Amz-Expires=300" in url
+
+
+@pytest.mark.asyncio
+async def test_minio_storage_reports_bucket_private_when_anonymous_access_is_denied() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, request=request)
+
+    service = MinIOStorageService(
+        MinIOSettings(
+            endpoint="http://minio:9000",
+            public_endpoint="https://files.example.test",
+            access_key="access",
+            secret_key="secret",
+            bucket="arcreel-files",
+            region="us-east-1",
+        ),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+
+    assert await service.bucket_is_private()

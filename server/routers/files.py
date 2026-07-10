@@ -9,14 +9,17 @@ import json
 import logging
 import shutil
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
 
+import jwt
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib.app_data_dir import app_data_dir
@@ -33,7 +36,6 @@ from lib.i18n import Translator
 from lib.image_utils import normalize_uploaded_image, validate_image_bytes
 from lib.project_change_hints import emit_project_change_batch, project_change_source
 from lib.project_manager import ProjectManager, effective_mode
-from lib.storage import get_storage_service
 from lib.source_loader import (
     ConflictError,
     CorruptFileError,
@@ -44,10 +46,12 @@ from lib.source_loader import (
     SourceLoader,
     UnsupportedFormatError,
 )
-from server.auth import CurrentUser
+from lib.storage import get_storage_service
+from server.auth import CurrentUser, get_token_secret
 from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
+FILE_URL_EXPIRES_IN = 300
 
 # 初始化项目管理器
 pm = ProjectManager(app_data_dir())
@@ -61,6 +65,31 @@ def _require_filename(file: UploadFile, _t: Callable[..., str]) -> str:
     if not file.filename:
         raise HTTPException(status_code=400, detail=_t("missing_filename"))
     return file.filename
+
+
+def _create_file_access_token(*, file_id: str, user_id: str, tenant_id: str | None) -> str:
+    now = time.time()
+    return jwt.encode(
+        {
+            "purpose": "file_access",
+            "file_id": file_id,
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "iat": now,
+            "exp": now + FILE_URL_EXPIRES_IN,
+        },
+        get_token_secret(),
+        algorithm="HS256",
+    )
+
+
+def _verify_file_access_token(*, file_id: str, token: str) -> None:
+    try:
+        payload = jwt.decode(token, get_token_secret(), algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
+    if payload.get("purpose") != "file_access" or payload.get("file_id") != file_id:
+        raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
 
 
 # 允许的文件类型
@@ -106,18 +135,36 @@ async def upload_private_file(
 @router.get("/files/{file_id}/signed-url")
 async def get_file_signed_url(
     file_id: str,
+    request: Request,
     current_user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     await require_tenant_access(session, current_user, minimum_role=ROLE_VIEW)
-    url = await FileService(session, get_storage_service()).signed_url_for_user(
+    service = FileService(session, get_storage_service())
+    allowed = await service.can_user_access(
         file_id=file_id,
         user_id=current_user.id,
         tenant_id=current_user.tenant_id,
     )
-    if url is None:
+    if not allowed:
         raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
-    return {"file_id": file_id, "url": url, "expires_in": 300}
+    token = _create_file_access_token(file_id=file_id, user_id=current_user.id, tenant_id=current_user.tenant_id)
+    url = str(request.url_for("download_file_content", file_id=file_id))
+    return {"file_id": file_id, "url": f"{url}?{urlencode({'token': token})}", "expires_in": FILE_URL_EXPIRES_IN}
+
+
+@router.get("/files/{file_id}/content", name="download_file_content")
+async def download_file_content(
+    file_id: str,
+    token: str,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    _verify_file_access_token(file_id=file_id, token=token)
+    try:
+        content = await FileService(session, get_storage_service()).read_file(file_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="FILE_NOT_FOUND")
+    return Response(content.data, media_type=content.content_type)
 
 
 @router.get("/files/{project_name}/{path:path}")
@@ -179,8 +226,9 @@ async def serve_global_asset(asset_type: str, filename: str, _t: Translator):
 async def upload_file(
     project_name: str,
     upload_type: str,
-    _user: CurrentUser,
+    current_user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     file: UploadFile = File(...),
     name: str | None = None,
     on_conflict: OnConflict = "fail",
@@ -219,6 +267,7 @@ async def upload_file(
         )
 
     try:
+        await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
         content = await file.read()
 
         def _sync():
@@ -390,14 +439,29 @@ async def upload_file(
                     target_path.unlink(missing_ok=True)
                     raise HTTPException(status_code=404, detail=_t("product_not_found", name=name))
 
-            return {
-                "success": True,
-                "filename": filename,
-                "path": relative_path,
-                "url": f"/api/v1/files/{project_name}/{relative_path}",
-            }
+            return filename, relative_path, content
 
-        return await asyncio.to_thread(_sync)
+        filename, _relative_path, stored_content = await asyncio.to_thread(_sync)
+        record = await FileService(session, get_storage_service()).create_file(
+            content=stored_content,
+            alias=filename,
+            content_type=file.content_type,
+            created_by_user_id=current_user.id,
+            links=[
+                FileLinkSpec(resource_type="project", resource_id=project_name, link_type=upload_type),
+                FileLinkSpec(
+                    resource_type="tenant_library",
+                    resource_id=current_user.tenant_id or "",
+                    link_type=upload_type,
+                ),
+            ],
+        )
+        await session.commit()
+        return {
+            "success": True,
+            "filename": filename,
+            "file_id": record.file_id,
+        }
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))

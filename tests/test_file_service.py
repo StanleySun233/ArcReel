@@ -18,6 +18,12 @@ class FakeStorage:
     async def put_object(self, object_key: str, content: bytes, *, content_type: str | None = None) -> None:
         self.puts.append((object_key, content, content_type))
 
+    async def get_object(self, object_key: str) -> bytes:
+        for put_key, content, _ in self.puts:
+            if put_key == object_key:
+                return content
+        raise KeyError(object_key)
+
     async def delete_object(self, object_key: str) -> None:
         self.deletes.append(object_key)
 
@@ -61,6 +67,10 @@ async def test_file_service_writes_object_then_file_row_and_links(async_session)
         ("asset", "ast_1", "image"),
         ("personal_library", "usr_1", "library"),
     }
+    content = await service.read_file(record.file_id)
+    assert content.data == b"hello"
+    assert content.alias == "cover.png"
+    assert content.content_type == "image/png"
 
 
 @pytest.mark.asyncio

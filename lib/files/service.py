@@ -14,6 +14,8 @@ from lib.db.repositories.file_repo import FileRepository
 class StorageService(Protocol):
     async def put_object(self, object_key: str, content: bytes, *, content_type: str | None = None) -> None: ...
 
+    async def get_object(self, object_key: str) -> bytes: ...
+
     async def delete_object(self, object_key: str) -> None: ...
 
     def signed_get_url(self, object_key: str, *, expires_in: int = 300) -> str: ...
@@ -34,6 +36,14 @@ class FileRecord:
     content_type: str | None
     size_bytes: int
     checksum: str
+
+
+@dataclass(frozen=True)
+class FileContent:
+    file_id: str
+    alias: str
+    content_type: str | None
+    data: bytes
 
 
 class FileService:
@@ -104,6 +114,20 @@ class FileService:
         if row is None:
             return None
         return self.storage.signed_get_url(row.object_key, expires_in=expires_in)
+
+    async def can_user_access(self, *, file_id: str, user_id: str, tenant_id: str | None) -> bool:
+        return await self.repository.can_access_file(file_id=file_id, user_id=user_id, tenant_id=tenant_id)
+
+    async def read_file(self, file_id: str) -> FileContent:
+        row = await self.repository.get_file(file_id)
+        if row is None:
+            raise FileNotFoundError(file_id)
+        return FileContent(
+            file_id=row.id,
+            alias=row.alias,
+            content_type=row.content_type,
+            data=await self.storage.get_object(row.object_key),
+        )
 
 
 def _object_key(alias: str) -> str:

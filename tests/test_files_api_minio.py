@@ -1,22 +1,29 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import httpx
 import pytest
 from fastapi import FastAPI
+from PIL import Image
 
 from lib.db import get_async_session
 from lib.db.models import Project, Tenant, TenantMembership, User
 from lib.files import FileLinkSpec, FileService
+from lib.project_manager import ProjectManager
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import files
 
 
 class FakeStorage:
     def __init__(self) -> None:
-        self.puts: list[str] = []
+        self.puts: dict[str, bytes] = {}
 
     async def put_object(self, object_key: str, content: bytes, *, content_type: str | None = None) -> None:
-        self.puts.append(object_key)
+        self.puts[object_key] = content
+
+    async def get_object(self, object_key: str) -> bytes:
+        return self.puts[object_key]
 
     async def delete_object(self, object_key: str) -> None:
         pass
@@ -72,6 +79,35 @@ async def test_files_upload_route_returns_file_id_without_object_key(async_sessi
 
 
 @pytest.mark.asyncio
+async def test_project_media_upload_route_returns_file_id_without_local_path(async_session, tmp_path) -> None:
+    await _seed_member(async_session)
+    pm = ProjectManager(tmp_path / "projects")
+    pm.create_project("demo")
+    pm.create_project_metadata("demo", "Demo", "Anime", "narration")
+    pm.add_character("demo", "Alice", "desc")
+    files.get_project_manager = lambda: pm
+    storage = FakeStorage()
+    user = CurrentUserInfo(id="usr_1", sub="alice", tenant_id="ten_1", tenant_role="member")
+    app = _app(async_session, user, storage)
+    image = Image.new("RGB", (8, 8), (255, 0, 0))
+    buf = BytesIO()
+    image.save(buf, format="PNG")
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/projects/demo/upload/character?name=Alice",
+            files={"file": ("alice.png", buf.getvalue(), "image/png")},
+        )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["file_id"].startswith("fil_")
+    assert body["filename"] == "Alice.png"
+    assert "path" not in body
+    assert "url" not in body
+
+
+@pytest.mark.asyncio
 async def test_signed_url_route_checks_current_project_access_before_signing(async_session) -> None:
     await _seed_member(async_session)
     async_session.add(
@@ -97,13 +133,16 @@ async def test_signed_url_route_checks_current_project_access_before_signing(asy
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         allowed = await client.get(f"/api/v1/files/{record.file_id}/signed-url")
+        content = await client.get(allowed.json()["url"])
 
     assert allowed.status_code == 200, allowed.text
-    assert allowed.json() == {
-        "file_id": record.file_id,
-        "url": f"https://files.example.test/{record.object_key}?exp=300",
-        "expires_in": 300,
-    }
+    body = allowed.json()
+    assert body["file_id"] == record.file_id
+    assert body["expires_in"] == 300
+    assert record.object_key not in body["url"]
+    assert f"/api/v1/files/{record.file_id}/content?token=" in body["url"]
+    assert content.status_code == 200
+    assert content.content == b"image"
 
 
 @pytest.mark.asyncio

@@ -90,8 +90,6 @@ class FileRepository:
         file_row = await self.session.get(File, file_id)
         if file_row is None:
             return False
-        if file_row.created_by_user_id == user_id:
-            return True
         personal = exists().where(
             FileLink.file_id == file_id,
             FileLink.resource_type == "personal_library",

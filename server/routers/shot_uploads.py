@@ -12,21 +12,26 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib.app_data_dir import app_data_dir
+from lib.db import get_async_session
+from lib.files import FileLinkSpec, FileService
 from lib.i18n import Translator
 from lib.image_utils import normalize_storyboard_upload
 from lib.project_change_hints import project_change_source
 from lib.project_manager import ProjectManager
 from lib.resource_paths import resource_relative_path
 from lib.script_editor import ScriptEditError
+from lib.storage import get_storage_service
 from lib.storyboard_sequence import find_storyboard_item, get_storyboard_items
 from lib.version_manager import VersionManager
 from server.auth import CurrentUser
 from server.services.generation_tasks import emit_generation_success_batch
+from server.services.tenant_auth import ROLE_MEMBER, require_tenant_access
 from server.services.upload_finalize import (
     UploadTooLargeError,
     UploadValidationError,
@@ -55,8 +60,9 @@ async def upload_shot_media(
     shot_id: str,
     kind: Literal["storyboard", "video"],
     script_file: str,
-    _user: CurrentUser,
+    current_user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     file: UploadFile = File(...),
 ):
     """上传分镜图或镜头视频，替换该镜头的 AI 生成资产。
@@ -65,6 +71,7 @@ async def upload_shot_media(
     剧本元数据回写（status 自动推导）→ SSE batch 推送。
     """
     try:
+        await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
         max_bytes = validate_upload(file.filename, file.size, kind="image" if kind == "storyboard" else "video")
 
         resource_type = "storyboards" if kind == "storyboard" else "videos"
@@ -137,9 +144,21 @@ async def upload_shot_media(
                 payload={"script_file": script_file},
             )
 
+        stored_content = await asyncio.to_thread(target.read_bytes)
+        record = await FileService(session, get_storage_service()).create_file(
+            content=stored_content,
+            alias=target.name,
+            content_type="image/png" if kind == "storyboard" else file.content_type,
+            created_by_user_id=current_user.id,
+            links=[
+                FileLinkSpec(resource_type="project", resource_id=project_name, link_type=kind),
+                FileLinkSpec(resource_type="tenant_library", resource_id=current_user.tenant_id or "", link_type=kind),
+            ],
+        )
+        await session.commit()
         return {
             "success": True,
-            "path": relative_path,
+            "file_id": record.file_id,
             "version": version,
             "asset_fingerprints": fingerprints,
         }
