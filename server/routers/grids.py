@@ -15,6 +15,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from lib.app_data_dir import app_data_dir
+from lib.db import async_session_factory
+from lib.db.repositories.project_repo import ProjectRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.generation_queue import get_generation_queue
 from lib.grid.layout import calculate_grid_layout
 from lib.grid.models import GridGeneration
@@ -25,8 +28,9 @@ from lib.project_manager import ProjectManager
 from lib.script_editor import ScriptEditError
 from lib.storyboard_sequence import get_storyboard_items, group_scenes_by_segment_break
 from server.auth import CurrentUser
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
-router = APIRouter(prefix="/projects/{project_name}", tags=["grids"])
+router = APIRouter(prefix="/projects/{project_id}", tags=["grids"])
 
 # 初始化管理器
 pm = ProjectManager(app_data_dir())
@@ -34,6 +38,20 @@ pm = ProjectManager(app_data_dir())
 
 def get_project_manager() -> ProjectManager:
     return pm
+
+
+def get_tenant_project_manager(tenant_id: str) -> ProjectManager:
+    return ProjectManager(app_data_dir(), tenant_id=tenant_id)
+
+
+async def _require_project_manager(project_id: str, user: CurrentUser, _t: Translator, *, minimum_role: str):
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, user, minimum_role=minimum_role)
+            await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+            if await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id) is None:
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+    return get_tenant_project_manager(access.id)
 
 
 def _build_grid_task_payload(
@@ -84,7 +102,7 @@ class GenerateGridResponse(BaseModel):
 
 @router.post("/generate/grid/{episode}", response_model=GenerateGridResponse)
 async def generate_grid(
-    project_name: str,
+    project_id: str,
     episode: int,
     req: GenerateGridRequest,
     _user: CurrentUser,
@@ -96,13 +114,14 @@ async def generate_grid(
     立即返回 grid_ids 和 task_ids。生成由 GenerationWorker 异步执行。
     """
     try:
-        project = get_project_manager().load_project(project_name)
+        manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+        project = manager.load_project(project_id)
         # 广告/短片项目不开放宫格生视频（宫格单格分辨率与产品高保真目标冲突），
         # 写入边界（create/PATCH 拒 generation_mode=grid）之外在动作端点再设一道防线
         if project.get("content_mode") == "ad":
             raise HTTPException(status_code=400, detail=_t("ad_grid_not_supported"))
-        script = get_project_manager().load_script(project_name, req.script_file)
-        project_path = get_project_manager().get_project_path(project_name)
+        script = manager.load_script(project_id, req.script_file)
+        project_path = manager.get_project_path(project_id)
 
         items, id_field, _, _, _ = get_storyboard_items(script)
         aspect_ratio = project.get("aspect_ratio", "9:16")
@@ -185,7 +204,7 @@ async def generate_grid(
                 gm.save(grid)
 
                 task = await queue.enqueue_task(
-                    project_name=project_name,
+                    project_name=project_id,
                     task_type="grid",
                     media_type="image",
                     resource_id=grid.id,
@@ -229,12 +248,15 @@ async def generate_grid(
 
 
 @router.get("/grids")
-async def list_grids(project_name: str, _user: CurrentUser, _t: Translator):
+async def list_grids(project_id: str, _user: CurrentUser, _t: Translator):
     """列出项目下所有宫格图记录。"""
     try:
-        project_path = get_project_manager().get_project_path(project_name)
+        manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_VIEW)
+        project_path = manager.get_project_path(project_id)
         gm = GridManager(project_path)
         return [g.to_dict() for g in gm.list_all()]
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception:
@@ -246,10 +268,11 @@ async def list_grids(project_name: str, _user: CurrentUser, _t: Translator):
 
 
 @router.get("/grids/{grid_id}")
-async def get_grid(project_name: str, grid_id: str, _user: CurrentUser, _t: Translator):
+async def get_grid(project_id: str, grid_id: str, _user: CurrentUser, _t: Translator):
     """获取单个宫格图记录。"""
     try:
-        project_path = get_project_manager().get_project_path(project_name)
+        manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_VIEW)
+        project_path = manager.get_project_path(project_id)
         gm = GridManager(project_path)
         grid = gm.get(grid_id)
         if grid is None:
@@ -268,15 +291,16 @@ async def get_grid(project_name: str, grid_id: str, _user: CurrentUser, _t: Tran
 
 
 @router.post("/grids/{grid_id}/regenerate")
-async def regenerate_grid(project_name: str, grid_id: str, _user: CurrentUser, _t: Translator):
+async def regenerate_grid(project_id: str, grid_id: str, _user: CurrentUser, _t: Translator):
     """重置宫格图状态并重新入队生成任务。"""
     try:
-        project = get_project_manager().load_project(project_name)
+        manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+        project = manager.load_project(project_id)
         # 广告/短片项目不开放宫格生视频：首次提交端点已封禁，重生成端点同样设防,
         # 否则残留的历史 grid 记录仍可被重新入队
         if project.get("content_mode") == "ad":
             raise HTTPException(status_code=400, detail=_t("ad_grid_not_supported"))
-        project_path = get_project_manager().get_project_path(project_name)
+        project_path = manager.get_project_path(project_id)
         gm = GridManager(project_path)
         grid = gm.get(grid_id)
         if grid is None:
@@ -295,7 +319,7 @@ async def regenerate_grid(project_name: str, grid_id: str, _user: CurrentUser, _
 
         queue = get_generation_queue()
         task = await queue.enqueue_task(
-            project_name=project_name,
+            project_name=project_id,
             task_type="grid",
             media_type="image",
             resource_id=grid.id,

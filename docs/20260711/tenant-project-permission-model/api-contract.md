@@ -38,6 +38,10 @@
 | `POST /api/v1/projects/{name}/assistant/sessions/send` | `POST /api/v1/projects/{project_id}/assistant/sessions/send` | Agent cwd 使用 project_id |
 | `GET /api/v1/projects/{name}/versions/{resource_type}/{resource_id}` | `GET /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}` | 版本读取按当前租户解析项目 |
 | `POST /api/v1/projects/{name}/versions/{resource_type}/{resource_id}/restore/{version}` | `POST /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}/restore/{version}` | 版本还原要求 member/admin |
+| `POST /api/v1/projects/{name}/generate/grid/{episode}` | `POST /api/v1/projects/{project_id}/generate/grid/{episode}` | 宫格图生成要求 member/admin |
+| `GET /api/v1/projects/{name}/grids` | `GET /api/v1/projects/{project_id}/grids` | 宫格图列表允许 viewer |
+| `GET /api/v1/projects/{name}/grids/{grid_id}` | `GET /api/v1/projects/{project_id}/grids/{grid_id}` | 宫格图详情允许 viewer |
+| `POST /api/v1/projects/{name}/grids/{grid_id}/regenerate` | `POST /api/v1/projects/{project_id}/grids/{grid_id}/regenerate` | 宫格图重生成要求 member/admin |
 
 项目响应字段：
 
