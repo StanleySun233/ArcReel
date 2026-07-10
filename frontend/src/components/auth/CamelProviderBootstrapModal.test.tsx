@@ -44,6 +44,14 @@ function neededStatus(): CamelBootstrapStatus {
         token_name: "camel-arcreel-user-1-video",
       },
       {
+        media: "anthropic",
+        provider_name: "CaMeL Agent",
+        base_url: "https://camel.example",
+        endpoint: "anthropic-messages",
+        models: ["claude-opus-4-8"],
+        token_name: "camel-arcreel-user-1-anthropic",
+      },
+      {
         media: "audio",
         provider_name: "CaMeL Audio",
         base_url: "https://camel.example",
@@ -88,9 +96,13 @@ describe("CamelProviderBootstrapModal", () => {
     render(<CamelProviderBootstrapModal />);
 
     expect(await screen.findByText("CaMeL Image")).toBeInTheDocument();
+    expect(screen.getByText("CaMeL Agent")).toBeInTheDocument();
     expect(screen.getByText("CaMeL Audio")).toBeInTheDocument();
     expect(screen.getByText("camel-arcreel-user-1-image")).toBeInTheDocument();
+    expect(screen.getByText("camel-arcreel-user-1-anthropic")).toBeInTheDocument();
     expect(screen.getByText("/v1/videos - veo-3")).toBeInTheDocument();
+    expect(screen.getByText("anthropic-messages - claude-opus-4-8")).toBeInTheDocument();
+    expect(screen.getByText(/five CaMeL API keys/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Start setup" }));
 

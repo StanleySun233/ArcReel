@@ -13,6 +13,7 @@ from lib.custom_provider import make_provider_id
 from lib.db.base import Base
 from lib.db.models import Tenant, TenantMembership
 from lib.db.models.user import User
+from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 
 CAMEL_ARCREEL_ENV_KEYS = (
@@ -23,10 +24,12 @@ CAMEL_ARCREEL_ENV_KEYS = (
     "CAMEL_ARCREEL_TEXT_ENDPOINT",
     "CAMEL_ARCREEL_VIDEO_ENDPOINT",
     "CAMEL_ARCREEL_AUDIO_ENDPOINT",
+    "CAMEL_ARCREEL_ANTHROPIC_ENDPOINT",
     "CAMEL_ARCREEL_IMAGE_MODELS",
     "CAMEL_ARCREEL_TEXT_MODELS",
     "CAMEL_ARCREEL_VIDEO_MODELS",
     "CAMEL_ARCREEL_AUDIO_MODELS",
+    "CAMEL_ARCREEL_ANTHROPIC_MODELS",
 )
 
 
@@ -42,6 +45,7 @@ def configure_bootstrap_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CAMEL_ARCREEL_TEXT_MODELS", "camel-text")
     monkeypatch.setenv("CAMEL_ARCREEL_VIDEO_MODELS", "doubao-seedance-2-0-260128")
     monkeypatch.setenv("CAMEL_ARCREEL_AUDIO_MODELS", "camel-audio")
+    monkeypatch.setenv("CAMEL_ARCREEL_ANTHROPIC_MODELS", "claude-opus-4-8")
 
 
 def clear_bootstrap_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,6 +129,7 @@ def test_camel_bootstrap_settings_derive_from_oauth_minimal_env(monkeypatch: pyt
         ("text", "openai-chat", ("camel-text",)),
         ("video", "ark-seedance", ("doubao-seedance-2-0-260128",)),
         ("audio", "openai-tts", ("camel-audio",)),
+        ("anthropic", "anthropic-messages", ("claude-opus-4-8",)),
     ]
 
 
@@ -146,6 +151,7 @@ def test_camel_token_provision_payload_includes_arcreel_owned_media_specs(monkey
             {"media": "text", "models": ["camel-text"]},
             {"media": "video", "models": ["doubao-seedance-2-0-260128"]},
             {"media": "audio", "models": ["camel-audio"]},
+            {"media": "anthropic", "models": ["claude-opus-4-8"]},
         ],
     }
 
@@ -172,7 +178,7 @@ async def test_camel_bootstrap_creates_user_owned_providers_and_defaults(
                     "key": f"sk-{media}",
                     "model_limits": [f"camel-returned-{media}"],
                 }
-                for media in ("image", "text", "video", "audio")
+                for media in ("image", "text", "video", "audio", "anthropic")
             ],
         }
 
@@ -237,6 +243,13 @@ async def test_camel_bootstrap_creates_user_owned_providers_and_defaults(
         await service.get_setting("default_audio_backend")
         == f"{make_provider_id(by_name['CaMeL Audio'].id)}/camel-returned-audio"
     )
+    agent_credential = await AgentCredentialRepository(session, tenant_id="ten_camel_123").get_active()
+    assert agent_credential is not None
+    assert agent_credential.display_name == "CaMeL Agent"
+    assert agent_credential.base_url == "https://api.camel-hub.com"
+    assert agent_credential.api_key == "sk-anthropic"
+    assert agent_credential.model == "camel-returned-anthropic"
+    assert agent_credential.subagent_model == "camel-returned-anthropic"
 
     user = (await session.execute(select(User).where(User.id == "camel:123"))).scalar_one()
     assert user.camel_provider_bootstrap_completed_at is not None
@@ -257,7 +270,7 @@ async def test_camel_bootstrap_status_returns_needed_provider_plan(
     assert result["needed"] is True
     assert result["completed"] is False
     assert result["camel_user_id"] == "123"
-    assert [p["media"] for p in result["providers"]] == ["image", "text", "video", "audio"]
+    assert [p["media"] for p in result["providers"]] == ["image", "text", "video", "audio", "anthropic"]
     video = next(p for p in result["providers"] if p["media"] == "video")
     assert video == {
         "media": "video",
@@ -282,7 +295,7 @@ async def test_camel_bootstrap_status_returns_complete_without_provider_plan(
     result = await camel_bootstrap.get_camel_bootstrap_status(session, "camel:123")
     assert result["needed"] is True
     assert result["completed"] is False
-    assert [p["media"] for p in result["providers"]] == ["image", "text", "video", "audio"]
+    assert [p["media"] for p in result["providers"]] == ["image", "text", "video", "audio", "anthropic"]
 
 
 @pytest.mark.asyncio
@@ -419,7 +432,7 @@ async def test_camel_bootstrap_repair_updates_existing_provider_and_defaults(
             "success": True,
             "tokens": [
                 {"media": media, "name": f"camel-arcreel-123-{media}", "key": f"sk-repair-{media}"}
-                for media in ("image", "text", "video", "audio")
+                for media in ("image", "text", "video", "audio", "anthropic")
             ],
         }
 
@@ -490,7 +503,7 @@ async def test_camel_bootstrap_partial_failure_returns_created_token_links(
             "success": True,
             "tokens": [
                 {"media": media, "name": f"camel-arcreel-123-{media}", "key": f"sk-{media}"}
-                for media in ("image", "text", "video", "audio")
+                for media in ("image", "text", "video", "audio", "anthropic")
             ],
         }
 
@@ -521,5 +534,5 @@ async def test_camel_bootstrap_partial_failure_returns_created_token_links(
             "token_name": f"camel-arcreel-123-{media}",
             "delete_url": f"https://camel-hub.com/token?keyword=camel-arcreel-123-{media}",
         }
-        for media in ("image", "text", "video", "audio")
+        for media in ("image", "text", "video", "audio", "anthropic")
     ]

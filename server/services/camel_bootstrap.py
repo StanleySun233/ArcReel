@@ -11,11 +11,13 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lib.agent_provider_catalog import CUSTOM_SENTINEL_ID
 from lib.config.service import ConfigService
 from lib.custom_provider import make_provider_id
 from lib.custom_provider.endpoints import ENDPOINT_REGISTRY
 from lib.db.models import Tenant
 from lib.db.models.user import User
+from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 from lib.db.tenant_context import set_tenant_context
 
@@ -32,6 +34,7 @@ _DEFAULT_MEDIA_SPECS = {
     "text": ("CaMeL Text", "openai-chat", ("camel-text",)),
     "video": ("CaMeL Video", "ark-seedance", ("doubao-seedance-2-0-260128",)),
     "audio": ("CaMeL Audio", "openai-tts", ("camel-audio",)),
+    "anthropic": ("CaMeL Agent", "anthropic-messages", ("claude-opus-4-8",)),
 }
 
 
@@ -115,13 +118,14 @@ def _join_url(base_url: str, path: str) -> str:
 def _media_spec(media: str, endpoint_env: str, models_env: str) -> CamelMediaSpec:
     display_name, default_endpoint, default_models = _DEFAULT_MEDIA_SPECS[media]
     endpoint = _env_or_default(endpoint_env, default_endpoint)
-    if endpoint not in ENDPOINT_REGISTRY:
+    if media != "anthropic" and endpoint not in ENDPOINT_REGISTRY:
         raise HTTPException(status_code=503, detail=f"{endpoint_env} is invalid")
     default_keys = {
         "image": ("default_image_backend_t2i", "default_image_backend_i2i"),
         "text": ("default_text_backend", "text_backend_script", "text_backend_overview", "text_backend_style"),
         "video": ("default_video_backend",),
         "audio": ("default_audio_backend",),
+        "anthropic": (),
     }[media]
     return CamelMediaSpec(media, display_name, endpoint, _env_models(models_env, default_models), default_keys)
 
@@ -137,6 +141,7 @@ def get_camel_bootstrap_settings() -> CamelBootstrapSettings:
             _media_spec("text", "CAMEL_ARCREEL_TEXT_ENDPOINT", "CAMEL_ARCREEL_TEXT_MODELS"),
             _media_spec("video", "CAMEL_ARCREEL_VIDEO_ENDPOINT", "CAMEL_ARCREEL_VIDEO_MODELS"),
             _media_spec("audio", "CAMEL_ARCREEL_AUDIO_ENDPOINT", "CAMEL_ARCREEL_AUDIO_MODELS"),
+            _media_spec("anthropic", "CAMEL_ARCREEL_ANTHROPIC_ENDPOINT", "CAMEL_ARCREEL_ANTHROPIC_MODELS"),
         ),
     )
 
@@ -301,6 +306,41 @@ async def _upsert_provider(
     return provider
 
 
+async def _upsert_agent_credential(
+    session: AsyncSession,
+    user_id: str,
+    tenant_id: str,
+    settings: CamelBootstrapSettings,
+    spec: CamelMediaSpec,
+    models: tuple[str, ...],
+    api_key: str,
+):
+    repo = AgentCredentialRepository(session, tenant_id=tenant_id)
+    existing = next((cred for cred in await repo.list_for_tenant() if cred.display_name == spec.display_name), None)
+    if existing is None:
+        credential = await repo.create(
+            preset_id=CUSTOM_SENTINEL_ID,
+            display_name=spec.display_name,
+            base_url=settings.provider_base_url,
+            api_key=api_key,
+            model=models[0],
+            subagent_model=models[0],
+            user_id=user_id,
+        )
+    else:
+        credential = await repo.update(
+            existing.id,
+            base_url=settings.provider_base_url,
+            api_key=api_key,
+            model=models[0],
+            subagent_model=models[0],
+        )
+    if credential is None:
+        raise HTTPException(status_code=502, detail="CaMeL agent credential bootstrap failed")
+    await repo.set_active(credential.id)
+    return credential
+
+
 async def _resolve_tenant_id(session: AsyncSession, user_id: str, tenant_id: str | None) -> str:
     resolved = tenant_id or session.info.get("tenant_id")
     if resolved:
@@ -324,10 +364,13 @@ async def _tenant_bootstrap_completed(
     repo = CustomProviderRepository(session, user_id=user_id, tenant_id=tenant_id)
     providers = await repo.list_providers()
     provider_names = {provider.display_name for provider in providers}
-    if any(spec.display_name not in provider_names for spec in settings.media_specs):
+    provider_specs = [spec for spec in settings.media_specs if spec.media != "anthropic"]
+    if any(spec.display_name not in provider_names for spec in provider_specs):
+        return False
+    if await AgentCredentialRepository(session, tenant_id=tenant_id).get_active() is None:
         return False
     config = ConfigService(session, user_id=user_id, tenant_id=tenant_id)
-    for spec in settings.media_specs:
+    for spec in provider_specs:
         for key in spec.default_keys:
             if not await config.get_setting(key, ""):
                 return False
@@ -406,6 +449,9 @@ async def complete_camel_provider_bootstrap(
             if not isinstance(api_key, str) or not api_key:
                 raise HTTPException(status_code=502, detail="CaMeL token provisioning response was incomplete")
             models = _token_models(token, spec)
+            if spec.media == "anthropic":
+                await _upsert_agent_credential(session, user_id, resolved_tenant_id, settings, spec, models, api_key)
+                continue
             provider = await _upsert_provider(session, user_id, resolved_tenant_id, settings, spec, models, api_key)
             if provider is None:
                 raise HTTPException(status_code=502, detail="CaMeL provider bootstrap failed")

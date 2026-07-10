@@ -166,7 +166,7 @@ export function CamelProviderBootstrapModal() {
               {isSuccess ? "CaMeL providers are ready" : "Set up CaMeL providers"}
             </h2>
             <p id={descId} className="mt-1 text-[12.5px] leading-relaxed text-text-3">
-              ArcReel will create four CaMeL API keys named camel-arcreel-{"{camel_user_id}"}-image, text, video, and audio, then configure four ArcReel custom providers for this user. Raw keys stay on the server.
+              ArcReel will create five CaMeL API keys named camel-arcreel-{"{camel_user_id}"}-image, text, video, audio, and anthropic, then configure four ArcReel media providers and one Anthropic Bridge agent credential for this user. Raw keys stay on the server.
             </p>
           </div>
           <ModalCloseButton onClick={dismiss} />
