@@ -261,6 +261,45 @@ describe("API", () => {
         isTenantOwner: true,
       });
     });
+
+    it("clears local session and redirects when tenant recovery fails", async () => {
+      window.localStorage.setItem("arcreel_auth_token", "orphan-token");
+      window.localStorage.setItem("arcreel_tenant_session", JSON.stringify({
+        version: 1,
+        currentTenant: teamTenant,
+        tenants: [personalTenant, teamTenant],
+      }));
+      useAuthStore.setState({
+        token: "orphan-token",
+        isAuthenticated: true,
+        currentTenant: teamTenant,
+        tenants: [personalTenant, teamTenant],
+        tenantRole: "member",
+        isTenantOwner: false,
+      });
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(mockResponse({
+          ok: false,
+          status: 403,
+          jsonData: { error: "TENANT_ACCESS_REVOKED", fallback_tenant_id: "ten_personal" },
+        }))
+        .mockResolvedValueOnce(mockResponse({
+          ok: false,
+          status: 403,
+          statusText: "Forbidden",
+          jsonData: { detail: "TENANT_ACCESS_REVOKED" },
+        }));
+      vi.stubGlobal("fetch", fetchMock);
+      const location = { href: "", pathname: "/app/projects/demo", search: "?tab=settings", hash: "#providers" };
+      vi.stubGlobal("location", location);
+
+      await expect(API.request("/camel/bootstrap/start-url", { method: "POST" })).rejects.toThrow("认证已过期，请重新登录");
+
+      expect(window.localStorage.getItem("arcreel_auth_token")).toBeNull();
+      expect(window.localStorage.getItem("arcreel_tenant_session")).toBeNull();
+      expect(location.href).toBe("/login?from=%2Fapp%2Fprojects%2Fdemo%3Ftab%3Dsettings%23providers");
+    });
   });
 
   describe("request-based wrappers", () => {
