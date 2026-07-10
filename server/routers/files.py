@@ -590,12 +590,18 @@ async def _handle_source_upload(
 
 
 @router.get("/projects/{project_name}/files")
-async def list_project_files(project_name: str, _user: CurrentUser, _t: Translator):
+async def list_project_files(
+    project_name: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """列出项目中的所有文件"""
+    manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
     try:
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
 
             files = {
                 "source": [],

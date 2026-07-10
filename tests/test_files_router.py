@@ -49,6 +49,11 @@ def _client(monkeypatch, tmp_path):
     pm.add_product("demo", "保温杯", "不锈钢保温杯")
 
     monkeypatch.setattr(files, "get_project_manager", lambda: pm)
+
+    async def _tenant_pm(*args, **kwargs):
+        return pm
+
+    monkeypatch.setattr(files, "_tenant_project_manager", _tenant_pm)
     monkeypatch.setattr("lib.text_generator.create_text_backend_for_task", _fake_create_backend)
 
     app = FastAPI()
@@ -94,6 +99,22 @@ class TestFilesRouter:
 
             missing = client.get("/api/v1/projects/demo/source/missing.txt")
             assert missing.status_code == 404
+
+    def test_list_files_uses_tenant_project_manager(self, tmp_path, monkeypatch):
+        client, _ = _client(monkeypatch, tmp_path)
+        global_pm = ProjectManager(tmp_path / "global-projects")
+        monkeypatch.setattr(files, "get_project_manager", lambda: global_pm)
+
+        with client:
+            upload = client.post(
+                "/api/v1/projects/demo/upload/source",
+                files={"file": ("chapter.txt", "hello", "text/plain")},
+            )
+            assert upload.status_code == 200
+
+            listed = client.get("/api/v1/projects/demo/files")
+            assert listed.status_code == 200
+            assert [item["name"] for item in listed.json()["files"]["source"]] == ["chapter.txt"]
 
     def test_upload_assets_and_drafts(self, tmp_path, monkeypatch):
         client, pm = _client(monkeypatch, tmp_path)

@@ -1389,8 +1389,15 @@ async def set_project_source(
 async def generate_overview(name: str, _user: CurrentUser, _t: Translator):
     """使用 AI 生成项目概述"""
     try:
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                if await ProjectRepository(session, tenant_id=access.id).get_by_name(name) is None:
+                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        manager = get_tenant_project_manager(access.id)
         with project_change_source("webui"):
-            overview = await get_project_manager().generate_overview(name)
+            overview = await manager.generate_overview(name)
         return {"success": True, "overview": overview}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
