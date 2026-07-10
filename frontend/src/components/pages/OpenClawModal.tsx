@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { copyText } from "@/utils/clipboard";
 import { Check, Copy, ExternalLink, X } from "lucide-react";
-import { useLocation } from "wouter";
 import { useEscapeClose } from "@/hooks/useEscapeClose";
 import { useFocusTrap } from "@/hooks/useFocusTrap";
 import {
@@ -40,7 +39,6 @@ const SKILL_URL = `${window.location.origin}/skill.md`;
 
 export function OpenClawModal({ onClose }: OpenClawModalProps) {
   const { t } = useTranslation(["dashboard", "common"]);
-  const [, navigate] = useLocation();
   const [copied, setCopied] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   const copiedTimerRef = useRef<number | null>(null);
@@ -60,11 +58,6 @@ export function OpenClawModal({ onClose }: OpenClawModalProps) {
   useEffect(() => () => {
     if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
   }, []);
-
-  const handleGoToApiKeys = useCallback(() => {
-    onClose();
-    navigate("/app/settings?section=api-keys");
-  }, [navigate, onClose]);
 
   useEscapeClose(onClose);
   useFocusTrap(dialogRef, true);
@@ -189,8 +182,8 @@ export function OpenClawModal({ onClose }: OpenClawModalProps) {
             </button>
             <button
               type="button"
-              onClick={handleGoToApiKeys}
-              className={`${ACCENT_BTN_CLS} flex-1 justify-center`}
+              disabled
+              className={`${ACCENT_BTN_CLS} flex-1 cursor-not-allowed justify-center opacity-45`}
               style={ACCENT_BUTTON_STYLE}
             >
               {t("dashboard:openclaw_get_api_token")}

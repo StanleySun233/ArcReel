@@ -35,6 +35,12 @@ def _require_jwt_auth(user: CurrentUserInfo, _t: Callable[..., str]) -> None:
 
 
 API_KEY_DEFAULT_EXPIRY_DAYS = 30
+ISSUED_TOKENS_ENABLED = False
+
+
+def _require_issued_tokens_enabled() -> None:
+    if not ISSUED_TOKENS_ENABLED:
+        raise HTTPException(status_code=403, detail="feature_disabled")
 
 
 def _generate_api_key(tenant_id: str) -> str:
@@ -77,6 +83,7 @@ async def create_api_key(
     _t: Translator,
 ) -> CreateApiKeyResponse:
     """创建新 API Key。完整 key 仅在响应中出现一次，之后无法再查看。"""
+    _require_issued_tokens_enabled()
     _require_jwt_auth(_user, _t)
     if body.expires_days == 0:
         expires_at: datetime | None = None
@@ -121,6 +128,7 @@ async def list_api_keys(
     _t: Translator,
 ) -> list[ApiKeyInfo]:
     """查询所有 API Key 的元数据（不含完整 key）。"""
+    _require_issued_tokens_enabled()
     _require_jwt_auth(_user, _t)
     async with async_session_factory() as session:
         async with session.begin():
@@ -132,6 +140,17 @@ async def list_api_keys(
     return [ApiKeyInfo(**row) for row in rows]
 
 
+@router.patch("/api-keys/{key_id}")
+async def update_api_key(
+    key_id: int,
+    _body: CreateApiKeyRequest,
+    _user: CurrentUser,
+) -> ApiKeyInfo:
+    _ = key_id
+    _require_issued_tokens_enabled()
+    raise HTTPException(status_code=403, detail="feature_disabled")
+
+
 @router.delete("/api-keys/{key_id}", status_code=204)
 async def delete_api_key(
     key_id: int,
@@ -139,6 +158,7 @@ async def delete_api_key(
     _t: Translator,
 ) -> None:
     """删除（吊销）指定 API Key，并立即清除内存缓存。"""
+    _require_issued_tokens_enabled()
     _require_jwt_auth(_user, _t)
     async with async_session_factory() as session:
         async with session.begin():

@@ -167,6 +167,6 @@ describe("LoginPage returnTo consumption", () => {
     renderLoginAt("/login");
 
     expect(screen.getByText(/Powered by ArcReel/)).toBeInTheDocument();
-    expect(screen.getByText(/free of charge with CaMeL as the API relay/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "https://github.com/ArcReel/ArcReel" })).toBeInTheDocument();
   });
 });

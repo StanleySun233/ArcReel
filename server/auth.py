@@ -480,22 +480,11 @@ def _verify_and_get_payload(token: str) -> dict:
 
 
 async def _verify_and_get_payload_async(token: str) -> dict:
-    """异步验证 token，支持 API Key（arc- 前缀）和 JWT 两种模式。"""
-    if token.startswith(API_KEY_PREFIX):
-        payload = await _verify_api_key(token)
-        if payload is None:
-            raise HTTPException(
-                status_code=401,
-                detail="API Key 无效、已过期或不存在",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return payload
-    # JWT 路径
     return _verify_and_get_payload(token)
 
 
 def _payload_to_user(payload: dict) -> CurrentUserInfo:
-    """Convert a verified JWT/API-key payload to CurrentUserInfo."""
+    """Convert a verified JWT payload to CurrentUserInfo."""
     from lib.db.base import DEFAULT_USER_ID
 
     sub = payload.get("sub", "")
@@ -519,7 +508,7 @@ def _payload_to_user(payload: dict) -> CurrentUserInfo:
 async def get_current_user(
     token: Annotated[str | None, Depends(oauth2_scheme_optional)] = None,
 ) -> CurrentUserInfo:
-    """标准认证依赖 — 支持 JWT 和 API Key Bearer token。
+    """标准认证依赖。
 
     ``AUTH_ENABLED=false`` 时无视 token，直接返回匿名 admin。
     启用时缺 token 抛 401（与旧 oauth2_scheme auto_error 行为等价）。

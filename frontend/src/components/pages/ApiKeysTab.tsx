@@ -44,6 +44,7 @@ const FULL_DATE_OPTS: Intl.DateTimeFormatOptions = {
   month: "2-digit",
   day: "2-digit",
 };
+const ISSUED_TOKENS_ENABLED: boolean = false;
 
 function isExpired(expiresAt: string | null): boolean {
   if (!expiresAt) return false;
@@ -321,6 +322,10 @@ export function ApiKeysTab() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const fetchKeys = useCallback(async () => {
+    if (!ISSUED_TOKENS_ENABLED) {
+      setLoading(false);
+      return;
+    }
     try {
       const res = await API.listApiKeys();
       setApiKeys(res);
@@ -340,6 +345,7 @@ export function ApiKeysTab() {
   }, [fetchKeys]);
 
   const handleDelete = useCallback(async (key: ApiKeyInfo) => {
+    if (!ISSUED_TOKENS_ENABLED) return;
     if (!confirm(tRef.current("confirm_delete_key", { name: key.name }))) {
       return;
     }
@@ -384,8 +390,9 @@ export function ApiKeysTab() {
         </div>
         <button
           type="button"
-          onClick={() => setShowCreate(true)}
-          className={`${ACCENT_BTN_CLS} shrink-0`}
+          onClick={() => ISSUED_TOKENS_ENABLED && setShowCreate(true)}
+          disabled={!ISSUED_TOKENS_ENABLED}
+          className={`${ACCENT_BTN_CLS} shrink-0 ${ISSUED_TOKENS_ENABLED ? "" : "cursor-not-allowed opacity-45"}`}
           style={ACCENT_BUTTON_STYLE}
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
@@ -445,8 +452,11 @@ export function ApiKeysTab() {
                     <div className="space-y-1.5">
                       <p className="text-[12.5px] text-text-3">{t("no_api_keys")}</p>
                       <button
-                        onClick={() => setShowCreate(true)}
-                        className="font-mono text-[10.5px] font-bold uppercase tracking-[0.14em] text-accent-2 transition-colors hover:text-accent"
+                        onClick={() => ISSUED_TOKENS_ENABLED && setShowCreate(true)}
+                        disabled={!ISSUED_TOKENS_ENABLED}
+                        className={`font-mono text-[10.5px] font-bold uppercase tracking-[0.14em] text-accent-2 transition-colors ${
+                          ISSUED_TOKENS_ENABLED ? "hover:text-accent" : "cursor-not-allowed opacity-45"
+                        }`}
                       >
                         {t("create_one_now")}
                       </button>
@@ -498,8 +508,10 @@ export function ApiKeysTab() {
                       <button
                         type="button"
                         onClick={() => void handleDelete(key)}
-                        disabled={deletingId === key.id}
-                        className="rounded-[6px] p-2 text-text-3 transition-colors hover:bg-warm-tint hover:text-warm-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        disabled={!ISSUED_TOKENS_ENABLED || deletingId === key.id}
+                        className={`rounded-[6px] p-2 text-text-3 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+                          ISSUED_TOKENS_ENABLED ? "hover:bg-warm-tint hover:text-warm-bright" : "cursor-not-allowed opacity-45"
+                        }`}
                         title={t("common:delete")}
                       >
                         {deletingId === key.id ? (
@@ -520,7 +532,7 @@ export function ApiKeysTab() {
         </table>
       </div>
 
-      {showCreate && (
+      {ISSUED_TOKENS_ENABLED && showCreate && (
         <CreateModal
           onClose={() => setShowCreate(false)}
           onCreated={(k) => setApiKeys((prev) => [k, ...prev])}
