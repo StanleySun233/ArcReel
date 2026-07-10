@@ -166,7 +166,12 @@ async def test_camel_bootstrap_creates_user_owned_providers_and_defaults(
         return {
             "success": True,
             "tokens": [
-                {"media": media, "name": f"camel-arcreel-123-{media}", "key": f"sk-{media}"}
+                {
+                    "media": media,
+                    "name": f"camel-arcreel-123-{media}",
+                    "key": f"sk-{media}",
+                    "model_limits": [f"camel-returned-{media}"],
+                }
                 for media in ("image", "text", "video", "audio")
             ],
         }
@@ -207,17 +212,18 @@ async def test_camel_bootstrap_creates_user_owned_providers_and_defaults(
     by_name = {p.display_name: p for p in providers}
     assert (
         await service.get_setting("default_image_backend_t2i")
-        == f"{make_provider_id(by_name['CaMeL Image'].id)}/camel-image"
+        == f"{make_provider_id(by_name['CaMeL Image'].id)}/camel-returned-image"
     )
     assert (
-        await service.get_setting("default_text_backend") == f"{make_provider_id(by_name['CaMeL Text'].id)}/camel-text"
+        await service.get_setting("default_text_backend")
+        == f"{make_provider_id(by_name['CaMeL Text'].id)}/camel-returned-text"
     )
     assert await service.get_setting("default_video_backend") == (
-        f"{make_provider_id(by_name['CaMeL Video'].id)}/doubao-seedance-2-0-260128"
+        f"{make_provider_id(by_name['CaMeL Video'].id)}/camel-returned-video"
     )
     assert (
         await service.get_setting("default_audio_backend")
-        == f"{make_provider_id(by_name['CaMeL Audio'].id)}/camel-audio"
+        == f"{make_provider_id(by_name['CaMeL Audio'].id)}/camel-returned-audio"
     )
 
     user = (await session.execute(select(User).where(User.id == "camel:123"))).scalar_one()

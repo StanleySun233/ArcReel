@@ -161,16 +161,21 @@ async def _request_camel_tokens(
                 headers={"Authorization": f"Bearer {access_token}"},
                 json=payload,
             )
+            body = _decode_camel_token_response(response)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="CaMeL token provisioning request failed") from exc
+    if response.status_code >= 400 and body.get("success") is not False:
+        raise HTTPException(status_code=502, detail="CaMeL token provisioning request failed")
+    return body
+
+
+def _decode_camel_token_response(response: httpx.Response) -> dict:
     try:
         body = response.json()
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="CaMeL token provisioning response was invalid") from exc
     if not isinstance(body, dict):
         raise HTTPException(status_code=502, detail="CaMeL token provisioning response was invalid")
-    if response.status_code >= 400 and body.get("success") is not False:
-        raise HTTPException(status_code=502, detail="CaMeL token provisioning request failed")
     return body
 
 
@@ -245,7 +250,15 @@ def _safe_camel_error_message(body: dict) -> str:
     return ""
 
 
-def _models_for_spec(spec: CamelMediaSpec) -> list[dict]:
+def _token_models(token: dict, spec: CamelMediaSpec) -> tuple[str, ...]:
+    raw = token.get("model_limits")
+    if not isinstance(raw, list):
+        return spec.models
+    models = tuple(str(model).strip() for model in raw if str(model).strip())
+    return models or spec.models
+
+
+def _models_for_spec(spec: CamelMediaSpec, models: tuple[str, ...]) -> list[dict]:
     return [
         {
             "model_id": model,
@@ -254,7 +267,7 @@ def _models_for_spec(spec: CamelMediaSpec) -> list[dict]:
             "is_default": index == 0,
             "is_enabled": True,
         }
-        for index, model in enumerate(spec.models)
+        for index, model in enumerate(models)
     ]
 
 
@@ -264,6 +277,7 @@ async def _upsert_provider(
     tenant_id: str,
     settings: CamelBootstrapSettings,
     spec: CamelMediaSpec,
+    models: tuple[str, ...],
     api_key: str,
 ):
     repo = CustomProviderRepository(session, user_id=user_id, tenant_id=tenant_id)
@@ -274,7 +288,7 @@ async def _upsert_provider(
             discovery_format="openai",
             base_url=settings.provider_base_url,
             api_key=api_key,
-            models=_models_for_spec(spec),
+            models=_models_for_spec(spec, models),
         )
     else:
         provider = await repo.update_provider(
@@ -283,7 +297,7 @@ async def _upsert_provider(
             base_url=settings.provider_base_url,
             api_key=api_key,
         )
-        await repo.replace_models(existing.id, _models_for_spec(spec))
+        await repo.replace_models(existing.id, _models_for_spec(spec, models))
     return provider
 
 
@@ -391,10 +405,11 @@ async def complete_camel_provider_bootstrap(
             api_key = token.get("key") if isinstance(token, dict) else None
             if not isinstance(api_key, str) or not api_key:
                 raise HTTPException(status_code=502, detail="CaMeL token provisioning response was incomplete")
-            provider = await _upsert_provider(session, user_id, resolved_tenant_id, settings, spec, api_key)
+            models = _token_models(token, spec)
+            provider = await _upsert_provider(session, user_id, resolved_tenant_id, settings, spec, models, api_key)
             if provider is None:
                 raise HTTPException(status_code=502, detail="CaMeL provider bootstrap failed")
-            provider_ref = f"{make_provider_id(provider.id)}/{spec.models[0]}"
+            provider_ref = f"{make_provider_id(provider.id)}/{models[0]}"
             for key in spec.default_keys:
                 await config.set_setting(key, provider_ref)
             repo_results.append(
@@ -402,7 +417,7 @@ async def complete_camel_provider_bootstrap(
                     "media": spec.media,
                     "provider_id": provider.id,
                     "provider_name": spec.display_name,
-                    "models": list(spec.models),
+                    "models": list(models),
                 }
             )
 
