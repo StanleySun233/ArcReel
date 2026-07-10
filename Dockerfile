@@ -1,4 +1,4 @@
-ARG ARCREEL_BASE_IMAGE=registry.kr777.top/arcreel-base:private-dev
+ARG ARCREEL_BASE_IMAGE=registry.kr777.top/arcreel/arcreel-base:private-dev
 
 # ============================================================
 # Stage 1: 构建前端

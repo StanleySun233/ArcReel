@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BASE_IMAGE_NAME: arcreel-base
+  BASE_IMAGE_NAME: arcreel/arcreel-base
 
 jobs:
   build:
