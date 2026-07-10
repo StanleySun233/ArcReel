@@ -5,7 +5,7 @@
 
 Coverage labels:
 
-- Automated backend: pytest or Go test.
+- Automated backend: pytest or ArcReel-owned external API contract smoke.
 - Automated frontend: Vitest/Playwright.
 - Manual: browser or deployed-stack verification with recorded evidence.
 
@@ -26,13 +26,13 @@ Coverage labels:
 
 | ID | Scenario | Setup | Expected Result | Coverage | Owner |
 |----|----------|-------|-----------------|----------|-------|
-| CAMEL-01 | Provision create success | Valid ArcReel OAuth bearer with scope | Four visible CaMeL tokens, model limits, ArcReel-managed marker | Automated Go | Story 0 |
-| CAMEL-02 | Provision create conflict | Same-name non-managed token exists | Conflict response, no new tokens | Automated Go | Story 0 |
-| CAMEL-03 | Provision repair managed tokens | Existing ArcReel-managed tokens | Tokens rotated, model limits updated, cache invalidated | Automated Go | Story 0 |
-| CAMEL-04 | Provision repair non-managed conflict | Same-name non-managed token exists | Conflict response, token not rotated | Automated Go | Story 0 |
-| CAMEL-05 | Provision rejects wrong client | OAuth bearer from other client | Forbidden invalid client | Automated Go | Story 0 |
-| CAMEL-06 | Provision rejects missing scope | Bearer lacks `arcreel:token-provision` | Forbidden insufficient scope | Automated Go | Story 0 |
-| CAMEL-07 | Provision idempotency retry | Same user/client/idempotency key retried | Deterministic success or explicit already-completed contract | Automated Go | Story 0 |
+| CAMEL-01 | Provision create success | Valid ArcReel OAuth bearer with scope | Four visible CaMeL tokens, model limits, ArcReel-managed marker | External contract smoke | Story 0 |
+| CAMEL-02 | Provision create conflict | Same-name non-managed token exists | Conflict response, no new tokens | External contract smoke | Story 0 |
+| CAMEL-03 | Provision repair managed tokens | Existing ArcReel-managed tokens | Tokens rotated, model limits updated, cache invalidated | External contract smoke | Story 0 |
+| CAMEL-04 | Provision repair non-managed conflict | Same-name non-managed token exists | Conflict response, token not rotated | External contract smoke | Story 0 |
+| CAMEL-05 | Provision rejects wrong client | OAuth bearer from other client | Forbidden invalid client | External contract smoke | Story 0 |
+| CAMEL-06 | Provision rejects missing scope | Bearer lacks `arcreel:token-provision` | Forbidden insufficient scope | External contract smoke | Story 0 |
+| CAMEL-07 | Provision retry behavior | Same logical provisioning request retried | Deterministic success or explicit completed-contract response from CaMeL-api | External contract smoke | Story 0 |
 | CAMEL-08 | ArcReel local partial failure | CaMeL tokens created, local provider write fails | Bootstrap incomplete and deletion links returned | Automated backend | Story 0 / Story 7 |
 | CAMEL-09 | Tenant-scoped bootstrap completeness | Tenant providers deleted after previous success | Status detects missing config and offers repair | Automated backend | Story 7 |
 

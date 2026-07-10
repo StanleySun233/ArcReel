@@ -10,7 +10,7 @@ This audit checks whether every critical chain has an entry path, authority sour
 | Chain | Coverage | Blocking Gap | Owning Story |
 |-------|----------|--------------|--------------|
 | CaMeL login to personal tenant token | covered by design | none | Story 3 |
-| CaMeL provider/API key bootstrap | partially covered | CaMeL-api idempotency missing | Story 0 |
+| CaMeL provider/API key bootstrap | covered by design | external contract smoke required | Story 0 |
 | Tenant switch | covered by design | none | Story 3 / Story 4 |
 | Member CRUD and role matrix | covered by design | none | Story 3 |
 | Redis permission cache | covered by design | invalidation tests required | Story 3 |
@@ -48,8 +48,8 @@ This audit checks whether every critical chain has an entry path, authority sour
 | Writes | CaMeL visible tokens; ArcReel tenant-scoped providers/config/defaults |
 | Permission check | CaMeL validates client/scope; ArcReel validates user mismatch and current tenant bootstrap target |
 | Cache invalidation | provider/config caches if any; none in current design |
-| Failure modes | token conflict, partial local failure, user mismatch, missing env, idempotency retry |
-| Tests | Story 0 must add CaMeL-api create/conflict/repair/client/scope/idempotency tests |
+| Failure modes | token conflict, partial local failure, user mismatch, missing env, retry behavior under external contract |
+| Tests | Story 0 must run ArcReel-owned contract smoke for create/conflict/repair/client/scope/retry behavior when CaMeL-api endpoint credentials are available |
 
 ### 3. Tenant Switch
 
@@ -161,6 +161,6 @@ This audit checks whether every critical chain has an entry path, authority sour
 
 ## Required Follow-Up Before Implementation
 
-- Story 0 must close CaMeL-api idempotency and test gaps.
+- Story 0 must verify the completed CaMeL-api contract from ArcReel without modifying CaMeL-api.
 - `scenario-test-matrix.md` must map every chain above to automated or manual coverage.
 - No implementation story starts before this audit is reviewed with the sprint backlog.

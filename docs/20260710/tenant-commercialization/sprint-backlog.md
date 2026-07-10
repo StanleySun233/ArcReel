@@ -1,9 +1,9 @@
 # Sprint Backlog: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** planned
+**Status:** in-progress
 **Product brief:** Conversation request: build ArcReel commercial tenant edition with CaMeL login, ArcReel-owned tenants and memberships, PostgreSQL-only storage with RLS, Redis permission cache, MinIO private media storage, file-id project schema, tenant/user asset libraries with snapshot import and manual sync, tenant-scoped configuration/API keys/tasks, and frontend tenant switching. This is a new independent release with no runtime compatibility for SQLite, old local media paths, or old project media schema.
-**Main integration branch:** fix/seedance-mounted-base-url
+**Main integration branch:** integration/tenant-commercialization
 
 ## Sprint Goal
 
@@ -34,7 +34,7 @@ Deliver the tenant-commercialization foundation as a new ArcReel edition: CaMeL-
 
 | Wave | Stories | Parallel Policy |
 |------|---------|-----------------|
-| 0 | Story 0, Story 1 | Parallel: CaMeL-api preflight and ArcReel infrastructure touch different files except `server/services/camel_auth.py`, which belongs to Story 0. |
+| 0 | Story 0, Story 1 | Parallel: CaMeL contract preflight is ArcReel-only and Story 1 owns infrastructure baseline. CaMeL-api is an external completed dependency and is not modified. |
 | 1 | Story 2 | Serialized schema/RLS foundation. All later backend stories depend on this. |
 | 2 | Story 3, Story 4, Story 5, Story 7 | Parallel after Story 2. Story 4 may build against `api-contract.md` before Story 3 merges, then final QA after Story 3. |
 | 3 | Story 6, Story 8, Story 9 | Parallel after Story 5 where file-id behavior is needed. Shared frontend asset files are owned by Story 8/9 with explicit split. |
@@ -51,28 +51,26 @@ These gates happen before implementation agents start. They are not story worktr
 
 ## Stories
 
-### Story 0 - Preflight CaMeL OAuth And API Key Provisioning Hardening
+### Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening
 
 **Slug:** preflight-camel
-**User value:** The tenant edition can rely on CaMeL OAuth and initial provider/API key bootstrap without brittle retry or redirect behavior.
-**Status:** planned
+**User value:** The tenant edition can rely on CaMeL OAuth and initial provider/API key bootstrap without ArcReel-side redirect weakness or unverified external contract assumptions.
+**Status:** in-progress
 **QA Status:** pending
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] CaMeL-api ArcReel provisioning implements documented idempotency behavior for `idempotency_key`.
-- [ ] CaMeL-api has tests for create, conflict, repair, scope/client validation, and idempotency retry.
-- [ ] ArcReel dynamic OAuth redirect only accepts `http` or `https` forwarded scheme and fails closed on invalid scheme.
-- [ ] ArcReel bootstrap tests cover invalid forwarded scheme.
+- [ ] CaMeL-api is treated as a completed external dependency; this sprint does not modify CaMeL-api files, branches, tests, or worktrees.
+- [ ] ArcReel-owned contract verification covers create, conflict, repair, scope/client validation, and retry behavior against the completed CaMeL-api service when endpoint credentials are available.
+- [x] ArcReel dynamic OAuth redirect only accepts `http` or `https` forwarded scheme and fails closed on invalid scheme.
+- [x] ArcReel bootstrap tests cover invalid forwarded scheme.
 - [ ] The sprint audit document findings are either fixed or explicitly carried into later tenant stories.
 
 **Engineering Subtasks**
-- [ ] Tara: Add idempotency field and persistence design to `../CaMeL-api/model/arcreel_token.go`. (depends: none)
-- [ ] Tara: Thread `idempotency_key` from `../CaMeL-api/controller/oauth_provider_arcreel.go` into the model layer. (depends: none)
-- [ ] Tara: Add CaMeL-api tests for ArcReel create/conflict/repair/client/scope/idempotency in new or existing `*_test.go` files. (depends: none)
-- [ ] Tara: Restrict forwarded scheme in `server/services/camel_auth.py`. (depends: none)
-- [ ] Tara: Extend `tests/test_camel_auth_provider_bootstrap.py` for invalid forwarded scheme. (depends: none)
-- [ ] Quinn: Run ArcReel targeted pytest and CaMeL-api targeted Go tests. (depends: implementation)
+- [x] Tara: Restrict forwarded scheme in `server/services/camel_auth.py`. (depends: none)
+- [x] Tara: Extend `tests/test_camel_auth_provider_bootstrap.py` for invalid forwarded scheme. (depends: none)
+- [ ] Tara: Add or document ArcReel-owned CaMeL provisioning contract smoke that does not edit CaMeL-api. (depends: endpoint credentials)
+- [ ] Quinn: Run ArcReel targeted pytest and contract smoke against the completed CaMeL-api service when available. (depends: implementation)
 
 **QA Evidence:** pending
 
@@ -369,9 +367,6 @@ These gates happen before implementation agents start. They are not story worktr
 | File Path | Owner | Story | Parallel Policy |
 |-----------|-------|-------|-----------------|
 | `docs/20260710/tenant-commercialization/*` | PM | Sprint planning | exclusive |
-| `../CaMeL-api/controller/oauth_provider_arcreel.go` | Tara | Story 0 | exclusive external repo |
-| `../CaMeL-api/model/arcreel_token.go` | Tara | Story 0 | exclusive external repo |
-| `../CaMeL-api/**/*_test.go` | Tara/Quinn | Story 0 | Tara writes implementation tests; Quinn verifies |
 | `server/services/camel_auth.py` | Tara | Story 0 | exclusive until merged, then Noah may integrate tenant token changes |
 | `tests/test_camel_auth_provider_bootstrap.py` | Tara | Story 0 | exclusive |
 | `deploy/dev/docker-compose.middleware.yml` | Atlas | Story 1 | exclusive |
@@ -441,25 +436,23 @@ These gates happen before implementation agents start. They are not story worktr
 
 | Story | Branch | Worktree Path | Merge Target | Merge Status | Cleanup Status |
 |-------|--------|---------------|--------------|--------------|----------------|
-| Story 0 - Preflight CaMeL OAuth And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 0 - CaMeL-api paired branch | `story/tenant-commercialization/preflight-camel` | `../CaMeL-api-worktrees/tenant-commercialization/preflight-camel` | CaMeL-api current integration branch | pending | pending |
-| Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline | `story/tenant-commercialization/pg-runtime-baseline` | `../ArcReel-worktrees/tenant-commercialization/pg-runtime-baseline` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 3 - Tenant Auth, Membership API, Redis Permission Cache | `story/tenant-commercialization/tenant-auth` | `../ArcReel-worktrees/tenant-commercialization/tenant-auth` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `fix/seedance-mounted-base-url` | pending | pending |
-| Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `fix/seedance-mounted-base-url` | pending | pending |
+| Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `integration/tenant-commercialization` | pending | pending |
+| Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline | `story/tenant-commercialization/pg-runtime-baseline` | `../ArcReel-worktrees/tenant-commercialization/pg-runtime-baseline` | `integration/tenant-commercialization` | pending | pending |
+| Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `integration/tenant-commercialization` | pending | pending |
+| Story 3 - Tenant Auth, Membership API, Redis Permission Cache | `story/tenant-commercialization/tenant-auth` | `../ArcReel-worktrees/tenant-commercialization/tenant-auth` | `integration/tenant-commercialization` | pending | pending |
+| Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | pending | pending |
+| Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `integration/tenant-commercialization` | pending | pending |
+| Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `integration/tenant-commercialization` | pending | pending |
+| Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | pending | pending |
+| Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | pending | pending |
+| Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `integration/tenant-commercialization` | pending | pending |
+| Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `integration/tenant-commercialization` | pending | pending |
 
 ## Blockers
 
 | Date | Story/Subtask | Owner | Blocker | Resolution |
 |------|---------------|-------|---------|------------|
-| 2026-07-10 | Story 0 | Tara | CaMeL-api ArcReel provisioning accepts but ignores `idempotency_key`. | Implement or formally change contract before tenant rollout. |
-| 2026-07-10 | Story 0 | Tara/Quinn | CaMeL-api has no ArcReel provisioning tests. | Add create/conflict/repair/client/scope/idempotency tests. |
+| 2026-07-10 | Story 0 | Tara/Quinn | CaMeL-api is a completed external dependency and not owned by this sprint. | Verify the contract from ArcReel; record any mismatch as an external defect without editing CaMeL-api. |
 | 2026-07-10 | Story 1 | Atlas | Existing ArcReel tests and Alembic tests still assume SQLite. | Convert to PostgreSQL-only fixtures as part of PG baseline. |
 | 2026-07-10 | Story 2 | Atlas | RLS context leak or wrong tenant setting is a high-severity isolation failure. | Centralize DB context and require deny-by-default RLS tests. |
 | 2026-07-10 | Story 5 | Cyra | MinIO community/commercial licensing risk is not a code blocker but must be resolved before commercial release. | Track as product/legal release gate. |
