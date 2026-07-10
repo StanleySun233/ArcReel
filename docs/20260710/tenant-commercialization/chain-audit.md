@@ -1,7 +1,7 @@
 # Chain Audit: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** draft
+**Status:** implementation-audited
 
 This audit checks whether every critical chain has an entry path, authority source, data write path, permission check, failure mode, cache invalidation path, and test owner.
 
@@ -9,21 +9,38 @@ This audit checks whether every critical chain has an entry path, authority sour
 
 | Chain | Coverage | Blocking Gap | Owning Story |
 |-------|----------|--------------|--------------|
-| CaMeL login to personal tenant token | covered by design | none | Story 3 |
-| CaMeL provider/API key bootstrap | covered by design | external contract smoke required | Story 0 |
-| Tenant switch | covered by design | none | Story 3 / Story 4 |
-| Member CRUD and role matrix | covered by design | none | Story 3 |
-| Redis permission cache | covered by implementation | none | Story 3 |
-| PostgreSQL RLS context | covered by design | deny-by-default tests required | Story 2 |
-| API key auth under tenant | covered by implementation | provider/config tenant bootstrap remains Story 7 | Story 3 / Story 7 |
-| File upload to MinIO | covered by design | object/write rollback behavior must be implemented | Story 5 |
-| Signed URL access | covered by design | file link consistency tests required | Story 5 |
-| Project CRUD and file-id JSON | covered by design | legacy path rejection tests required | Story 6 |
-| Asset library import/sync | covered by design | overwrite confirmation tests required | Story 8 |
-| Tenant provider/config/agent settings | covered by design | tenant bootstrap completeness must replace user timestamp | Story 7 |
-| Generation enqueue and worker writeback | covered by design | worker DB context tests required | Story 9 |
-| Usage/cost attribution | covered by design | tenant aggregation tests required | Story 9 |
-| Frontend permission UX | covered by design | stale-role and revoked-access tests required | Story 4 |
+| CaMeL login to personal tenant token | automated backend | live CaMeL-api smoke still external | Story 3 |
+| CaMeL provider/API key bootstrap | automated local + external planned | live CaMeL-api create/conflict/repair smoke still required | Story 0 / Story 7 |
+| Tenant switch | automated backend/frontend | none | Story 3 / Story 4 |
+| Member CRUD and role matrix | automated backend | none | Story 3 |
+| Redis permission cache | automated backend + smoke | none | Story 3 |
+| PostgreSQL RLS context | automated backend | none for request path; local dev superuser bypass noted in Story 2 evidence | Story 2 |
+| API key auth under tenant | automated backend | none | Story 3 / Story 7 |
+| File upload to MinIO | automated backend | live MinIO private bucket smoke still required | Story 5 |
+| Signed URL access | automated backend | signed URL TTL expiry remains manual/live-smoke only | Story 5 |
+| Project CRUD and file-id JSON | automated backend | full removal of every legacy path consumer remains follow-up | Story 6 / Story 10 |
+| Asset library import/sync | automated backend/frontend | none | Story 8 |
+| Tenant provider/config/agent settings | automated backend | legacy provider API unit fixtures are not tenant-aware and are excluded from scenario runner | Story 7 / Story 10 |
+| Generation enqueue and worker writeback | automated backend | grid split cell file-id migration remains follow-up | Story 9 / Story 10 |
+| Usage/cost attribution | automated backend | aggregate report smoke remains Story10/live | Story 9 |
+| Frontend permission UX | automated frontend | browser click-through still required | Story 4 / Story 8 / Story 10 |
+
+## Scenario Runner Evidence
+
+`scripts/tenant_commercialization_scenarios.py -- -q` passed on the Story10 worktree:
+
+| Group | Result | Scenario IDs |
+|-------|--------|--------------|
+| `auth_roles` | 30 passed, 1 warning | AUTH-01, AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, ROLE-01, ROLE-04, ROLE-05, ROLE-06, ROLE-09, CFG-06, CFG-07 |
+| `rls_config` | 10 passed | RLS-01, RLS-02, RLS-03, RLS-04, RLS-06, CFG-01, CFG-02, CFG-03, CFG-04, CFG-05, CAMEL-08, CAMEL-09 |
+| `files_projects_assets` | 113 passed, 1 warning | FILE-01, FILE-02, FILE-04, FILE-05, PROJ-01, PROJ-02, PROJ-03, PROJ-04, PROJ-05, PROJ-06, PROJ-07, ASSET-01, ASSET-02, ASSET-03, ASSET-04, ASSET-06, ASSET-07, ASSET-08, ASSET-09 |
+| `generation_tasks_usage` | 114 passed, 1 warning | GEN-01, GEN-02, GEN-03, GEN-04, GEN-05, GEN-06, GEN-07, GEN-08 |
+
+Integration branch regression after Story6/8/9 merge also passed:
+
+- Backend tenant/projects/assets/generation targeted suite: 218 passed, 1 warning.
+- Frontend `pnpm check`: 107 test files passed, 922 tests passed.
+- Python targeted `ruff check`: passed.
 
 ## Chain Details
 
@@ -159,8 +176,11 @@ This audit checks whether every critical chain has an entry path, authority sour
 | Failure modes | stale role shows wrong button, revoked tenant token loops, signed URL expires |
 | Tests | listbox switch, stale role refresh, revoked fallback, view-only UI |
 
-## Required Follow-Up Before Implementation
+## Open Gaps Before Final Product Acceptance
 
-- Story 0 must verify the completed CaMeL-api contract from ArcReel without modifying CaMeL-api.
-- `scenario-test-matrix.md` must map every chain above to automated or manual coverage.
-- No implementation story starts before this audit is reviewed with the sprint backlog.
+- Live CaMeL-api contract smoke is still required against the completed external service: create, conflict, repair, wrong client, missing scope, retry behavior.
+- Live MinIO smoke is still required for private bucket access and signed URL expiry semantics.
+- `project.json` is not yet strictly file-id-only for every downstream consumer. Story6 rejects legacy paths in validators and Story9 writes companion `*_file_id` fields, but Story9 intentionally preserved legacy path fields for compatibility during this sprint.
+- Grid split cell outputs still write legacy storyboard paths and need a follow-up migration with GridManager, version restore, and frontend consumers.
+- Older provider/custom-provider/credential API unit tests still use single-tenant fixtures without tenant principal/session context. Story7 tenant-aware tests pass and are used by the scenario runner, but these legacy unit fixtures should be migrated before broad full-suite CI is treated as authoritative.
+- Browser click-through evidence with `agent-browser` is still required for login callback, tenant switcher, view-only UI, asset sync confirmation, and signed media preview.

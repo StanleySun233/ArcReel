@@ -1,7 +1,7 @@
 # Scenario Test Matrix: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** draft
+**Status:** backend-scenario-runner-passed; browser-smoke-pending
 
 Coverage labels:
 
@@ -42,6 +42,34 @@ Story 10 must convert this matrix into two executable suites:
    - Records screenshots or structured browser observations for every manual-only release smoke.
 
 No scenario is considered accepted unless its result is tied back to one ID in this matrix.
+
+## Current Execution Evidence
+
+Backend API/service scenario runner:
+
+```bash
+/data/data1/HOME_DIR/sijin/miniconda3/bin/conda run -n arcreel python scripts/tenant_commercialization_scenarios.py -- -q
+```
+
+Result:
+
+- `auth_roles`: 30 passed, 1 warning.
+- `rls_config`: 10 passed.
+- `files_projects_assets`: 113 passed, 1 warning.
+- `generation_tasks_usage`: 114 passed, 1 warning.
+
+Additional integration regression after Story6/8/9 merge:
+
+- Backend targeted suite: 218 passed, 1 warning.
+- Frontend `pnpm check`: 107 test files passed, 922 tests passed.
+- Python targeted `ruff check`: passed.
+
+Manual/live evidence still pending:
+
+- CaMeL-api live contract smoke against the completed external service.
+- MinIO private bucket and signed URL expiry live smoke.
+- `agent-browser` click-through for UI-01..UI-08 and SMOKE-02/SMOKE-03.
+- Restart persistence smoke for SMOKE-04.
 
 ## Auth And Tenant Selection
 
