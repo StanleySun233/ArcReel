@@ -17,10 +17,13 @@ def make_translator(locale: str = "zh") -> Callable[..., str]:
 
 import os
 import subprocess
+import uuid
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 import lib.generation_queue as generation_queue_module
 from lib.db.base import Base
@@ -142,6 +145,38 @@ def fd_count():
     return _count
 
 
+def _pg_database_url() -> str:
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url.startswith("postgresql+asyncpg://"):
+        raise RuntimeError("DATABASE_URL must be postgresql+asyncpg:// for database tests")
+    return url
+
+
+async def _create_pg_test_engine():
+    schema = f"test_{uuid.uuid4().hex[:12]}"
+    engine = create_async_engine(
+        _pg_database_url(),
+        poolclass=NullPool,
+        connect_args={"server_settings": {"search_path": schema}},
+    )
+    async with engine.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    async with engine.begin() as conn:
+        import lib.agent_session_store.models  # noqa: F401
+        import lib.db.models  # noqa: F401
+
+        await conn.run_sync(Base.metadata.create_all)
+    return engine, schema
+
+
+async def _drop_pg_test_engine(engine, schema: str) -> None:
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    finally:
+        await engine.dispose()
+
+
 # ---------------------------------------------------------------------------
 # SessionManager family (used by 3+ test files)
 # ---------------------------------------------------------------------------
@@ -149,15 +184,14 @@ def fd_count():
 
 @pytest.fixture()
 async def meta_store():
-    """Create an async SessionMetaStore backed by in-memory SQLite."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
+    """Create an async SessionMetaStore backed by isolated PostgreSQL schema."""
+    engine, schema = await _create_pg_test_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     store = SessionMetaStore(session_factory=factory)
-    yield store
-    await engine.dispose()
+    try:
+        yield store
+    finally:
+        await _drop_pg_test_engine(engine, schema)
 
 
 @pytest.fixture()
@@ -179,13 +213,9 @@ def pytest_collection_modifyitems(config, items):
     """Auto-mark dialect-sensitive tests with `uses_db`.
 
     Mark a test only when it consumes a fixture defined in a canonical
-    dialect-sensitive conftest — the main `tests/conftest.py` (`async_session`,
-    reads DATABASE_URL) or `tests/agent_session_store/conftest.py`
-    (`session_factory` / `file_session_factory`, also reads DATABASE_URL).
-    Tests that locally override the same fixture name with a hard-coded
-    SQLite engine (e.g. `tests/test_custom_providers_api.py`) are excluded so
-    the postgres-compat job stays a true dialect signal rather than running
-    SQLite-only code under a `postgres` coverage flag.
+    dialect-sensitive conftest — the main `tests/conftest.py` (`async_session`)
+    or `tests/agent_session_store/conftest.py` (`session_factory` /
+    `file_session_factory`).
     """
     target_fixtures = {"async_session", "session_factory", "file_session_factory"}
     canonical_modules = {"tests.conftest", "tests.agent_session_store.conftest"}
@@ -213,62 +243,39 @@ def pytest_collection_modifyitems(config, items):
 async def async_session():
     """Generic AsyncSession for repository tests.
 
-    PG (DATABASE_URL=postgresql+...): trusts that ``alembic upgrade head`` has
-    already created the schema (CI job does this before pytest). Each test
-    opens a fresh NullPool engine, an outer transaction, and uses SAVEPOINT
-    semantics so any `session.commit()` is contained — teardown ROLLBACKs the
-    outer transaction, so data writes never persist.
-
-    SQLite (default): each test gets a fresh in-memory engine + ORM
-    ``create_all`` — engine is throwaway, no isolation primitive needed.
+    Each test gets an isolated PostgreSQL schema. SAVEPOINT semantics keep
+    `session.commit()` contained, and teardown drops the schema.
     """
-    url = os.environ.get("DATABASE_URL", "")
-    if url.startswith("postgresql"):
-        # Per-test engine with NullPool: avoids cross-event-loop reuse of
-        # asyncpg connections (each pytest-asyncio test runs on a fresh loop).
-        from sqlalchemy.pool import NullPool
-
-        engine = create_async_engine(url, poolclass=NullPool)
-        try:
-            async with engine.connect() as conn:
-                outer = await conn.begin()
-                try:
-                    factory = async_sessionmaker(
-                        bind=conn,
-                        expire_on_commit=False,
-                        join_transaction_mode="create_savepoint",
-                    )
-                    async with factory() as session:
-                        yield session
-                finally:
-                    await outer.rollback()
-        finally:
-            await engine.dispose()
-        return
-
-    # SQLite in-memory — engine is throwaway, ORM-driven schema.
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
-        yield session
-    await engine.dispose()
+    engine, schema = await _create_pg_test_engine()
+    try:
+        async with engine.connect() as conn:
+            outer = await conn.begin()
+            try:
+                factory = async_sessionmaker(
+                    bind=conn,
+                    expire_on_commit=False,
+                    join_transaction_mode="create_savepoint",
+                )
+                async with factory() as session:
+                    yield session
+            finally:
+                await outer.rollback()
+    finally:
+        await _drop_pg_test_engine(engine, schema)
 
 
 @pytest.fixture()
 async def generation_queue():
-    """Create an async GenerationQueue backed by in-memory SQLite.
+    """Create an async GenerationQueue backed by isolated PostgreSQL schema.
 
     Automatically resets the module singleton on teardown.
     """
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
+    engine, schema = await _create_pg_test_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     queue = generation_queue_module.GenerationQueue(session_factory=factory)
     generation_queue_module._QUEUE_INSTANCE = queue
-    yield queue
-    generation_queue_module._QUEUE_INSTANCE = None
-    await engine.dispose()
+    try:
+        yield queue
+    finally:
+        generation_queue_module._QUEUE_INSTANCE = None
+        await _drop_pg_test_engine(engine, schema)

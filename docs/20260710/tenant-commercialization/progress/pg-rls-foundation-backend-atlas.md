@@ -20,7 +20,7 @@
   - Commit: pending
 - [x] Convert runtime engine to PostgreSQL-only.
   - Commit: pending
-- [ ] Convert DB fixtures to PostgreSQL-only.
+- [x] Convert DB fixtures to PostgreSQL-only.
   - Commit: pending
 - [ ] Add tenant, membership, tenant-owned model columns, migrations, indexes, and RLS policies.
   - Commit: pending

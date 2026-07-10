@@ -159,6 +159,7 @@ class TestApiKeyOwnerResolution:
         key_hash = auth_module._hash_api_key(key)
         async with async_session.begin():
             async_session.add(User(id="camel:owner", username="owner", role="user", is_active=True))
+            await async_session.flush()
             async_session.add(
                 ApiKey(
                     name="owner-key",
