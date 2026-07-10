@@ -38,6 +38,7 @@ Evidence:
 - `server/services/jianying_draft_service.py` supports the current pyJianYingDraft track API through `TrackSpec`.
 - `server/routers/usage.py` accepts `project_id` query filters, checks tenant membership, and passes the current tenant to usage reads.
 - `lib/db/repositories/usage_repo.py` applies tenant scoping to usage queries.
+- `frontend/src/api.ts` sends `project_id` for usage stats/calls filters.
 - Project creation stores local project JSON under tenant-scoped project-id paths.
 - `frontend/src/types/project.ts` requires `ProjectSummary.id`.
 - `frontend/src/components/pages/ProjectsPage.tsx` links and deletes by `project.id`.

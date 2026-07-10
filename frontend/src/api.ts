@@ -1829,7 +1829,7 @@ class API {
   ): Promise<Record<string, unknown>> {
     const params = new URLSearchParams();
     if (filters.projectName)
-      params.append("project_name", filters.projectName);
+      params.append("project_id", filters.projectName);
     if (filters.startDate) params.append("start_date", filters.startDate);
     if (filters.endDate) params.append("end_date", filters.endDate);
     const query = params.toString();
@@ -1845,7 +1845,7 @@ class API {
   ): Promise<Record<string, unknown>> {
     const params = new URLSearchParams();
     if (filters.projectName)
-      params.append("project_name", filters.projectName);
+      params.append("project_id", filters.projectName);
     if (filters.callType) params.append("call_type", filters.callType);
     if (filters.status) params.append("status", filters.status);
     if (filters.startDate) params.append("start_date", filters.startDate);

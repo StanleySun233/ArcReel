@@ -134,6 +134,14 @@
 | `GET /api/v1/usage/projects/{project_id}` | view/member/admin | 当前项目用量 |
 | `GET /api/v1/usage/users/{user_id}` | admin 或本人 | 用户维度用量 |
 
+当前兼容实现中，旧用量路径保留但 query 语义已收敛为 `project_id`：
+
+| Endpoint | 权限 | 说明 |
+|----------|------|------|
+| `GET /api/v1/usage/stats?project_id={project_id}` | view/member/admin | 当前租户下的聚合统计 |
+| `GET /api/v1/usage/calls?project_id={project_id}` | view/member/admin | 当前租户下的调用明细 |
+| `GET /api/v1/usage/projects` | view/member/admin | 当前租户下有用量记录的项目 id 列表 |
+
 查询参数：
 
 - `from`

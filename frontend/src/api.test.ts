@@ -565,10 +565,10 @@ describe("API", () => {
       );
       expect(requestSpy).toHaveBeenCalledWith("/projects/demo/assistant/skills");
       expect(requestSpy).toHaveBeenCalledWith(
-        "/usage/stats?project_name=demo&start_date=2026-01-01&end_date=2026-02-01",
+        "/usage/stats?project_id=demo&start_date=2026-01-01&end_date=2026-02-01",
       );
       expect(requestSpy).toHaveBeenCalledWith(
-        "/usage/calls?project_name=demo&call_type=image&status=succeeded&start_date=2026-01-01&end_date=2026-02-01&page=1&page_size=50",
+        "/usage/calls?project_id=demo&call_type=image&status=succeeded&start_date=2026-01-01&end_date=2026-02-01&page=1&page_size=50",
       );
       expect(requestSpy).toHaveBeenCalledWith("/usage/projects");
     });
