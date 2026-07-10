@@ -76,6 +76,11 @@ passed
 
 **Ready for QA:** yes
 
+## Integration Notes
+
+- Story 2A merged into `integration/tenant-commercialization` at `6ea1e35`.
+- Story 2A worktree `pg-app-role-rls` and branch `story/tenant-commercialization/pg-app-role-rls` were removed after merge.
+
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
