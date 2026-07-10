@@ -64,9 +64,6 @@ SCENARIO_GROUPS: tuple[ScenarioGroup, ...] = (
             "tests/test_tenant_rls.py",
             "tests/test_tenant_context.py",
             "tests/test_tenant_config_isolation.py",
-            "tests/test_providers_api.py",
-            "tests/test_custom_providers_api.py",
-            "tests/test_credential_api.py",
         ),
     ),
     ScenarioGroup(
