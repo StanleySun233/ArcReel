@@ -217,29 +217,29 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** minio-files
 **User value:** Media artifacts are stored privately in MinIO, referenced by `file_id`, and exposed to browsers only through authorized short-lived signed URLs.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] `files` table stores object metadata and alias; object key is `{uuid}.{ext}`.
-- [ ] MinIO StorageService can put/get/stat/delete objects.
-- [ ] FileService creates `files` rows and object writes in a safe order with rollback behavior documented.
-- [ ] File links support project, asset, task, and personal library references.
-- [ ] `/files/{file_id}/signed-url` checks current access before signing.
-- [ ] Private bucket is not directly public.
-- [ ] Existing upload/file routes return `file_id` instead of local paths for media.
+- [x] `files` table stores object metadata and alias; object key is `{uuid}.{ext}`.
+- [x] MinIO StorageService can put/get/stat/delete objects.
+- [x] FileService creates `files` rows and object writes in a safe order with rollback behavior documented.
+- [x] File links support project, asset, task, and personal library references.
+- [x] `/files/{file_id}/signed-url` checks current access before signing.
+- [x] Private bucket is not directly public.
+- [x] Existing upload/file routes return `file_id` instead of local paths for media.
 
 **Engineering Subtasks**
-- [ ] Cyra: Add MinIO settings and storage abstraction in `lib/storage/minio.py` and `lib/storage/__init__.py`. (depends: Story 1)
-- [ ] Cyra: Add FileService in `lib/files/service.py`. (depends: Story 2)
-- [ ] Cyra: Add file repository in `lib/db/repositories/file_repo.py`. (depends: Story 2)
-- [ ] Cyra: Update `server/routers/files.py` to upload and sign by file_id. (depends: service)
-- [ ] Cyra: Update `server/routers/shot_uploads.py` and upload helpers to return file_id. (depends: service)
-- [ ] Cyra: Add tests for object key format, private signed URL, access deny, and file links. (depends: routes)
-- [ ] Quinn: Verify MinIO integration through local middleware and targeted file tests. (depends: implementation)
+- [x] Cyra: Add MinIO settings and storage abstraction in `lib/storage/minio.py` and `lib/storage/__init__.py`. (depends: Story 1)
+- [x] Cyra: Add FileService in `lib/files/service.py`. (depends: Story 2)
+- [x] Cyra: Add file repository in `lib/db/repositories/file_repo.py`. (depends: Story 2)
+- [x] Cyra: Update `server/routers/files.py` to upload and sign by file_id. (depends: service)
+- [x] Cyra: Update `server/routers/shot_uploads.py` and upload helpers to return file_id. (depends: service)
+- [x] Cyra: Add tests for object key format, private signed URL, access deny, and file links. (depends: routes)
+- [x] Quinn: Verify MinIO integration through local middleware and targeted file tests. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Story worktree targeted file suite passed with `9 passed in 1.74s`; `ruff check`, `ruff format --check`, and `basedpyright` for Story5 modified files passed with `0 errors, 0 warnings, 0 notes`; merged into integration with merge commit `13e02e9`.
 
 ### Story 6 - Tenant Project System And File-Id Project JSON
 
@@ -471,7 +471,7 @@ These gates happen before implementation agents start. They are not story worktr
 | Story 2A - PostgreSQL App Role RLS Hardening | `story/tenant-commercialization/pg-app-role-rls` | `../ArcReel-worktrees/tenant-commercialization/pg-app-role-rls` | `integration/tenant-commercialization` | merged | removed |
 | Story 3 - Tenant Auth, Membership API, Redis Permission Cache | `story/tenant-commercialization/tenant-auth` | `../ArcReel-worktrees/tenant-commercialization/tenant-auth` | `integration/tenant-commercialization` | merged | removed |
 | Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | merged | removed |
-| Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `integration/tenant-commercialization` | pending | pending |
+| Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `integration/tenant-commercialization` | merged | removed |
 | Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `integration/tenant-commercialization` | pending | pending |
 | Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | pending | pending |
 | Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | pending | pending |
