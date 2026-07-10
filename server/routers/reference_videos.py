@@ -1,6 +1,6 @@
 """参考生视频 CRUD + 生成路由。
 
-Mount prefix: /api/v1/projects/{project_name}/reference-videos
+Mount prefix: /api/v1/projects/{project_id}/reference-videos
 """
 
 from __future__ import annotations
@@ -17,6 +17,9 @@ from pydantic import BaseModel, Field
 
 from lib.app_data_dir import app_data_dir
 from lib.asset_types import BUCKET_KEY
+from lib.db import async_session_factory
+from lib.db.repositories.project_repo import ProjectRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.generation_queue import get_generation_queue
 from lib.generation_queue_client import TaskSpec, TaskSpecValidationError
 from lib.i18n import Translator
@@ -35,6 +38,7 @@ from server.auth import CurrentUser
 from server.routers._reorder import full_permutation_error
 from server.services.generation_tasks import emit_generation_success_batch
 from server.services.reference_video_tasks import _finalize_reference_video_unit, resolve_max_unit_duration
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 from server.services.upload_finalize import (
     UploadValidationError,
     record_upload_version,
@@ -45,7 +49,7 @@ from server.services.upload_finalize import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/projects/{project_name}/reference-videos",
+    prefix="/projects/{project_id}/reference-videos",
     tags=["reference-videos"],
 )
 
@@ -54,6 +58,20 @@ pm = ProjectManager(app_data_dir())
 
 def get_project_manager() -> ProjectManager:
     return pm
+
+
+def get_tenant_project_manager(tenant_id: str) -> ProjectManager:
+    return ProjectManager(app_data_dir(), tenant_id=tenant_id)
+
+
+async def _require_project_manager(project_id: str, user: CurrentUser, _t: Translator, *, minimum_role: str):
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, user, minimum_role=minimum_role)
+            await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+            if await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id) is None:
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+    return get_tenant_project_manager(access.id)
 
 
 # ============ 请求模型 ============
@@ -75,19 +93,24 @@ class AddUnitRequest(BaseModel):
 # ============ 辅助 ============
 
 
-def _load_episode_script(project_name: str, episode: int, _t: Translator) -> tuple[dict, dict, str]:
+def _load_episode_script(
+    project_id: str,
+    episode: int,
+    _t: Translator,
+    manager: ProjectManager,
+) -> tuple[dict, dict, str]:
     """加载 project.json + 指定集的剧本。返回 (project, script, script_file)。"""
     try:
-        project = get_project_manager().load_project(project_name)
+        project = manager.load_project(project_id)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name)) from exc
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id)) from exc
     episodes = project.get("episodes") or []
     meta = next((e for e in episodes if e.get("episode") == episode), None)
     if meta is None or not meta.get("script_file"):
         raise HTTPException(status_code=404, detail=_t("ref_episode_not_found", episode=episode))
     script_file = meta["script_file"]
     try:
-        script = get_project_manager().load_script(project_name, script_file)
+        script = manager.load_script(project_id, script_file)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=_t("script_not_found", name=script_file)) from exc
     if effective_mode(project=project, episode=meta) != "reference_video":
@@ -130,7 +153,12 @@ def _episode_script_resolver(
 
 
 @contextmanager
-def _locked_episode_script(project_name: str, resolver: Callable[[dict], str], _t: Translator) -> Iterator[dict]:
+def _locked_episode_script(
+    project_id: str,
+    resolver: Callable[[dict], str],
+    _t: Translator,
+    manager: ProjectManager,
+) -> Iterator[dict]:
     """进入 `locked_episode_script`，把缺失文件归一为 404、并发改绑归一为 409。
 
     project.json 可能残留指向已删除/移动文件的 script_file；此时锁内 load_script 抛
@@ -138,12 +166,12 @@ def _locked_episode_script(project_name: str, resolver: Callable[[dict], str], _
     改动时抛 EpisodeScriptReboundError，转成 409（前端可重试，不外泄内部绑定细节）。
     """
     try:
-        with get_project_manager().locked_episode_script(project_name, resolver) as script:
+        with manager.locked_episode_script(project_id, resolver) as script:
             yield script
     except FileNotFoundError as exc:
         # 区分「项目缺失」与「project.json 指向的脚本文件缺失（stale 绑定）」
-        if not get_project_manager().project_exists(project_name):
-            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name)) from exc
+        if not manager.project_exists(project_id):
+            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id)) from exc
         raise HTTPException(status_code=404, detail=_t("ref_script_missing")) from exc
     except EpisodeScriptReboundError as exc:
         logger.info("episode script rebound during write: %s", exc)
@@ -225,8 +253,9 @@ def _build_unit_dict(
 
 
 @router.get("/episodes/{episode}/units")
-async def list_units(project_name: str, episode: int, _user: CurrentUser, _t: Translator) -> dict[str, Any]:
-    project, script, _sf = _load_episode_script(project_name, episode, _t)
+async def list_units(project_id: str, episode: int, _user: CurrentUser, _t: Translator) -> dict[str, Any]:
+    manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_VIEW)
+    project, script, _sf = _load_episode_script(project_id, episode, _t, manager)
     # ad 的 unit 是 shots 的派生索引（reference_units），未派生时为空列表；
     # 前端用 shot_ids 对照本地剧本水合展示，索引不复制镜头内容
     if project.get("content_mode") == "ad":
@@ -236,7 +265,7 @@ async def list_units(project_name: str, episode: int, _user: CurrentUser, _t: Tr
 
 @router.post("/episodes/{episode}/derive-units")
 async def derive_units(
-    project_name: str,
+    project_id: str,
     episode: int,
     _user: CurrentUser,
     _t: Translator,
@@ -246,28 +275,32 @@ async def derive_units(
     分组器是纯函数：shots 与供应商时长上限不变则分组可复现；成员与参考集
     未变的 unit 保留 generated_assets（重生成单个 unit 时分组不漂移）。
     """
-    project, _script, _sf = _load_episode_script(project_name, episode, _t)
+    manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+    project, _script, _sf = _load_episode_script(project_id, episode, _t, manager)
     _require_ad_project(project, True, _t)
     # 供应商时长上限在锁外解析（异步 I/O 不进项目锁临界区）
     max_unit_duration = await resolve_max_unit_duration(project, user_id=_user.id)
 
-    with _locked_episode_script(project_name, _episode_script_resolver(episode, _t, require_ad=True), _t) as script:
+    with _locked_episode_script(
+        project_id, _episode_script_resolver(episode, _t, require_ad=True), _t, manager
+    ) as script:
         units = sync_ad_reference_units(script, episode=episode, max_unit_duration=max_unit_duration)
     return {"units": units}
 
 
 @router.post("/episodes/{episode}/units", status_code=status.HTTP_201_CREATED)
 async def add_unit(
-    project_name: str,
+    project_id: str,
     episode: int,
     req: AddUnitRequest,
     _user: CurrentUser,
     _t: Translator,
 ) -> dict[str, Any]:
     refs = [r.model_dump() for r in req.references]
+    manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
     with _locked_episode_script(
-        project_name, _episode_script_resolver(episode, _t, refs, require_ad=False), _t
+        project_id, _episode_script_resolver(episode, _t, refs, require_ad=False), _t, manager
     ) as script:
         # unit_id 在锁内基于 fresh script 计算，避免并发新增撞 ID
         unit = _build_unit_dict(
@@ -316,7 +349,7 @@ def _find_unit_for_project(project: dict, script: dict, unit_id: str, _t: Transl
 
 @router.patch("/episodes/{episode}/units/{unit_id}")
 async def patch_unit(
-    project_name: str,
+    project_id: str,
     episode: int,
     unit_id: str,
     req: PatchUnitRequest,
@@ -325,9 +358,10 @@ async def patch_unit(
 ) -> dict[str, Any]:
     # references 存在性校验在解析器内、项目锁内进行，失败 raise 400
     refs: list[dict] | None = [r.model_dump() for r in req.references] if req.references is not None else None
+    manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
     with _locked_episode_script(
-        project_name, _episode_script_resolver(episode, _t, refs, require_ad=False), _t
+        project_id, _episode_script_resolver(episode, _t, refs, require_ad=False), _t, manager
     ) as script:
         unit = _find_unit(script, unit_id, _t)  # 未找到 raise 404 → 跳过写回
 
@@ -356,13 +390,16 @@ async def patch_unit(
 
 @router.delete("/episodes/{episode}/units/{unit_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_unit(
-    project_name: str,
+    project_id: str,
     episode: int,
     unit_id: str,
     _user: CurrentUser,
     _t: Translator,
 ) -> Response:
-    with _locked_episode_script(project_name, _episode_script_resolver(episode, _t, require_ad=False), _t) as script:
+    manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+    with _locked_episode_script(
+        project_id, _episode_script_resolver(episode, _t, require_ad=False), _t, manager
+    ) as script:
         units = script.get("video_units") or []
         new_units = [u for u in units if u.get("unit_id") != unit_id]
         if len(new_units) == len(units):
@@ -378,13 +415,16 @@ class ReorderRequest(BaseModel):
 
 @router.post("/episodes/{episode}/units/reorder")
 async def reorder_units(
-    project_name: str,
+    project_id: str,
     episode: int,
     req: ReorderRequest,
     _user: CurrentUser,
     _t: Translator,
 ) -> dict[str, Any]:
-    with _locked_episode_script(project_name, _episode_script_resolver(episode, _t, require_ad=False), _t) as script:
+    manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+    with _locked_episode_script(
+        project_id, _episode_script_resolver(episode, _t, require_ad=False), _t, manager
+    ) as script:
         units = script.get("video_units") or []
         existing_ids = [u.get("unit_id") for u in units]
 
@@ -409,13 +449,14 @@ async def reorder_units(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def generate_unit(
-    project_name: str,
+    project_id: str,
     episode: int,
     unit_id: str,
     _user: CurrentUser,
     _t: Translator,
 ) -> dict[str, Any]:
-    project, script, script_file = _load_episode_script(project_name, episode, _t)
+    manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
+    project, script, script_file = _load_episode_script(project_id, episode, _t, manager)
     is_ad = project.get("content_mode") == "ad"
     if is_ad:
         unit = _find_ad_unit(script, unit_id, _t)  # raises 404 if missing
@@ -446,7 +487,7 @@ async def generate_unit(
 
     queue = get_generation_queue()
     result = await queue.enqueue_task(
-        project_name=project_name,
+        project_name=project_id,
         task_type=spec.task_type,
         media_type=spec.media_type,
         resource_id=spec.resource_id,
@@ -460,7 +501,7 @@ async def generate_unit(
 
 @router.post("/episodes/{episode}/units/{unit_id}/upload-video")
 async def upload_unit_video(
-    project_name: str,
+    project_id: str,
     episode: int,
     unit_id: str,
     _user: CurrentUser,
@@ -473,14 +514,15 @@ async def upload_unit_video(
     并纳入版本管理。参考图上传走既有的项目资产上传通路，不在此处。
     """
     try:
+        manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
         max_bytes = validate_upload(file.filename, file.size, kind="video")
 
         relative_path = resource_relative_path("reference_videos", unit_id)
 
         def _validate_unit() -> tuple[Path, VersionManager, str]:
-            project, script, script_file = _load_episode_script(project_name, episode, _t)
+            project, script, script_file = _load_episode_script(project_id, episode, _t, manager)
             _find_unit_for_project(project, script, unit_id, _t)  # raises 404 if missing
-            project_path = get_project_manager().get_project_path(project_name)
+            project_path = manager.get_project_path(project_id)
             # 路径遍历防护：unit_id 拼出的绝对路径不得逃出项目目录（与 versions.py 对齐）
             target = project_path / relative_path
             try:
@@ -499,7 +541,7 @@ async def upload_unit_video(
             # 上传流可达数百 MB、耗时数秒，期间 episode→script 绑定可能被并发重绑
             # （PATCH / agent 同步剧本）。落盘后重解析绑定，确保元数据写进当前生效的剧本。
             def _recheck_binding() -> str:
-                project2, script2, script_file2 = _load_episode_script(project_name, episode, _t)
+                project2, script2, script_file2 = _load_episode_script(project_id, episode, _t, manager)
                 _find_unit_for_project(project2, script2, unit_id, _t)
                 return script_file2
 
@@ -514,7 +556,7 @@ async def upload_unit_video(
                 original_filename=file.filename,
             )
             await _finalize_reference_video_unit(
-                project_name=project_name,
+                project_name=project_id,
                 script_file=script_file,
                 project_path=project_path,
                 resource_id=unit_id,
@@ -528,7 +570,7 @@ async def upload_unit_video(
             fingerprints = await asyncio.to_thread(
                 emit_generation_success_batch,
                 task_type="reference_video",
-                project_name=project_name,
+                project_name=project_id,
                 resource_id=unit_id,
                 payload={"script_file": script_file},
             )

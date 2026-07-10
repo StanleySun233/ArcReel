@@ -180,8 +180,11 @@ class TestShotStoryboardUpload:
     def test_grid_fields_untouched(self, tmp_path, monkeypatch):
         """宫格模式按镜头上传单元格图：grid_id / grid_cell_index 保持不变。"""
         client, pm = _client(monkeypatch, tmp_path)
-        pm.update_scene_asset("demo", "episode_1.json", "E1S01", "grid_id", "grid_abc")
-        pm.update_scene_asset("demo", "episode_1.json", "E1S01", "grid_cell_index", 2)
+        pm.batch_update_scene_assets(
+            "demo",
+            "episode_1.json",
+            [("E1S01", "grid_id", "grid_abc"), ("E1S01", "grid_cell_index", 2)],
+        )
 
         with client:
             resp = _upload(client, "storyboard", "cell.png", _img_bytes("PNG"))
@@ -398,8 +401,28 @@ def _seed_reference_project(tmp_path) -> ProjectManager:
 def _ref_client(monkeypatch, tmp_path):
     pm = _seed_reference_project(tmp_path)
     monkeypatch.setattr(reference_videos, "get_project_manager", lambda: pm)
+    monkeypatch.setattr(reference_videos, "get_tenant_project_manager", lambda _tenant_id: pm)
     monkeypatch.setattr(reference_video_tasks, "get_project_manager", lambda: pm)
     monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: pm)
+
+    async def _fake_access(*args, **kwargs):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _fake_set_context(*args, **kwargs):
+        return None
+
+    class _ProjectRepo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def get_by_id(self, project_id):
+            if project_id != "demo":
+                return None
+            return SimpleNamespace(id=project_id, name="Demo", tenant_id="ten_test")
+
+    monkeypatch.setattr(reference_videos, "require_tenant_access", _fake_access)
+    monkeypatch.setattr(reference_videos, "set_tenant_context", _fake_set_context)
+    monkeypatch.setattr(reference_videos, "ProjectRepository", _ProjectRepo)
 
     async def _fake_thumbnail(video_path: Path, thumbnail_path: Path):
         thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
@@ -409,7 +432,13 @@ def _ref_client(monkeypatch, tmp_path):
     monkeypatch.setattr(reference_video_tasks, "extract_video_thumbnail", _fake_thumbnail)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
     app.include_router(reference_videos.router, prefix="/api/v1")
     return TestClient(app), pm
 

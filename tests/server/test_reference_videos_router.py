@@ -2,12 +2,48 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
+from server.services.tenant_auth import TenantAccess
+
+
+def _install_route_stubs(monkeypatch: pytest.MonkeyPatch, router_mod, pm, project_ids: set[str] | None = None) -> None:
+    allowed_project_ids = project_ids or {"demo"}
+
+    async def _require_tenant_access(*args, **kwargs):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _set_tenant_context(*args, **kwargs):
+        return None
+
+    class _Repo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def get_by_id(self, project_id):
+            if project_id not in allowed_project_ids:
+                return None
+            return SimpleNamespace(id=project_id, name="Demo", tenant_id="ten_test")
+
+    monkeypatch.setattr(router_mod, "require_tenant_access", _require_tenant_access)
+    monkeypatch.setattr(router_mod, "set_tenant_context", _set_tenant_context)
+    monkeypatch.setattr(router_mod, "ProjectRepository", _Repo)
+    monkeypatch.setattr(router_mod, "get_tenant_project_manager", lambda _tenant_id: pm)
+
+
+def _current_user() -> CurrentUserInfo:
+    return CurrentUserInfo(
+        id="u1",
+        sub="test",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
 
 
 @pytest.fixture
@@ -58,10 +94,11 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     custom_pm = ProjectManager(projects_root)
     monkeypatch.setattr(router_mod, "pm", custom_pm)
     monkeypatch.setattr(router_mod, "get_project_manager", lambda: custom_pm)
+    _install_route_stubs(monkeypatch, router_mod, custom_pm)
 
     app = FastAPI()
     app.include_router(router_mod.router, prefix="/api/v1")
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="u1", sub="test", role="admin")
+    app.dependency_overrides[get_current_user] = _current_user
     return TestClient(app)
 
 
@@ -73,6 +110,30 @@ def test_list_units_empty(client: TestClient):
 
 def test_list_units_404_for_unknown_project(client: TestClient):
     resp = client.get("/api/v1/projects/missing/reference-videos/episodes/1/units")
+    assert resp.status_code == 404
+
+
+def test_list_units_rejects_display_name_route_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    projects_root = tmp_path / "projects"
+    projects_root.mkdir()
+
+    from lib.project_manager import ProjectManager
+    from server.routers import reference_videos as router_mod
+
+    custom_pm = ProjectManager(projects_root)
+    _install_route_stubs(monkeypatch, router_mod, custom_pm, project_ids={"proj_1"})
+
+    def _manager_should_not_be_used(_tenant_id):
+        raise AssertionError("project display name must not resolve to a project path")
+
+    monkeypatch.setattr(router_mod, "get_tenant_project_manager", _manager_should_not_be_used)
+
+    app = FastAPI()
+    app.include_router(router_mod.router, prefix="/api/v1")
+    app.dependency_overrides[get_current_user] = _current_user
+    with TestClient(app) as local_client:
+        resp = local_client.get("/api/v1/projects/Demo/reference-videos/episodes/1/units")
+
     assert resp.status_code == 404
 
 

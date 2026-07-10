@@ -42,6 +42,14 @@
 | `GET /api/v1/projects/{name}/grids` | `GET /api/v1/projects/{project_id}/grids` | 宫格图列表允许 viewer |
 | `GET /api/v1/projects/{name}/grids/{grid_id}` | `GET /api/v1/projects/{project_id}/grids/{grid_id}` | 宫格图详情允许 viewer |
 | `POST /api/v1/projects/{name}/grids/{grid_id}/regenerate` | `POST /api/v1/projects/{project_id}/grids/{grid_id}/regenerate` | 宫格图重生成要求 member/admin |
+| `GET /api/v1/projects/{name}/reference-videos/episodes/{episode}/units` | `GET /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units` | 参考视频单元列表允许 viewer |
+| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/derive-units` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/derive-units` | ad 参考视频单元派生要求 member/admin |
+| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units` | 新增参考视频单元要求 member/admin |
+| `PATCH /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}` | `PATCH /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}` | 编辑参考视频单元要求 member/admin |
+| `DELETE /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}` | `DELETE /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}` | 删除参考视频单元要求 member/admin |
+| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/reorder` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/reorder` | 重排参考视频单元要求 member/admin |
+| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}/generate` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/generate` | 参考视频单元生成要求 member/admin |
+| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}/upload-video` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/upload-video` | 手动上传参考单元视频要求 member/admin |
 
 项目响应字段：
 

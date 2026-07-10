@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -21,12 +22,45 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
+from server.services.tenant_auth import TenantAccess
 
 _TINY_PNG = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x04\x00\x00\x00\x04"
     b"\x08\x02\x00\x00\x00&\x93\t)\x00\x00\x00\x13IDATx\x9cc<\x91b\xc4\x00"
     b"\x03Lp\x16^\x0e\x00E\xf6\x01f\xac\xf5\x15\xfa\x00\x00\x00\x00IEND\xaeB`\x82"
 )
+
+
+def _install_route_stubs(monkeypatch: pytest.MonkeyPatch, router_mod, pm) -> None:
+    async def _require_tenant_access(*args, **kwargs):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _set_tenant_context(*args, **kwargs):
+        return None
+
+    class _Repo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def get_by_id(self, project_id):
+            if project_id != "demo":
+                return None
+            return SimpleNamespace(id=project_id, name="Demo", tenant_id="ten_test")
+
+    monkeypatch.setattr(router_mod, "require_tenant_access", _require_tenant_access)
+    monkeypatch.setattr(router_mod, "set_tenant_context", _set_tenant_context)
+    monkeypatch.setattr(router_mod, "ProjectRepository", _Repo)
+    monkeypatch.setattr(router_mod, "get_tenant_project_manager", lambda _tenant_id: pm)
+
+
+def _current_user() -> CurrentUserInfo:
+    return CurrentUserInfo(
+        id="u1",
+        sub="test",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
 
 
 @pytest.fixture
@@ -88,13 +122,14 @@ def three_bucket_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     custom_pm = ProjectManager(projects_root)
     monkeypatch.setattr(router_mod, "pm", custom_pm)
     monkeypatch.setattr(router_mod, "get_project_manager", lambda: custom_pm)
+    _install_route_stubs(monkeypatch, router_mod, custom_pm)
     monkeypatch.setattr(gt_mod, "pm", custom_pm, raising=False)
     monkeypatch.setattr(gt_mod, "get_project_manager", lambda: custom_pm)
     monkeypatch.setattr(rvt_mod, "get_project_manager", lambda: custom_pm)
 
     app = FastAPI()
     app.include_router(router_mod.router, prefix="/api/v1")
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="u1", sub="test", role="admin")
+    app.dependency_overrides[get_current_user] = _current_user
     return TestClient(app), proj_dir, monkeypatch
 
 

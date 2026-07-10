@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -15,6 +16,39 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
+from server.services.tenant_auth import TenantAccess
+
+
+def _install_route_stubs(monkeypatch: pytest.MonkeyPatch, router_mod, pm) -> None:
+    async def _require_tenant_access(*args, **kwargs):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _set_tenant_context(*args, **kwargs):
+        return None
+
+    class _Repo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def get_by_id(self, project_id):
+            if project_id != "ad-demo":
+                return None
+            return SimpleNamespace(id=project_id, name="Ad Demo", tenant_id="ten_test")
+
+    monkeypatch.setattr(router_mod, "require_tenant_access", _require_tenant_access)
+    monkeypatch.setattr(router_mod, "set_tenant_context", _set_tenant_context)
+    monkeypatch.setattr(router_mod, "ProjectRepository", _Repo)
+    monkeypatch.setattr(router_mod, "get_tenant_project_manager", lambda _tenant_id: pm)
+
+
+def _current_user() -> CurrentUserInfo:
+    return CurrentUserInfo(
+        id="u1",
+        sub="test",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
 
 
 def _shot(shot_id: str, duration: int, **overrides) -> dict:
@@ -90,6 +124,7 @@ def ad_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     custom_pm = ProjectManager(projects_root)
     monkeypatch.setattr(router_mod, "pm", custom_pm)
     monkeypatch.setattr(router_mod, "get_project_manager", lambda: custom_pm)
+    _install_route_stubs(monkeypatch, router_mod, custom_pm)
 
     # 供应商时长上限解析与队列都打桩：路由测试只看入参与持久化结果
     monkeypatch.setattr(router_mod, "resolve_max_unit_duration", AsyncMock(return_value=15))
@@ -99,15 +134,15 @@ def ad_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     app = FastAPI()
     app.include_router(router_mod.router, prefix="/api/v1")
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="u1", sub="test", role="admin")
+    app.dependency_overrides[get_current_user] = _current_user
     client = TestClient(app)
-    client.fake_queue = fake_queue  # type: ignore[attr-defined]
-    client.proj_dir = proj_dir  # type: ignore[attr-defined]
+    client.fake_queue = fake_queue
+    client.proj_dir = proj_dir
     return client
 
 
 def _read_script(client: TestClient) -> dict:
-    path: Path = client.proj_dir / "scripts" / "episode_1.json"  # type: ignore[attr-defined]
+    path: Path = client.proj_dir / "scripts" / "episode_1.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -127,7 +162,7 @@ class TestDeriveUnits:
         ad_client.post("/api/v1/projects/ad-demo/reference-videos/episodes/1/derive-units")
         script = _read_script(ad_client)
         script["reference_units"][0]["generated_assets"]["video_clip"] = "reference_videos/E1U1.mp4"
-        path: Path = ad_client.proj_dir / "scripts" / "episode_1.json"  # type: ignore[attr-defined]
+        path: Path = ad_client.proj_dir / "scripts" / "episode_1.json"
         path.write_text(json.dumps(script, ensure_ascii=False), encoding="utf-8")
 
         resp = ad_client.post("/api/v1/projects/ad-demo/reference-videos/episodes/1/derive-units")
@@ -136,7 +171,7 @@ class TestDeriveUnits:
         assert units[0]["generated_assets"]["video_clip"] == "reference_videos/E1U1.mp4"
 
     def test_derive_rejected_for_non_ad_project(self, ad_client: TestClient):
-        proj_dir: Path = ad_client.proj_dir  # type: ignore[attr-defined]
+        proj_dir: Path = ad_client.proj_dir
         project = json.loads((proj_dir / "project.json").read_text(encoding="utf-8"))
         project["content_mode"] = "narration"
         (proj_dir / "project.json").write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
@@ -207,7 +242,7 @@ class TestAdGenerate:
 
         assert resp.status_code == 202, resp.text
         assert resp.json()["task_id"] == "t1"
-        kwargs = ad_client.fake_queue.enqueue_task.call_args.kwargs  # type: ignore[attr-defined]
+        kwargs = ad_client.fake_queue.enqueue_task.call_args.kwargs
         assert kwargs["task_type"] == "reference_video"
         assert kwargs["resource_id"] == "E1U1"
 
@@ -218,7 +253,7 @@ class TestAdGenerate:
 
     def test_generate_with_blank_shot_prompts_rejected(self, ad_client: TestClient):
         ad_client.post("/api/v1/projects/ad-demo/reference-videos/episodes/1/derive-units")
-        proj_dir: Path = ad_client.proj_dir  # type: ignore[attr-defined]
+        proj_dir: Path = ad_client.proj_dir
         script = _read_script(ad_client)
         for shot in script["shots"]:
             shot["image_prompt"]["scene"] = ""
@@ -233,7 +268,7 @@ class TestAdGenerate:
 
     def test_generate_with_stale_index_409(self, ad_client: TestClient):
         ad_client.post("/api/v1/projects/ad-demo/reference-videos/episodes/1/derive-units")
-        proj_dir: Path = ad_client.proj_dir  # type: ignore[attr-defined]
+        proj_dir: Path = ad_client.proj_dir
         script = _read_script(ad_client)
         script["shots"] = [s for s in script["shots"] if s["shot_id"] != "E1S2"]
         (proj_dir / "scripts" / "episode_1.json").write_text(json.dumps(script, ensure_ascii=False), encoding="utf-8")
