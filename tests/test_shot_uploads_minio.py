@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from PIL import Image
 
 from lib.db import get_async_session
-from lib.db.models import Tenant, TenantMembership, User
+from lib.db.models import Project, Tenant, TenantMembership, User
 from lib.project_manager import ProjectManager
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import shot_uploads
@@ -46,6 +46,16 @@ async def _seed_member(async_session) -> None:
     await async_session.flush()
     async_session.add(TenantMembership(tenant_id="ten_1", user_id="usr_1", role="member", created_by_user_id="usr_1"))
     await async_session.flush()
+    async_session.add(
+        Project(
+            id="demo",
+            tenant_id="ten_1",
+            name="Demo",
+            created_by_user_id="usr_1",
+            local_path="_tenants/ten_1/projects/demo/project.json",
+        )
+    )
+    await async_session.flush()
 
 
 def _seed_project(tmp_path) -> ProjectManager:
@@ -78,6 +88,7 @@ async def test_shot_storyboard_upload_returns_file_id_without_local_path(async_s
     await _seed_member(async_session)
     pm = _seed_project(tmp_path)
     shot_uploads.get_project_manager = lambda: pm
+    shot_uploads.get_tenant_project_manager = lambda _tenant_id: pm
     upload_finalize.get_project_manager = lambda: pm
     generation_tasks.get_project_manager = lambda: pm
     storage = FakeStorage()

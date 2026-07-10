@@ -50,7 +50,8 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [x] 场景关键子路由：script/source/overview/episode/segment 按 `project_id` 解析。
 - [x] 项目文件路径改为 `_tenants/{tenant_id}/projects/{project_id}/project.json`。
 - [x] `projects` 表保持 `unique(tenant_id, name)`，但已修复路径的业务查询走 `project_id`。
-- [ ] 非主链路 project 子路由仍需专项审计：script review、versions、grids、reference video、cost estimation、usage。
+- [x] cost estimation 路由按 `project_id` 解析。
+- [ ] 非主链路 project 子路由仍需专项审计：script review、versions、grids、reference video、usage、project export。
 - [ ] 跨租户同名项目端到端测试通过。
 
 ### Phase 2 - 前端项目 ID 路由和租户上下文
@@ -70,6 +71,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 
 **Acceptance Criteria**
 - [x] 场景关键生成入口按当前 tenant 和 `project_id` 入队。
+- [x] 手动镜头上传按当前 tenant 和 `project_id` 写回项目，并用 `project_id` 写 file_links。
 - [ ] `tasks` 持久化 `tenant_id/project_id/requested_by_user_id`。
 - [ ] worker 使用任务持久化上下文读取项目、租户配置、provider credential。
 - [x] `assistant` routes 使用 `project_id`。

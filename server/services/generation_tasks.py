@@ -631,11 +631,14 @@ def _product_references_for_video(generator: Any, project: dict, project_path: P
     return references
 
 
-def _resolve_script_episode(project_name: str, script_file: str | None) -> int | None:
+def _resolve_script_episode(
+    project_name: str, script_file: str | None, *, project_manager: ProjectManager | None = None
+) -> int | None:
     if not script_file:
         return None
     try:
-        script = get_project_manager().load_script(project_name, script_file)
+        manager = project_manager or get_project_manager()
+        script = manager.load_script(project_name, script_file)
     except Exception:
         return None
 
@@ -645,10 +648,13 @@ def _resolve_script_episode(project_name: str, script_file: str | None) -> int |
     return None
 
 
-def compute_affected_fingerprints(project_name: str, task_type: str, resource_id: str) -> dict[str, int]:
+def compute_affected_fingerprints(
+    project_name: str, task_type: str, resource_id: str, *, project_manager: ProjectManager | None = None
+) -> dict[str, int]:
     """计算受影响文件的 mtime 指纹"""
     try:
-        project_path = get_project_manager().get_project_path(project_name)
+        manager = project_manager or get_project_manager()
+        project_path = manager.get_project_path(project_name)
     except Exception:
         return {}
 
@@ -777,6 +783,7 @@ def emit_generation_success_batch(
     project_name: str,
     resource_id: str,
     payload: dict[str, Any],
+    project_manager: ProjectManager | None = None,
 ) -> dict[str, int]:
     """发送生成/上传完成的项目变更事件，返回受影响文件的指纹（调用方可直接复用，免二次计算）。
 
@@ -787,7 +794,9 @@ def emit_generation_success_batch(
         return {}
 
     entity_type, action, label_tpl, include_script_episode = spec
-    asset_fingerprints = compute_affected_fingerprints(project_name, task_type, resource_id)
+    asset_fingerprints = compute_affected_fingerprints(
+        project_name, task_type, resource_id, project_manager=project_manager
+    )
 
     change: dict[str, Any] = {
         "entity_type": entity_type,
@@ -801,7 +810,7 @@ def emit_generation_success_batch(
     if include_script_episode:
         script_file = str(payload.get("script_file") or "") or None
         change["script_file"] = script_file
-        change["episode"] = _resolve_script_episode(project_name, script_file)
+        change["episode"] = _resolve_script_episode(project_name, script_file, project_manager=project_manager)
 
     try:
         emit_project_change_batch(project_name, [change])

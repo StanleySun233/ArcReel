@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 from typing import BinaryIO, Literal
 
+from lib.project_manager import ProjectManager
 from lib.thumbnail import extract_video_thumbnail
 from lib.version_manager import VersionManager
 from server.services.generation_tasks import get_project_manager
@@ -146,11 +147,12 @@ def record_upload_version(
 
 
 async def finalize_shot_storyboard_upload(
-    *, project_name: str, script_file: str, shot_id: str, asset_path: str
+    *, project_name: str, script_file: str, shot_id: str, asset_path: str, project_manager: ProjectManager | None = None
 ) -> None:
     """分镜图上传后的剧本元数据回写（status 由 update_scene_status 自动推导）。"""
+    manager = project_manager or get_project_manager()
     await asyncio.to_thread(
-        get_project_manager().update_scene_asset,
+        manager.update_scene_asset,
         project_name=project_name,
         script_filename=script_file,
         scene_id=shot_id,
@@ -160,7 +162,13 @@ async def finalize_shot_storyboard_upload(
 
 
 async def finalize_shot_video_upload(
-    *, project_name: str, script_file: str, shot_id: str, project_path: Path, video_rel: str
+    *,
+    project_name: str,
+    script_file: str,
+    shot_id: str,
+    project_path: Path,
+    video_rel: str,
+    project_manager: ProjectManager | None = None,
 ) -> None:
     """镜头视频上传后的 finalize：抽缩略图 + 单次锁内回写 video_clip / video_uri / video_thumbnail。
 
@@ -174,8 +182,9 @@ async def finalize_shot_video_upload(
         thumbnail_file.unlink(missing_ok=True)
         thumb_rel = None
 
+    manager = project_manager or get_project_manager()
     await asyncio.to_thread(
-        get_project_manager().batch_update_scene_assets,
+        manager.batch_update_scene_assets,
         project_name=project_name,
         script_filename=script_file,
         updates=[

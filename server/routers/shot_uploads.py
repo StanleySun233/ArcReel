@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib.app_data_dir import app_data_dir
 from lib.db import get_async_session
+from lib.db.repositories.project_repo import ProjectRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.files import FileLinkSpec, FileService
 from lib.i18n import Translator
 from lib.image_utils import normalize_storyboard_upload
@@ -54,9 +56,13 @@ def get_project_manager() -> ProjectManager:
     return pm
 
 
-@router.post("/projects/{project_name}/shots/{shot_id}/upload/{kind}")
+def get_tenant_project_manager(tenant_id: str) -> ProjectManager:
+    return ProjectManager(app_data_dir(), tenant_id=tenant_id)
+
+
+@router.post("/projects/{project_id}/shots/{shot_id}/upload/{kind}")
 async def upload_shot_media(
-    project_name: str,
+    project_id: str,
     shot_id: str,
     kind: Literal["storyboard", "video"],
     script_file: str,
@@ -71,15 +77,19 @@ async def upload_shot_media(
     剧本元数据回写（status 自动推导）→ SSE batch 推送。
     """
     try:
-        await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
+        access = await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
+        await set_tenant_context(session, user_id=current_user.id, tenant_id=access.id)
+        if await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id) is None:
+            raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+        manager = get_tenant_project_manager(access.id)
         max_bytes = validate_upload(file.filename, file.size, kind="image" if kind == "storyboard" else "video")
 
         resource_type = "storyboards" if kind == "storyboard" else "videos"
         relative_path = resource_relative_path(resource_type, shot_id)
 
         def _validate_shot() -> tuple[Path, VersionManager]:
-            project_path = get_project_manager().get_project_path(project_name)
-            script = get_project_manager().load_script(project_name, script_file)
+            project_path = manager.get_project_path(project_id)
+            script = manager.load_script(project_id, script_file)
             # reference_video 剧本返回空列表 → 404，该模式的视频上传走 reference-videos 路由
             items, id_field, _, _, _ = get_storyboard_items(script)
             if find_storyboard_item(items, id_field, shot_id) is None:
@@ -123,15 +133,20 @@ async def upload_shot_media(
 
             if kind == "storyboard":
                 await finalize_shot_storyboard_upload(
-                    project_name=project_name, script_file=script_file, shot_id=shot_id, asset_path=relative_path
+                    project_name=project_id,
+                    script_file=script_file,
+                    shot_id=shot_id,
+                    asset_path=relative_path,
+                    project_manager=manager,
                 )
             else:
                 await finalize_shot_video_upload(
-                    project_name=project_name,
+                    project_name=project_id,
                     script_file=script_file,
                     shot_id=shot_id,
                     project_path=project_path,
                     video_rel=relative_path,
+                    project_manager=manager,
                 )
 
             # emit 内部会读剧本解析 episode 并计算指纹，放线程池避免阻塞事件循环；
@@ -139,9 +154,10 @@ async def upload_shot_media(
             fingerprints = await asyncio.to_thread(
                 emit_generation_success_batch,
                 task_type=kind,
-                project_name=project_name,
+                project_name=project_id,
                 resource_id=shot_id,
                 payload={"script_file": script_file},
+                project_manager=manager,
             )
 
         stored_content = await asyncio.to_thread(target.read_bytes)
@@ -151,8 +167,8 @@ async def upload_shot_media(
             content_type="image/png" if kind == "storyboard" else file.content_type,
             created_by_user_id=current_user.id,
             links=[
-                FileLinkSpec(resource_type="project", resource_id=project_name, link_type=kind),
-                FileLinkSpec(resource_type="tenant_library", resource_id=current_user.tenant_id or "", link_type=kind),
+                FileLinkSpec(resource_type="project", resource_id=project_id, link_type=kind),
+                FileLinkSpec(resource_type="tenant_library", resource_id=access.id, link_type=kind),
             ],
         )
         await session.commit()

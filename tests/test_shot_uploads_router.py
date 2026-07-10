@@ -3,6 +3,7 @@
 import asyncio
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
@@ -15,6 +16,7 @@ from lib.version_manager import VersionManager
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import reference_videos, shot_uploads
 from server.services import generation_tasks, reference_video_tasks, upload_finalize
+from server.services.tenant_auth import TenantAccess
 
 
 def _img_bytes(fmt="JPEG", size=(8, 8)):
@@ -57,14 +59,52 @@ def _seed_shot_project(tmp_path) -> ProjectManager:
     return pm
 
 
+class _FakeFileService:
+    _next = 0
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def create_file(self, **kwargs):
+        self.__class__._next += 1
+        return SimpleNamespace(file_id=f"fil_test_{self.__class__._next}")
+
+
 def _client(monkeypatch, tmp_path):
     pm = _seed_shot_project(tmp_path)
     monkeypatch.setattr(shot_uploads, "get_project_manager", lambda: pm)
+    monkeypatch.setattr(shot_uploads, "get_tenant_project_manager", lambda _tenant_id: pm)
     monkeypatch.setattr(upload_finalize, "get_project_manager", lambda: pm)
     monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: pm)
 
+    async def _access(_session, _user, *, minimum_role="member", permission_cache=None):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _set_context(_session, *, user_id, tenant_id):
+        return None
+
+    class _Repo:
+        def __init__(self, _session, *, tenant_id):
+            self.tenant_id = tenant_id
+
+        async def get_by_id(self, project_id):
+            if project_id == "demo":
+                return SimpleNamespace(id="demo", name="Display")
+            return None
+
+    monkeypatch.setattr(shot_uploads, "require_tenant_access", _access)
+    monkeypatch.setattr(shot_uploads, "set_tenant_context", _set_context)
+    monkeypatch.setattr(shot_uploads, "ProjectRepository", _Repo)
+    monkeypatch.setattr(shot_uploads, "FileService", _FakeFileService)
+
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
     app.include_router(shot_uploads.router, prefix="/api/v1")
     return TestClient(app), pm
 
@@ -83,7 +123,8 @@ class TestShotStoryboardUpload:
             resp = _upload(client, "storyboard", "board.jpg", _img_bytes("JPEG"))
             assert resp.status_code == 200, resp.text
             body = resp.json()
-            assert body["path"] == "storyboards/scene_E1S01.png"
+            assert body["file_id"].startswith("fil_")
+            assert "path" not in body
             assert body["version"] == 1
             assert "storyboards/scene_E1S01.png" in body["asset_fingerprints"]
 
@@ -216,6 +257,15 @@ class TestShotStoryboardUpload:
             assert resp.status_code == 404
             assert str(tmp_path) not in resp.json()["detail"]
 
+    def test_display_name_is_not_accepted_as_project_id(self, tmp_path, monkeypatch):
+        client, _ = _client(monkeypatch, tmp_path)
+        with client:
+            resp = client.post(
+                "/api/v1/projects/duplicated-display-name/shots/E1S01/upload/storyboard?script_file=episode_1.json",
+                files={"file": ("x.png", BytesIO(_img_bytes("PNG")), "application/octet-stream")},
+            )
+        assert resp.status_code == 404
+
 
 class TestShotVideoUpload:
     def test_upload_finalizes_and_clears_stale_video_uri(self, tmp_path, monkeypatch):
@@ -233,7 +283,8 @@ class TestShotVideoUpload:
             resp = _upload(client, "video", "clip.mp4", b"\x00" * 1024)
             assert resp.status_code == 200, resp.text
             body = resp.json()
-            assert body["path"] == "videos/scene_E1S01.mp4"
+            assert body["file_id"].startswith("fil_")
+            assert "path" not in body
             assert body["version"] == 1
             assert "videos/scene_E1S01.mp4" in body["asset_fingerprints"]
             assert "thumbnails/scene_E1S01.jpg" in body["asset_fingerprints"]

@@ -24,6 +24,7 @@
 | `PATCH /api/v1/projects/{name}` | `PATCH /api/v1/projects/{project_id}` | 校验当前租户内 `name` 不重复 |
 | `DELETE /api/v1/projects/{name}` | `DELETE /api/v1/projects/{project_id}` | 仅 owner/admin 允许 |
 | `GET /api/v1/projects/{name}/video-capabilities` | `GET /api/v1/projects/{project_id}/video-capabilities` | 视频模型能力解析 |
+| `GET /api/v1/projects/{name}/cost-estimate` | `GET /api/v1/projects/{project_id}/cost-estimate` | 项目费用估算 |
 | `POST /api/v1/projects/{name}/generate-overview` | `POST /api/v1/projects/{project_id}/generate-overview` | 使用 ProjectContext |
 | `GET /api/v1/projects/{name}/scripts/{script_file}` | `GET /api/v1/projects/{project_id}/scripts/{script_file}` | 读取剧本内容 |
 | `PATCH /api/v1/projects/{name}/script-scenes/{scene_id}` | `PATCH /api/v1/projects/{project_id}/script-scenes/{scene_id}` | drama 场景编辑 |
@@ -74,6 +75,7 @@
 | `PUT /api/v1/projects/{project_id}/drafts/{episode}/step{step}` | member/admin | 写入项目草稿 |
 | `DELETE /api/v1/projects/{project_id}/drafts/{episode}/step{step}` | member/admin | 删除项目草稿 |
 | `POST /api/v1/projects/{project_id}/style-image` | member/admin | 上传项目风格参考图 |
+| `POST /api/v1/projects/{project_id}/shots/{shot_id}/upload/{kind}` | member/admin | 手动上传镜头分镜图或视频，返回 file_id |
 
 文件响应只返回：
 
