@@ -3,12 +3,14 @@ import shutil
 from contextlib import contextmanager
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import projects
+from server.services.tenant_auth import TenantAccess
 
 
 class _FakePM:
@@ -219,9 +221,75 @@ class _FakeCalc:
 def _client(monkeypatch, fake_pm, fake_calc):
     monkeypatch.setattr(projects, "get_project_manager", lambda: fake_pm)
     monkeypatch.setattr(projects, "get_status_calculator", lambda: fake_calc)
+    monkeypatch.setattr(projects, "get_tenant_project_manager", lambda _tenant_id: fake_pm)
+    monkeypatch.setattr(projects, "StatusCalculator", lambda _manager: fake_calc)
+    monkeypatch.setattr(
+        projects,
+        "_project_json_local_path",
+        lambda _manager, name: f"_tenants/ten_test/projects/{name}/project.json",
+    )
+
+    class _Begin:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    class _Session:
+        def begin(self):
+            return _Begin()
+
+    class _SessionContext:
+        async def __aenter__(self):
+            return _Session()
+
+        async def __aexit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    class _Repo:
+        def __init__(self, _session, *, tenant_id):
+            self.tenant_id = tenant_id
+
+        async def list_all(self):
+            return [SimpleNamespace(name=name) for name in fake_pm.list_projects()]
+
+        async def get_by_name(self, name):
+            if name in set(fake_pm.list_projects()) | {"remove-me", "ad-ready"} | fake_pm.created:
+                return SimpleNamespace(name=name)
+            return None
+
+        async def create(self, *, project_id, name, created_by_user_id, local_path):
+            fake_pm.created.add(name)
+            return SimpleNamespace(
+                id=project_id,
+                name=name,
+                created_by_user_id=created_by_user_id,
+                local_path=local_path,
+            )
+
+        async def delete_by_name(self, name):
+            return True
+
+    async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _set_context(_session, *, user_id, tenant_id):
+        return None
+
+    monkeypatch.setattr(projects, "async_session_factory", lambda: _SessionContext())
+    monkeypatch.setattr(projects, "ProjectRepository", _Repo)
+    monkeypatch.setattr(projects, "require_tenant_access", _access)
+    monkeypatch.setattr(projects, "set_tenant_context", _set_context)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
     app.include_router(projects.router, prefix="/api/v1")
     return TestClient(app)
 
@@ -1466,8 +1534,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_create_project_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_create_project"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        # _sync 里最早命中 get_project_manager()，RuntimeError 绕过 ValueError/HTTPException 分支
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.post(
                 "/api/v1/projects",
@@ -1479,7 +1546,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_get_project_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_get_project"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.get("/api/v1/projects/ready")
             assert resp.status_code == 500
@@ -1488,7 +1555,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_update_project_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_update_project"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.patch("/api/v1/projects/ready", json={"title": "X"})
             assert resp.status_code == 500
@@ -1497,7 +1564,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_delete_project_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_delete_project"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.delete("/api/v1/projects/remove-me")
             assert resp.status_code == 500
@@ -1604,8 +1671,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_create_export_token_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_export_token"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        # scope 合法（默认 full）；_sync 里最早命中 get_project_manager()
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.post("/api/v1/projects/ready/export/token")
             assert resp.status_code == 500
@@ -1614,9 +1680,10 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_export_project_archive_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_export_archive"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        # download_token 校验先放行，再让归档服务抛 RuntimeError 落到兜底
-        monkeypatch.setattr(projects, "verify_download_token", lambda token, name: {"sub": "u"})
-        monkeypatch.setattr(projects, "get_archive_service", _raise(sentinel))
+        monkeypatch.setattr(
+            projects, "verify_token", lambda token: {"purpose": "download", "project": "ten_test:ready"}
+        )
+        monkeypatch.setattr(projects, "get_tenant_archive_service", _raise(sentinel))
         with client:
             resp = client.get("/api/v1/projects/ready/export?download_token=tok&scope=full")
             assert resp.status_code == 500
@@ -1625,8 +1692,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_import_project_archive_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_import_archive"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        # 上传副本写盘成功后，_sync 调归档服务抛 RuntimeError，落到 JSONResponse(500) 兜底
-        monkeypatch.setattr(projects, "get_archive_service", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_archive_service", _raise(sentinel))
         with client:
             resp = client.post(
                 "/api/v1/projects/import",
