@@ -16,8 +16,8 @@
 
 ## Subtasks
 
-- [ ] Add tenant list and switch UI.
-  - Commit: pending
+- [x] Add tenant list and switch UI.
+  - Commit: 36c65c0
 - [x] Update auth store token and role snapshot handling.
   - Commit: 4a42e1a
 - [ ] Add stale-role and revoked-access UI tests.
@@ -29,4 +29,4 @@
 
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
-| 2026-07-10 | Tenant switcher | Depends on Story 3 tenant API contract or compatible mock contract. | planned |
+| 2026-07-10 | Tenant switcher | Depends on Story 3 tenant API contract or compatible mock contract. | resolved |
