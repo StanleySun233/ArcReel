@@ -76,6 +76,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [ ] `tasks` 持久化 `tenant_id/project_id/requested_by_user_id`。
 - [ ] worker 使用任务持久化上下文读取项目、租户配置、provider credential。
 - [x] `assistant` routes 使用 `project_id`。
+- [x] `versions` routes 使用当前 tenant 下的 `project_id`，读取允许 viewer，还原要求 member。
 - [ ] Agent session 表和 session store 持久化 `tenant_id/project_id/user_id`。
 - [ ] Agent cwd 由 ProjectContextResolver 返回。
 - [ ] MCP 工具通过注入上下文获取 project_id，不接受项目名推断。

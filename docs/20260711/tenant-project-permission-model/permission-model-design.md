@@ -193,7 +193,7 @@ Agent 会话创建、消息发送、工具调用、任务入队必须携带同�
 - [ ] 所有项目文件路径使用 `project_id`。
 - [ ] 所有 SQL 查询项目时带当前后端 tenant 上下文。
 - [ ] 所有任务、Agent、文件、用量记录持久化 `tenant_id + project_id`。
-- [ ] Issued Tokens 后台统一返回 `403 feature_disabled`，前端按钮 disabled。
+- [x] Issued Tokens 后台统一返回 `403 feature_disabled`，前端按钮 disabled。
 - [ ] 用量统计支持 tenant/project 分组。
 - [ ] 前端所有缓存 key 和 URL 不再使用项目名。
 - [ ] 跨租户同名项目测试通过。

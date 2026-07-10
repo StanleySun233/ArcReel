@@ -1,5 +1,6 @@
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -8,16 +9,16 @@ from fastapi.testclient import TestClient
 from lib.script_editor import ScriptEditError
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import versions
+from server.services.tenant_auth import TenantAccess
 
 
 class _FakePM:
-    def __init__(self):
+    def __init__(self, base_path: Path | None = None):
+        self.base_path = base_path or Path(tempfile.gettempdir())
         self.updated = []
 
     def get_project_path(self, project_name):
-        from pathlib import Path
-
-        return Path("/tmp") / project_name
+        return self.base_path / project_name
 
     def _update_asset_sheet(self, asset_type, *args):
         self.updated.append((asset_type, args))
@@ -70,13 +71,47 @@ class _StoryboardSyncPM:
 
 def _client(monkeypatch):
     fake_pm = _FakePM()
-    monkeypatch.setattr(versions, "get_project_manager", lambda: fake_pm)
-    monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
+    _install_route_stubs(monkeypatch, fake_pm)
+    monkeypatch.setattr(versions, "get_version_manager", lambda *args, **kwargs: _FakeVM())
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = _current_user
     app.include_router(versions.router, prefix="/api/v1")
     return TestClient(app), fake_pm
+
+
+def _install_route_stubs(monkeypatch, fake_pm, project_ids: set[str] | None = None):
+    allowed_project_ids = project_ids or {"demo"}
+
+    async def _require_tenant_access(*args, **kwargs):
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+    async def _set_tenant_context(*args, **kwargs):
+        return None
+
+    class _Repo:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def get_by_id(self, project_id):
+            if project_id not in allowed_project_ids:
+                return None
+            return SimpleNamespace(id=project_id, name="Demo", tenant_id="ten_test")
+
+    monkeypatch.setattr(versions, "get_tenant_project_manager", lambda tenant_id: fake_pm)
+    monkeypatch.setattr(versions, "require_tenant_access", _require_tenant_access)
+    monkeypatch.setattr(versions, "set_tenant_context", _set_tenant_context)
+    monkeypatch.setattr(versions, "ProjectRepository", _Repo)
+
+
+def _current_user() -> CurrentUserInfo:
+    return CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
+    )
 
 
 class TestVersionsRouter:
@@ -179,11 +214,11 @@ class TestVersionsRouter:
         thumb.parent.mkdir(parents=True, exist_ok=True)
         thumb.write_bytes(b"jpg")
 
-        monkeypatch.setattr(versions, "get_project_manager", lambda: real_pm)
-        monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
+        _install_route_stubs(monkeypatch, real_pm)
+        monkeypatch.setattr(versions, "get_version_manager", lambda *args, **kwargs: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/reference_videos/E1U1/restore/1")
@@ -237,11 +272,11 @@ class TestVersionsRouter:
         thumb.parent.mkdir(parents=True, exist_ok=True)
         thumb.write_bytes(b"jpg")
 
-        monkeypatch.setattr(versions, "get_project_manager", lambda: real_pm)
-        monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
+        _install_route_stubs(monkeypatch, real_pm)
+        monkeypatch.setattr(versions, "get_version_manager", lambda *args, **kwargs: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/videos/E1S01/restore/1")
@@ -292,11 +327,11 @@ class TestVersionsRouter:
             (scripts_dir / name).write_text("{}", encoding="utf-8")
 
         fake_pm = _StoryboardSyncPM(project_path)
-        monkeypatch.setattr(versions, "get_project_manager", lambda: fake_pm)
-        monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
+        _install_route_stubs(monkeypatch, fake_pm)
+        monkeypatch.setattr(versions, "get_version_manager", lambda *args, **kwargs: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -323,11 +358,11 @@ class TestVersionsRouter:
                 raise RuntimeError("unexpected crash")
 
         fake_pm = _CrashingPM(project_path)
-        monkeypatch.setattr(versions, "get_project_manager", lambda: fake_pm)
-        monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
+        _install_route_stubs(monkeypatch, fake_pm)
+        monkeypatch.setattr(versions, "get_version_manager", lambda *args, **kwargs: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -359,11 +394,11 @@ class TestVersionsRouter:
                     raise OSError("transient flock timeout")
 
         fake_pm = _TransientIOFailPM(project_path)
-        monkeypatch.setattr(versions, "get_project_manager", lambda: fake_pm)
-        monkeypatch.setattr(versions, "get_version_manager", lambda project_name: _FakeVM())
+        _install_route_stubs(monkeypatch, fake_pm)
+        monkeypatch.setattr(versions, "get_version_manager", lambda *args, **kwargs: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -375,17 +410,17 @@ class TestVersionsRouter:
 
     def test_restore_returns_asset_fingerprints(self, monkeypatch, tmp_path):
         """版本还原应返回受影响文件的 fingerprint"""
-        fake_pm = _FakePM()
-        fake_pm.get_project_path = lambda name: tmp_path
+        fake_pm = _FakePM(tmp_path)
+        project_path = tmp_path / "demo"
 
-        (tmp_path / "storyboards").mkdir()
-        (tmp_path / "storyboards" / "scene_E1S01.png").write_bytes(b"restored")
+        (project_path / "storyboards").mkdir(parents=True)
+        (project_path / "storyboards" / "scene_E1S01.png").write_bytes(b"restored")
 
-        monkeypatch.setattr(versions, "get_project_manager", lambda: fake_pm)
-        monkeypatch.setattr(versions, "get_version_manager", lambda name: _FakeVM())
+        _install_route_stubs(monkeypatch, fake_pm)
+        monkeypatch.setattr(versions, "get_version_manager", lambda *args, **kwargs: _FakeVM())
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/storyboards/E1S01/restore/1")
@@ -397,15 +432,15 @@ class TestVersionsRouter:
 
     def test_get_versions_unexpected_error_maps_to_500(self, monkeypatch):
         fake_pm = _FakePM()
-        monkeypatch.setattr(versions, "get_project_manager", lambda: fake_pm)
+        _install_route_stubs(monkeypatch, fake_pm)
         monkeypatch.setattr(
             versions,
             "get_version_manager",
-            lambda project_name: (_ for _ in ()).throw(RuntimeError("boom")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
         )
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.get("/api/v1/projects/demo/versions/characters/Alice")
@@ -415,15 +450,15 @@ class TestVersionsRouter:
 
     def test_restore_version_unexpected_error_maps_to_500(self, monkeypatch):
         fake_pm = _FakePM()
-        monkeypatch.setattr(versions, "get_project_manager", lambda: fake_pm)
+        _install_route_stubs(monkeypatch, fake_pm)
         monkeypatch.setattr(
             versions,
             "get_version_manager",
-            lambda project_name: (_ for _ in ()).throw(RuntimeError("RESTORE_LEAK_SECRET")),
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("RESTORE_LEAK_SECRET")),
         )
 
         app = FastAPI()
-        app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+        app.dependency_overrides[get_current_user] = _current_user
         app.include_router(versions.router, prefix="/api/v1")
         with TestClient(app) as client:
             resp = client.post("/api/v1/projects/demo/versions/characters/Alice/restore/1")

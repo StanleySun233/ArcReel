@@ -36,6 +36,8 @@
 | `POST /api/v1/projects/{name}/source` | `POST /api/v1/projects/{project_id}/source` | 源文件或源文本导入 |
 | `GET /api/v1/projects/{name}/events/stream` | `GET /api/v1/projects/{project_id}/events/stream` | SSE channel 使用 project_id |
 | `POST /api/v1/projects/{name}/assistant/sessions/send` | `POST /api/v1/projects/{project_id}/assistant/sessions/send` | Agent cwd 使用 project_id |
+| `GET /api/v1/projects/{name}/versions/{resource_type}/{resource_id}` | `GET /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}` | 版本读取按当前租户解析项目 |
+| `POST /api/v1/projects/{name}/versions/{resource_type}/{resource_id}/restore/{version}` | `POST /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}/restore/{version}` | 版本还原要求 member/admin |
 
 项目响应字段：
 

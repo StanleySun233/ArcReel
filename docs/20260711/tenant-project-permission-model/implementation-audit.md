@@ -20,7 +20,7 @@ Evidence:
 
 ### Project identity is now route-id based on the main workspace path
 
-The project list, create, detail, update, delete, video capability route, cost estimation route, manual shot upload route, script review route, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, and project event stream now use project id as the route key.
+The project list, create, detail, update, delete, video capability route, cost estimation route, manual shot upload route, script review route, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, project event stream, and version routes now use project id as the route key.
 
 Evidence:
 
@@ -29,6 +29,7 @@ Evidence:
 - `server/routers/cost_estimation.py` resolves project rows by `id` and computes by project id.
 - `server/routers/shot_uploads.py` resolves project rows by `id`, uses tenant-scoped `ProjectManager`, and records project file links with `resource_id=project_id`.
 - `server/routers/script_review.py` resolves project rows by `id`; read requires viewer access, save/confirm require member access.
+- `server/routers/versions.py` resolves project rows by `id`; version reads require viewer access and restores require member access.
 - Project creation stores local project JSON under tenant-scoped project-id paths.
 - `frontend/src/types/project.ts` requires `ProjectSummary.id`.
 - `frontend/src/components/pages/ProjectsPage.tsx` links and deletes by `project.id`.
@@ -95,8 +96,8 @@ Evidence:
 
 Backend:
 
-- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py -q`
-  - Result: 267 passed
+- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py -q`
+  - Result: 282 passed
 - `python -m ruff check <changed backend files and tests>`
   - Result: passed
 - `basedpyright <changed backend route files>`
@@ -136,7 +137,6 @@ The current pass focused on the scenario-critical path: project CRUD, scripts, s
 
 The following route families still require a dedicated project-id audit before this can be called complete:
 
-- versions
 - grids
 - reference video units
 - usage grouping and display

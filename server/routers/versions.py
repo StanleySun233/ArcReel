@@ -14,6 +14,9 @@ from fastapi import APIRouter, HTTPException
 logger = logging.getLogger(__name__)
 
 from lib.app_data_dir import app_data_dir
+from lib.db import async_session_factory
+from lib.db.repositories.project_repo import ProjectRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from lib.project_change_hints import project_change_source
 from lib.project_manager import ProjectManager
@@ -22,6 +25,7 @@ from lib.script_editor import ScriptEditError
 from lib.version_manager import VersionManager
 from server.auth import CurrentUser
 from server.services.reference_video_tasks import apply_unit_video_assets
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
 
@@ -39,10 +43,25 @@ def get_project_manager() -> ProjectManager:
     return pm
 
 
-def get_version_manager(project_name: str) -> VersionManager:
+def get_tenant_project_manager(tenant_id: str) -> ProjectManager:
+    return ProjectManager(app_data_dir(), tenant_id=tenant_id)
+
+
+def get_version_manager(project_name: str, project_manager: ProjectManager | None = None) -> VersionManager:
     """获取项目的版本管理器"""
-    project_path = get_project_manager().get_project_path(project_name)
+    manager = project_manager or get_project_manager()
+    project_path = manager.get_project_path(project_name)
     return VersionManager(project_path)
+
+
+async def _require_project_manager(project_id: str, user: CurrentUser, _t: Translator, *, minimum_role: str):
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, user, minimum_role=minimum_role)
+            await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
+            if await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id) is None:
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+    return get_tenant_project_manager(access.id)
 
 
 def _resolve_resource_path(
@@ -96,9 +115,10 @@ def _sync_storyboard_metadata(
     resource_id: str,
     file_path: str,
     project_path: Path,
+    manager: ProjectManager,
 ) -> None:
     def _apply(script_name: str) -> None:
-        get_project_manager().update_scene_asset(
+        manager.update_scene_asset(
             project_name=project_name,
             script_filename=script_name,
             scene_id=resource_id,
@@ -114,6 +134,7 @@ def _sync_video_metadata(
     resource_id: str,
     file_path: str,
     project_path: Path,
+    manager: ProjectManager,
 ) -> None:
     """还原镜头视频后同步 generated_assets。
 
@@ -122,7 +143,7 @@ def _sync_video_metadata(
     """
 
     def _apply(script_name: str) -> None:
-        get_project_manager().batch_update_scene_assets(
+        manager.batch_update_scene_assets(
             project_name=project_name,
             script_filename=script_name,
             updates=[
@@ -139,6 +160,7 @@ def _sync_reference_video_metadata(
     project_name: str,
     resource_id: str,
     project_path: Path,
+    manager: ProjectManager,
 ) -> None:
     """还原参考视频单元后同步 unit.generated_assets（写回口径与生成 finalize 共用）。
 
@@ -149,7 +171,7 @@ def _sync_reference_video_metadata(
     def _apply(script_name: str) -> None:
         # 资产回写热路径：只动 unit.generated_assets，豁免结构校验（与 update_scene_asset 对齐）。
         # 该集脚本不含此 unit 时 apply_unit_video_assets 抛 KeyError，锁内冒出即跳过写回。
-        with get_project_manager().locked_script(project_name, script_name, validate=False) as script:
+        with manager.locked_script(project_name, script_name, validate=False) as script:
             apply_unit_video_assets(script, resource_id, video_uri=None, thumb_rel=None)
 
     _sync_scripts_best_effort(project_path, _apply)
@@ -170,29 +192,30 @@ def _sync_metadata(
     resource_id: str,
     file_path: str,
     project_path: Path,
+    manager: ProjectManager,
 ) -> None:
     """还原后同步元数据，确保引用指向统一文件路径。"""
     asset_type = _RESOURCE_TO_ASSET_TYPE.get(resource_type)
     if asset_type is not None:
         try:
             with project_change_source("webui"):
-                get_project_manager()._update_asset_sheet(asset_type, project_name, resource_id, file_path)
+                manager._update_asset_sheet(asset_type, project_name, resource_id, file_path)
         except KeyError:
             pass  # 资产条目可能已从 project.json 删除，跳过元数据同步
     elif resource_type == "storyboards":
-        _sync_storyboard_metadata(project_name, resource_id, file_path, project_path)
+        _sync_storyboard_metadata(project_name, resource_id, file_path, project_path, manager)
     elif resource_type == "videos":
-        _sync_video_metadata(project_name, resource_id, file_path, project_path)
+        _sync_video_metadata(project_name, resource_id, file_path, project_path, manager)
     elif resource_type == "reference_videos":
-        _sync_reference_video_metadata(project_name, resource_id, project_path)
+        _sync_reference_video_metadata(project_name, resource_id, project_path, manager)
 
 
 # ==================== 版本查询 ====================
 
 
-@router.get("/projects/{project_name}/versions/{resource_type}/{resource_id}")
+@router.get("/projects/{project_id}/versions/{resource_type}/{resource_id}")
 async def get_versions(
-    project_name: str,
+    project_id: str,
     resource_type: str,
     resource_id: str,
     _user: CurrentUser,
@@ -207,9 +230,10 @@ async def get_versions(
         resource_id: 资源 ID
     """
     try:
+        manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_VIEW)
 
         def _sync():
-            vm = get_version_manager(project_name)
+            vm = get_version_manager(project_id, manager)
             versions_info = vm.get_versions(resource_type, resource_id)
             return {"resource_type": resource_type, "resource_id": resource_id, **versions_info}
 
@@ -219,6 +243,8 @@ async def get_versions(
         raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("请求处理失败")
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
@@ -227,9 +253,9 @@ async def get_versions(
 # ==================== 版本还原 ====================
 
 
-@router.post("/projects/{project_name}/versions/{resource_type}/{resource_id}/restore/{version}")
+@router.post("/projects/{project_id}/versions/{resource_type}/{resource_id}/restore/{version}")
 async def restore_version(
-    project_name: str,
+    project_id: str,
     resource_type: str,
     resource_id: str,
     version: int,
@@ -248,10 +274,11 @@ async def restore_version(
         version: 要还原的版本号
     """
     try:
+        manager = await _require_project_manager(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            vm = get_version_manager(project_name)
-            project_path = get_project_manager().get_project_path(project_name)
+            vm = get_version_manager(project_id, manager)
+            project_path = manager.get_project_path(project_id)
             current_file, file_path = _resolve_resource_path(resource_type, resource_id, project_path, _t)
 
             result = vm.restore_version(
@@ -261,7 +288,7 @@ async def restore_version(
                 current_file=current_file,
             )
 
-            _sync_metadata(resource_type, project_name, resource_id, file_path, project_path)
+            _sync_metadata(resource_type, project_id, resource_id, file_path, project_path, manager)
 
             # 计算还原后文件的 fingerprint；视频还原时同步删除缩略图（内容已失效）
             asset_fingerprints: dict[str, int] = {}
