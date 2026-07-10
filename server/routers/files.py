@@ -778,13 +778,19 @@ async def delete_source_file(
 # ==================== 草稿文件管理 ====================
 
 
-@router.get("/projects/{project_name}/drafts")
-async def list_drafts(project_name: str, _user: CurrentUser, _t: Translator):
+@router.get("/projects/{project_id}/drafts")
+async def list_drafts(
+    project_id: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """列出项目的所有草稿目录和文件"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
             drafts_dir = project_dir / "drafts"
 
             result = {}
@@ -809,7 +815,7 @@ async def list_drafts(project_name: str, _user: CurrentUser, _t: Translator):
 
         return await asyncio.to_thread(_sync)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
 
 def _extract_step_number(filename: str) -> int:
@@ -866,7 +872,7 @@ def _get_step_title(filename: str, _t: Callable[..., str]) -> str:
     return titles.get(filename, filename)
 
 
-def _load_project_modes(project_name: str, episode: int) -> tuple[str, str | None]:
+def _load_project_modes(manager: ProjectManager, project_id: str, episode: int) -> tuple[str, str | None]:
     """走 ProjectManager.load_project，派生 (content_mode, generation_mode)。
 
     复用 load_project 以获得文件锁和 _migrate_legacy_style 迁移；generation_mode 的
@@ -874,7 +880,7 @@ def _load_project_modes(project_name: str, episode: int) -> tuple[str, str | Non
     项目不存在时返回 ("drama", None)，由调用方走 content_mode-only 分支。
     """
     try:
-        data = get_project_manager().load_project(project_name)
+        data = manager.load_project(project_id)
     except FileNotFoundError:
         return "drama", None
     content_mode = data.get("content_mode", "drama")
@@ -900,14 +906,22 @@ def _resolve_step1_path(drafts_dir: Path, step_num: int, primary: Path) -> Path:
     return primary
 
 
-@router.get("/projects/{project_name}/drafts/{episode}/step{step_num}")
-async def get_draft_content(project_name: str, episode: int, step_num: int, _user: CurrentUser, _t: Translator):
+@router.get("/projects/{project_id}/drafts/{episode}/step{step_num}")
+async def get_draft_content(
+    project_id: str,
+    episode: int,
+    step_num: int,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """获取特定步骤的草稿内容"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
-            content_mode, generation_mode = _load_project_modes(project_name, episode)
+            project_dir = manager.get_project_path(project_id)
+            content_mode, generation_mode = _load_project_modes(manager, project_id, episode)
             step_files = _get_step_files(content_mode, generation_mode)
 
             if step_num not in step_files:
@@ -925,24 +939,26 @@ async def get_draft_content(project_name: str, episode: int, step_num: int, _use
         return PlainTextResponse(content)
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
 
-@router.put("/projects/{project_name}/drafts/{episode}/step{step_num}")
+@router.put("/projects/{project_id}/drafts/{episode}/step{step_num}")
 async def update_draft_content(
-    project_name: str,
+    project_id: str,
     episode: int,
     step_num: int,
-    _user: CurrentUser,
+    current_user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     content: str = Body(..., media_type="text/plain"),
 ):
     """更新草稿内容"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
-            content_mode, generation_mode = _load_project_modes(project_name, episode)
+            project_dir = manager.get_project_path(project_id)
+            content_mode, generation_mode = _load_project_modes(manager, project_id, episode)
             step_files = _get_step_files(content_mode, generation_mode)
 
             if step_num not in step_files:
@@ -996,26 +1012,34 @@ async def update_draft_content(
                 "important": is_new,
             }
             try:
-                emit_project_change_batch(project_name, [change], source="worker")
+                emit_project_change_batch(project_id, [change], source="worker")
             except Exception:
-                logger.warning("发送 draft 事件失败 project=%s episode=%s", project_name, episode, exc_info=True)
+                logger.warning("发送 draft 事件失败 project=%s episode=%s", project_id, episode, exc_info=True)
 
             return {"success": True, "path": draft_path.relative_to(project_dir).as_posix()}
 
         return await asyncio.to_thread(_sync)
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
 
-@router.delete("/projects/{project_name}/drafts/{episode}/step{step_num}")
-async def delete_draft(project_name: str, episode: int, step_num: int, _user: CurrentUser, _t: Translator):
+@router.delete("/projects/{project_id}/drafts/{episode}/step{step_num}")
+async def delete_draft(
+    project_id: str,
+    episode: int,
+    step_num: int,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """删除草稿文件"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
-            content_mode, generation_mode = _load_project_modes(project_name, episode)
+            project_dir = manager.get_project_path(project_id)
+            content_mode, generation_mode = _load_project_modes(manager, project_id, episode)
             step_files = _get_step_files(content_mode, generation_mode)
 
             if step_num not in step_files:
@@ -1033,14 +1057,20 @@ async def delete_draft(project_name: str, episode: int, step_num: int, _user: Cu
         return await asyncio.to_thread(_sync)
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
 
 
 # ==================== 风格参考图管理 ====================
 
 
-@router.post("/projects/{project_name}/style-image")
-async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translator, file: UploadFile = File(...)):
+@router.post("/projects/{project_id}/style-image")
+async def upload_style_image(
+    project_id: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    file: UploadFile = File(...),
+):
     """
     上传风格参考图并分析风格
 
@@ -1059,10 +1089,11 @@ async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translat
         )
 
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
         content = await file.read()
 
         def _sync_prepare():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_id)
             try:
                 content_norm, new_ext = normalize_uploaded_image(content, Path(original_filename).suffix.lower())
             except ValueError:
@@ -1082,10 +1113,10 @@ async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translat
         from lib.text_backends.prompts import STYLE_ANALYSIS_PROMPT
         from lib.text_generator import TextGenerator
 
-        generator = await TextGenerator.create(TextTaskType.STYLE_ANALYSIS, project_name)
+        generator = await TextGenerator.create(TextTaskType.STYLE_ANALYSIS, project_id)
         result = await generator.generate(
             TextGenerationRequest(prompt=STYLE_ANALYSIS_PROMPT, images=[ImageInput(path=output_path)]),
-            project_name=project_name,
+            project_name=project_id,
         )
         style_description = result.text
 
@@ -1101,7 +1132,7 @@ async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translat
                 project_data["style"] = ""
 
             with project_change_source("webui"):
-                get_project_manager().update_project(project_name, _mutate)
+                manager.update_project(project_id, _mutate)
 
         await asyncio.to_thread(_sync_save)
 
@@ -1109,11 +1140,11 @@ async def upload_style_image(project_name: str, _user: CurrentUser, _t: Translat
             "success": True,
             "style_image": style_filename,
             "style_description": style_description,
-            "url": f"/api/v1/files/{project_name}/{style_filename}",
+            "url": f"/api/v1/files/{project_id}/{style_filename}",
         }
 
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:

@@ -24,6 +24,11 @@
 | `PATCH /api/v1/projects/{name}` | `PATCH /api/v1/projects/{project_id}` | 校验当前租户内 `name` 不重复 |
 | `DELETE /api/v1/projects/{name}` | `DELETE /api/v1/projects/{project_id}` | 仅 owner/admin 允许 |
 | `POST /api/v1/projects/{name}/generate-overview` | `POST /api/v1/projects/{project_id}/generate-overview` | 使用 ProjectContext |
+| `GET /api/v1/projects/{name}/scripts/{script_file}` | `GET /api/v1/projects/{project_id}/scripts/{script_file}` | 读取剧本内容 |
+| `PATCH /api/v1/projects/{name}/script-scenes/{scene_id}` | `PATCH /api/v1/projects/{project_id}/script-scenes/{scene_id}` | drama 场景编辑 |
+| `PATCH /api/v1/projects/{name}/segments/{segment_id}` | `PATCH /api/v1/projects/{project_id}/segments/{segment_id}` | narration 片段编辑 |
+| `PATCH /api/v1/projects/{name}/episodes/{episode}` | `PATCH /api/v1/projects/{project_id}/episodes/{episode}` | 分集标题编辑 |
+| `POST /api/v1/projects/{name}/source` | `POST /api/v1/projects/{project_id}/source` | 源文件或源文本导入 |
 | `GET /api/v1/projects/{name}/events/stream` | `GET /api/v1/projects/{project_id}/events/stream` | SSE channel 使用 project_id |
 | `POST /api/v1/projects/{name}/assistant/sessions/send` | `POST /api/v1/projects/{project_id}/assistant/sessions/send` | Agent cwd 使用 project_id |
 
@@ -63,6 +68,11 @@
 | `POST /api/v1/files` | member/admin | 上传后写 `files` 和 `file_links` |
 | `GET /api/v1/files/{file_id}/signed-url` | 当前租户可访问该 file_link | 返回短签名 URL |
 | `GET /api/v1/projects/{project_id}/files` | view/member/admin | 列出项目绑定文件 |
+| `GET /api/v1/projects/{project_id}/drafts` | view/member/admin | 列出项目草稿 |
+| `GET /api/v1/projects/{project_id}/drafts/{episode}/step{step}` | view/member/admin | 读取项目草稿 |
+| `PUT /api/v1/projects/{project_id}/drafts/{episode}/step{step}` | member/admin | 写入项目草稿 |
+| `DELETE /api/v1/projects/{project_id}/drafts/{episode}/step{step}` | member/admin | 删除项目草稿 |
+| `POST /api/v1/projects/{project_id}/style-image` | member/admin | 上传项目风格参考图 |
 
 文件响应只返回：
 

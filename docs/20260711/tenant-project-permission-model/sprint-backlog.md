@@ -1,7 +1,7 @@
 # Sprint Backlog: Tenant Project Permission Model
 
 **Date:** 20260711
-**Status:** planned
+**Status:** in progress
 **Product brief:** 基于当前对话：ArcReel 新商业发行版需要重新收敛 user/tenant/project 权限关系。租户承载系统配置和权限，项目只属于一个租户，所有项目业务逻辑按 project_id 查询。Issued Tokens 功能本轮先下掉，后续再启用；这里不包括 CaMeL provider keys、媒体供应商凭证、Agent 凭证。用量统计需要按 tenant/project 分组。无旧版本兼容。
 **Main integration branch:** main
 
@@ -16,15 +16,9 @@
 - 文档审计: [document-audit.md](./document-audit.md)
 - 实现审计: [implementation-audit.md](./implementation-audit.md)
 
-## Team
+## Execution Mode
 
-| Role | Agent Name | Progress File |
-|------|------------|---------------|
-| Project Manager | Root | this backlog |
-| Backend | 待分配 | 待创建 |
-| Frontend | 待分配 | 待创建 |
-| QA | 待分配 | 待创建 |
-| Product Owner | 用户确认 | |
+This work is being implemented serially in the current ArcReel workspace. No worktree-based parallel development is active for this pass.
 
 ## Planning Gates
 
@@ -40,7 +34,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 
 ### Phase 0 - 契约冻结
 
-**Status:** planned
+**Status:** completed
 
 **Acceptance Criteria**
 - [x] `permission-model-design.md` 明确定义 User/Tenant/Project 关系、不变量、role 矩阵、ProjectContextResolver、Issued Tokens 暂停策略。
@@ -49,44 +43,46 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 
 ### Phase 1 - 后端 ProjectContext 和项目 ID 化
 
-**Status:** planned
+**Status:** in progress
 
 **Acceptance Criteria**
-- [ ] 新增或收敛 `ProjectContextResolver`，所有项目路由和 service 从该入口获取项目上下文。
-- [ ] 项目路由从 `{name}` 改为 `{project_id}`，不保留旧路由兼容。
-- [ ] 项目文件路径改为 `_tenants/{tenant_id}/projects/{project_id}/project.json`。
-- [ ] `projects` 表保持 `unique(tenant_id, name)`，但所有业务查询走 `project_id`。
-- [ ] 跨租户同名项目测试通过。
+- [x] 项目 CRUD 路由按 `project_id` 解析项目行。
+- [x] 场景关键子路由：script/source/overview/episode/segment 按 `project_id` 解析。
+- [x] 项目文件路径改为 `_tenants/{tenant_id}/projects/{project_id}/project.json`。
+- [x] `projects` 表保持 `unique(tenant_id, name)`，但已修复路径的业务查询走 `project_id`。
+- [ ] 非主链路 project 子路由仍需专项审计：script review、versions、grids、reference video、cost estimation、usage。
+- [ ] 跨租户同名项目端到端测试通过。
 
 ### Phase 2 - 前端项目 ID 路由和租户上下文
 
-**Status:** planned
+**Status:** in progress
 
 **Acceptance Criteria**
-- [ ] 前端 route、API client、store、localStorage、SSE channel、task polling 全部使用 `project_id`。
-- [ ] 项目名仅用于 UI 展示和重命名输入。
+- [x] 项目列表卡片、创建后跳转、任务过滤、项目事件流、助手 API 路径使用 `project_id`。
+- [ ] 前端剩余 `projectName` 命名债和非主链路 API client 需要继续清理或标注为携带 project id。
+- [x] 项目名仅用于 UI 展示和重命名输入的主路径已验证。
 - [ ] 登录默认进入个人空间；切租户必须用户手动触发。
 - [ ] `tenant_role` 只控制 UI 展示；403 stale role 触发刷新当前 tenant token。
 
 ### Phase 3 - 任务、生成、Agent、文件链路上下文化
 
-**Status:** planned
+**Status:** in progress
 
 **Acceptance Criteria**
-- [ ] 所有生成入口按当前 tenant 和 `project_id` 入队。
+- [x] 场景关键生成入口按当前 tenant 和 `project_id` 入队。
 - [ ] `tasks` 持久化 `tenant_id/project_id/requested_by_user_id`。
 - [ ] worker 使用任务持久化上下文读取项目、租户配置、provider credential。
-- [ ] `assistant` routes 使用 `project_id`。
+- [x] `assistant` routes 使用 `project_id`。
 - [ ] Agent session 表和 session store 持久化 `tenant_id/project_id/user_id`。
 - [ ] Agent cwd 由 ProjectContextResolver 返回。
 - [ ] MCP 工具通过注入上下文获取 project_id，不接受项目名推断。
-- [ ] `file_links` 使用 `tenant_id/project_id/entity_type/entity_id`，不使用 project name。
+- [x] 场景关键媒体上传 `file_links` 使用 `tenant_id/project_id/entity_type/entity_id`，不使用 project name。
 - [ ] `project.json` 内媒体引用全部是 `file_id`。
 - [ ] 后端 service 直接读文件，前端只拿短签名 URL。
 
 ### Phase 4 - 用量统计和 Issued Tokens 禁用
 
-**Status:** planned
+**Status:** in progress
 
 **Acceptance Criteria**
 - [ ] `api_calls` 或用量事实表包含 `tenant_id/project_id/user_id/task_id/provider/model/media_type/cost/status`。
@@ -100,7 +96,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 
 ### Phase 5 - 全链路审计和测试
 
-**Status:** planned
+**Status:** in progress
 
 **Acceptance Criteria**
 - [ ] 场景矩阵覆盖 owner/admin/member/view。
@@ -108,6 +104,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [ ] 场景矩阵覆盖只允许 owner/admin 删除项目。
 - [ ] 场景矩阵覆盖跨租户同名项目。
 - [ ] 场景矩阵覆盖创建项目、上传文件、生成图片、生成视频、Agent 输入文本、资产导入、用量查看。
+- [x] 单元/路由测试覆盖项目 id 不等于展示名时主路径不接受展示名。
 - [x] 场景矩阵覆盖 Issued Tokens disabled。
 - [ ] 自动测试和必须手动验证项都写入 QA evidence。
 

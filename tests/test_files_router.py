@@ -620,11 +620,11 @@ class TestFilesRouter:
             assert update.json()["path"] == "drafts/episode_2/step1_reference_units.md"
 
         # _load_project_modes 走 load_project：不存在项目 → ("drama", None) 回退
-        content_mode, gen_mode = files._load_project_modes("no-such-project", 1)
+        content_mode, gen_mode = files._load_project_modes(pm, "no-such-project", 1)
         assert content_mode == "drama"
         assert gen_mode is None
         # demo 项目 content_mode=narration（fixture 默认），且项目级 storyboard + ep2 覆盖 reference_video
-        content_mode, gen_mode = files._load_project_modes("demo", 2)
+        content_mode, gen_mode = files._load_project_modes(pm, "demo", 2)
         assert content_mode == "narration"
         assert gen_mode == "reference_video"
 

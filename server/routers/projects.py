@@ -87,6 +87,23 @@ def get_tenant_archive_service(tenant_id: str) -> ProjectArchiveService:
     return ProjectArchiveService(get_tenant_project_manager(tenant_id))
 
 
+async def _require_project_row(
+    project_id: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    *,
+    minimum_role: str = ROLE_VIEW,
+):
+    async with async_session_factory() as session:
+        async with session.begin():
+            access = await require_tenant_access(session, current_user, minimum_role=minimum_role)
+            await set_tenant_context(session, user_id=current_user.id, tenant_id=access.id)
+            row = await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+    return access, row, get_tenant_project_manager(access.id)
+
+
 def _project_json_local_path(manager: ProjectManager, project_name: str) -> str:
     return (manager.projects_root / project_name / manager.PROJECT_FILE).relative_to(app_data_dir()).as_posix()
 
@@ -950,11 +967,12 @@ async def delete_project(project_id: str, _user: CurrentUser, _t: Translator):
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.get("/projects/{name}/scripts/{script_file}")
-async def get_script(name: str, script_file: str, _user: CurrentUser, _t: Translator):
+@router.get("/projects/{project_id}/scripts/{script_file}")
+async def get_script(project_id: str, script_file: str, _user: CurrentUser, _t: Translator):
     """获取剧本内容"""
     try:
-        script = await asyncio.to_thread(get_project_manager().load_script, name, script_file)
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_VIEW)
+        script = await asyncio.to_thread(manager.load_script, project_id, script_file)
         return {"script": script}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("script_not_found", name=script_file))
@@ -970,8 +988,8 @@ class UpdateSceneRequest(BaseModel):
     updates: dict
 
 
-@router.patch("/projects/{name}/script-scenes/{scene_id}")
-async def update_scene(name: str, scene_id: str, req: UpdateSceneRequest, _user: CurrentUser, _t: Translator):
+@router.patch("/projects/{project_id}/script-scenes/{scene_id}")
+async def update_scene(project_id: str, scene_id: str, req: UpdateSceneRequest, _user: CurrentUser, _t: Translator):
     """更新 drama 模式剧本中的单个场景镜头（按 scene_id 定位）。
 
     路径与项目场景资产 CRUD（``/projects/{name}/scenes/{entry_name}``）做明确区分，
@@ -979,14 +997,13 @@ async def update_scene(name: str, scene_id: str, req: UpdateSceneRequest, _user:
     必填字段校验返回双 "Field required"。
     """
     try:
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            manager = get_project_manager()
-
             # 整段 RMW 在单一 _script_lock 内完成；未命中时在锁内 raise，跳过写回
             matched_scene: dict[str, Any] | None = None
             with project_change_source("webui"):
-                with manager.locked_script(name, req.script_file) as script:
+                with manager.locked_script(project_id, req.script_file) as script:
                     for scene in script.get("scenes", []):
                         if scene.get("scene_id") == scene_id:
                             matched_scene = scene
@@ -1076,22 +1093,21 @@ def _require_ad_script(script: dict, _t: Translator) -> list[dict]:
     return shots
 
 
-@router.patch("/projects/{name}/script-shots/{shot_id}")
-async def update_shot(name: str, shot_id: str, req: UpdateShotRequest, _user: CurrentUser, _t: Translator):
+@router.patch("/projects/{project_id}/script-shots/{shot_id}")
+async def update_shot(project_id: str, shot_id: str, req: UpdateShotRequest, _user: CurrentUser, _t: Translator):
     """更新 ad 模式剧本中的单个镜头（按 shot_id 定位）。
 
     路径风格与 ``script-scenes`` 对齐；口播文案 / section / 时长 / 引用列表等
     白名单字段可改，结构合法性由写盘统一入口的「不更坏」校验兜底。
     """
     try:
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            manager = get_project_manager()
-
             # 整段 RMW 在单一 _script_lock 内完成；模式不符 / 未命中时在锁内 raise，跳过写回
             matched_shot: dict[str, Any] | None = None
             with project_change_source("webui"):
-                with manager.locked_script(name, req.script_file) as script:
+                with manager.locked_script(project_id, req.script_file) as script:
                     for shot in _require_ad_script(script, _t):
                         if shot.get("shot_id") == shot_id:
                             matched_shot = shot
@@ -1129,16 +1145,15 @@ class ReorderShotsRequest(BaseModel):
     shot_ids: list[str]
 
 
-@router.post("/projects/{name}/script-shots/reorder")
-async def reorder_shots(name: str, req: ReorderShotsRequest, _user: CurrentUser, _t: Translator):
+@router.post("/projects/{project_id}/script-shots/reorder")
+async def reorder_shots(project_id: str, req: ReorderShotsRequest, _user: CurrentUser, _t: Translator):
     """按给定全排列重排 ad 剧本的 shots 顺序（与参考视频 units/reorder 同语义）。"""
     try:
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            manager = get_project_manager()
-
             with project_change_source("webui"):
-                with manager.locked_script(name, req.script_file) as script:
+                with manager.locked_script(project_id, req.script_file) as script:
                     shots = _require_ad_script(script, _t)
                     existing_ids = [s.get("shot_id") for s in shots]
 
@@ -1196,18 +1211,17 @@ class UpdateEpisodeRequest(BaseModel):
     title: str
 
 
-@router.patch("/projects/{name}/segments/{segment_id}")
-async def update_segment(name: str, segment_id: str, req: UpdateSegmentRequest, _user: CurrentUser, _t: Translator):
+@router.patch("/projects/{project_id}/segments/{segment_id}")
+async def update_segment(project_id: str, segment_id: str, req: UpdateSegmentRequest, _user: CurrentUser, _t: Translator):
     """更新说书模式片段"""
     try:
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            manager = get_project_manager()
-
             # 整段 RMW 在单一 _script_lock 内完成；模式不符 / 未命中时在锁内 raise，跳过写回
             matched_segment: dict[str, Any] | None = None
             with project_change_source("webui"):
-                with manager.locked_script(name, req.script_file) as script:
+                with manager.locked_script(project_id, req.script_file) as script:
                     # 检查是否为说书模式：仅 narration 且含 segments 键才放行；
                     # drama 脚本即使残留 segments 键也拒绝，避免被当 narration 改写
                     if script.get("content_mode") != "narration" or "segments" not in script:
@@ -1254,8 +1268,8 @@ async def update_segment(name: str, segment_id: str, req: UpdateSegmentRequest, 
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.patch("/projects/{name}/episodes/{episode}")
-async def update_episode(name: str, episode: int, req: UpdateEpisodeRequest, _user: CurrentUser, _t: Translator):
+@router.patch("/projects/{project_id}/episodes/{episode}")
+async def update_episode(project_id: str, episode: int, req: UpdateEpisodeRequest, _user: CurrentUser, _t: Translator):
     """更新分集顶层元数据（当前仅标题）。
 
     以剧本 scripts/*.json 顶层 title 为唯一真相源：走 locked_episode_script 在
@@ -1268,10 +1282,9 @@ async def update_episode(name: str, episode: int, req: UpdateEpisodeRequest, _us
         raise HTTPException(status_code=422, detail=_t("episode_title_empty"))
 
     try:
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            manager = get_project_manager()
-
             def _resolve(project: dict) -> str:
                 episodes = project.get("episodes") or []
                 meta = next((e for e in episodes if e.get("episode") == episode), None)
@@ -1281,11 +1294,11 @@ async def update_episode(name: str, episode: int, req: UpdateEpisodeRequest, _us
 
             with project_change_source("webui"):
                 try:
-                    with manager.locked_episode_script(name, _resolve) as script:
+                    with manager.locked_episode_script(project_id, _resolve) as script:
                         script["title"] = title
                 except FileNotFoundError as exc:
-                    if not manager.project_exists(name):
-                        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name)) from exc
+                    if not manager.project_exists(project_id):
+                        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id)) from exc
                     # project.json 指向的脚本文件已删除/移动（stale 绑定）
                     raise HTTPException(status_code=404, detail=_t("ref_script_missing")) from exc
                 except EpisodeScriptReboundError as exc:
@@ -1304,7 +1317,7 @@ async def update_episode(name: str, episode: int, req: UpdateEpisodeRequest, _us
     except HTTPException:
         raise
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except Exception:
         logger.exception("请求处理失败")
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
@@ -1313,9 +1326,9 @@ async def update_episode(name: str, episode: int, req: UpdateEpisodeRequest, _us
 # ==================== 源文件管理 ====================
 
 
-@router.post("/projects/{name}/source")
+@router.post("/projects/{project_id}/source")
 async def set_project_source(
-    name: Annotated[str, FastAPIPath(pattern=r"^[a-zA-Z0-9_-]+$")],
+    project_id: Annotated[str, FastAPIPath(pattern=r"^[a-zA-Z0-9_-]+$")],
     _user: CurrentUser,
     _t: Translator,
     generate_overview: Annotated[bool, Form()] = True,
@@ -1339,7 +1352,7 @@ async def set_project_source(
         raise HTTPException(status_code=400, detail=_t("one_of_content_or_file"))
 
     try:
-        manager = get_project_manager()
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         # 异步读取上传文件
         raw: bytes | None = None
@@ -1356,9 +1369,9 @@ async def set_project_source(
 
         # 同步文件 I/O 在线程中执行
         def _sync_write():
-            if not manager.project_exists(name):
-                raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
-            project_dir = manager.get_project_path(name)
+            if not manager.project_exists(project_id):
+                raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
+            project_dir = manager.get_project_path(project_id)
             source_dir = project_dir / "source"
             source_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1386,7 +1399,7 @@ async def set_project_source(
         if generate_overview:
             try:
                 with project_change_source("webui"):
-                    overview = await manager.generate_overview(name)
+                    overview = await manager.generate_overview(project_id)
                 result["overview"] = overview
             except Exception as ov_err:
                 result["overview"] = None
@@ -1408,22 +1421,16 @@ async def set_project_source(
 # ==================== 项目概述管理 ====================
 
 
-@router.post("/projects/{name}/generate-overview")
-async def generate_overview(name: str, _user: CurrentUser, _t: Translator):
+@router.post("/projects/{project_id}/generate-overview")
+async def generate_overview(project_id: str, _user: CurrentUser, _t: Translator):
     """使用 AI 生成项目概述"""
     try:
-        async with async_session_factory() as session:
-            async with session.begin():
-                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
-                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
-                if await ProjectRepository(session, tenant_id=access.id).get_by_name(name) is None:
-                    raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
-        manager = get_tenant_project_manager(access.id)
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
         with project_change_source("webui"):
-            overview = await manager.generate_overview(name)
+            overview = await manager.generate_overview(project_id)
         return {"success": True, "overview": overview}
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except PydanticValidationError:
         # 模型输出未通过 schema 校验（后端降级仍失守时的最后防线），
         # 裸 pydantic 错误串含模型原始输出片段，不透传给用户
@@ -1438,13 +1445,13 @@ async def generate_overview(name: str, _user: CurrentUser, _t: Translator):
         raise HTTPException(status_code=500, detail=_t("internal_server_error"))
 
 
-@router.patch("/projects/{name}/overview")
-async def update_overview(name: str, req: UpdateOverviewRequest, _user: CurrentUser, _t: Translator):
+@router.patch("/projects/{project_id}/overview")
+async def update_overview(project_id: str, req: UpdateOverviewRequest, _user: CurrentUser, _t: Translator):
     """更新项目概述（手动编辑）"""
     try:
+        _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            manager = get_project_manager()
             captured: dict[str, Any] = {}
 
             def _mutate(project: dict) -> None:
@@ -1462,12 +1469,12 @@ async def update_overview(name: str, req: UpdateOverviewRequest, _user: CurrentU
                 captured["overview"] = project["overview"]
 
             with project_change_source("webui"):
-                manager.update_project(name, _mutate)
+                manager.update_project(project_id, _mutate)
             return {"success": True, "overview": captured["overview"]}
 
         return await asyncio.to_thread(_sync)
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name))
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id))
     except HTTPException:
         raise
     except Exception:

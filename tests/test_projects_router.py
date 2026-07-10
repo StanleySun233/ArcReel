@@ -449,19 +449,33 @@ class TestProjectsRouter:
 
     def test_project_detail_uses_id_not_display_name(self, tmp_path, monkeypatch):
         fake_pm = _FakePM(tmp_path)
-        fake_pm.project_data["proj-alpha"] = {"title": "Alpha", "style": "", "episodes": []}
-        fake_pm.project_rows = {"proj-alpha": "Duplicated Display Name"}
+        fake_pm.project_data["proj-alpha"] = {
+            "title": "Alpha",
+            "style": "",
+            "episodes": [{"episode": 1, "script_file": "scripts/episode_1.json"}],
+        }
+        fake_pm.scripts[("proj-alpha", "episode_1.json")] = {"content_mode": "narration", "segments": []}
+        fake_pm.project_rows = {"proj-alpha": "duplicated-display-name"}
         (tmp_path / "proj-alpha").mkdir(parents=True, exist_ok=True)
         client = _client(monkeypatch, fake_pm, _FakeCalc())
 
         with client:
             detail = client.get("/api/v1/projects/proj-alpha")
-            by_name = client.get("/api/v1/projects/Duplicated%20Display%20Name")
+            by_name = client.get("/api/v1/projects/duplicated-display-name")
+            script = client.get("/api/v1/projects/proj-alpha/scripts/episode_1.json")
+            script_by_name = client.get("/api/v1/projects/duplicated-display-name/scripts/episode_1.json")
+            source_by_name = client.post(
+                "/api/v1/projects/duplicated-display-name/source",
+                data={"content": "正文", "generate_overview": "false"},
+            )
 
         assert detail.status_code == 200
         assert detail.json()["id"] == "proj-alpha"
-        assert detail.json()["name"] == "Duplicated Display Name"
+        assert detail.json()["name"] == "duplicated-display-name"
         assert by_name.status_code == 404
+        assert script.status_code == 200
+        assert script_by_name.status_code == 404
+        assert source_by_name.status_code == 404
 
     def test_create_ad_project(self, tmp_path, monkeypatch):
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
@@ -1604,7 +1618,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_get_script_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_get_script"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.get("/api/v1/projects/ready/scripts/episode_1.json")
             assert resp.status_code == 500
@@ -1613,7 +1627,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_update_scene_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_update_scene"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.patch(
                 "/api/v1/projects/ready/script-scenes/001",
@@ -1625,7 +1639,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_update_shot_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_update_shot"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.patch(
                 "/api/v1/projects/ready/script-shots/shot-1",
@@ -1637,7 +1651,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_reorder_shots_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_reorder_shots"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.post(
                 "/api/v1/projects/ready/script-shots/reorder",
@@ -1649,7 +1663,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_update_segment_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_update_segment"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.patch(
                 "/api/v1/projects/ready/segments/E1S01",
@@ -1661,8 +1675,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_update_episode_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_update_episode"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        # title 非空校验在 try 前；_sync 里最早命中 get_project_manager()
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.patch("/api/v1/projects/ready/episodes/1", json={"title": "新标题"})
             assert resp.status_code == 500
@@ -1671,7 +1684,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_set_project_source_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_set_source"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             # content 走 multipart form；get_project_manager() 在 try 内最早被调用
             resp = client.post(
@@ -1684,7 +1697,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_generate_overview_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_generate_overview"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.post("/api/v1/projects/ready/generate-overview")
             assert resp.status_code == 500
@@ -1693,7 +1706,7 @@ class TestUnexpectedErrorsDoNotLeak:
     def test_update_overview_unexpected_error_maps_to_500(self, tmp_path, monkeypatch):
         sentinel = "LEAKED_SECRET_update_overview"
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
-        monkeypatch.setattr(projects, "get_project_manager", _raise(sentinel))
+        monkeypatch.setattr(projects, "get_tenant_project_manager", _raise(sentinel))
         with client:
             resp = client.patch("/api/v1/projects/ready/overview", json={"synopsis": "新简介"})
             assert resp.status_code == 500
