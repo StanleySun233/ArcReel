@@ -1,3 +1,5 @@
+ARG ARCREEL_BASE_IMAGE=registry.kr777.top/arcreel-base:private-dev
+
 # ============================================================
 # Stage 1: 构建前端
 # ============================================================
@@ -18,8 +20,6 @@ RUN pnpm install --frozen-lockfile
 # 复制前端源码并构建
 COPY frontend/ ./
 RUN pnpm build
-
-ARG ARCREEL_BASE_IMAGE=registry.kr777.top/arcreel-base:private-dev
 
 FROM ${ARCREEL_BASE_IMAGE} AS production
 
