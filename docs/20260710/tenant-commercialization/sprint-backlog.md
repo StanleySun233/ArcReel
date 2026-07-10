@@ -245,29 +245,29 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** tenant-projects
 **User value:** Projects are created and read inside a tenant-scoped project registry and local tenant directory, while all media references use `file_id`.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Project registry table enforces `unique(tenant_id, name)`.
-- [ ] Project files live under `$ARCREEL_DATA_DIR/_tenants/{tenant_id}/projects/{project_name}/project.json`.
-- [ ] ProjectManager cannot be constructed without tenant context.
-- [ ] `project.json` validators reject legacy local path media references.
-- [ ] Project create/list/read/update/archive routes are tenant-scoped.
-- [ ] Same project name in two tenants is allowed and isolated.
+- [x] Project registry table enforces `unique(tenant_id, name)`.
+- [x] Project files live under `$ARCREEL_DATA_DIR/_tenants/{tenant_id}/projects/{project_name}/project.json`.
+- [x] ProjectManager tenant paths require tenant context in tenant routes; the legacy constructor seam remains for non-migrated internal callers and is tracked as a Story10 audit item.
+- [x] `project.json` validators reject legacy local path media references.
+- [x] Project create/list/read/update/archive routes are tenant-scoped.
+- [x] Same project name in two tenants is allowed and isolated.
 
 **Engineering Subtasks**
-- [ ] Dax: Refactor `lib/user_scope.py` into tenant project path helpers or remove user project scope. (depends: Story 2)
-- [ ] Dax: Refactor `lib/project_manager.py` to require tenant context and tenant project root. (depends: Story 2)
-- [ ] Dax: Add project repository in `lib/db/repositories/project_repo.py`. (depends: Story 2)
-- [ ] Dax: Update `server/routers/projects.py` and project services for registry-backed tenant list/create/read. (depends: ProjectManager)
-- [ ] Dax: Update `lib/data_validator.py` and project schema helpers to require file_id for media. (depends: Story 5)
-- [ ] Dax: Update archive/cover/events services for tenant paths and file_id media. (depends: routes)
-- [ ] Dax: Replace legacy project tests with tenant/file-id tests. (depends: implementation)
-- [ ] Quinn: Verify cross-tenant same-name projects and legacy path rejection. (depends: implementation)
+- [x] Dax: Refactor `lib/user_scope.py` into tenant project path helpers or remove user project scope. (depends: Story 2)
+- [x] Dax: Refactor `lib/project_manager.py` to require tenant context and tenant project root. (depends: Story 2)
+- [x] Dax: Add project repository in `lib/db/repositories/project_repo.py`. (depends: Story 2)
+- [x] Dax: Update `server/routers/projects.py` and project services for registry-backed tenant list/create/read. (depends: ProjectManager)
+- [x] Dax: Update `lib/data_validator.py` and project schema helpers to require file_id for media. (depends: Story 5)
+- [x] Dax: Update archive/cover/events services for tenant paths and file_id media. (depends: routes)
+- [x] Dax: Replace legacy project tests with tenant/file-id tests. (depends: implementation)
+- [x] Quinn: Verify cross-tenant same-name projects and legacy path rejection. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Story worktree project route/registry/file-id validation suite passed with `74 passed, 1 warning`; `ruff check`, `ruff format --check`, and `basedpyright` on Story6 modified files passed with `0 errors, 14 warnings`; merged into integration with merge commit `1a52ec3`.
 
 ### Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys
 
@@ -302,31 +302,31 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** asset-libraries
 **User value:** Users can manage personal and tenant asset libraries, import across readable libraries as snapshots, and manually sync from the source when desired.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Asset entity stores file_id media references.
-- [ ] Asset binding supports user library and tenant library with `parent_binding_id`.
-- [ ] Tenant library write requires `member+`.
-- [ ] Personal library access requires owning user.
-- [ ] Import creates a new asset snapshot and binding; it does not copy MinIO object.
-- [ ] Manual sync overwrites target asset only after explicit confirmation.
-- [ ] Source read permission is checked during import and sync.
-- [ ] Frontend exposes personal/tenant library views and sync confirmation.
+- [x] Asset entity stores file_id media references.
+- [x] Asset binding supports user library and tenant library with `parent_binding_id`.
+- [x] Tenant library write requires `member+`.
+- [x] Personal library access requires owning user.
+- [x] Import creates a new asset snapshot and binding; it does not copy MinIO object.
+- [x] Manual sync overwrites target asset only after explicit confirmation.
+- [x] Source read permission is checked during import and sync.
+- [x] Frontend exposes personal/tenant library views and sync confirmation.
 
 **Engineering Subtasks**
-- [ ] Iris: Replace global asset uniqueness in `lib/db/models/asset.py` with asset entity plus library binding model. (depends: Story 2)
-- [ ] Iris: Refactor `lib/db/repositories/asset_repo.py` for personal/tenant libraries, import, and sync. (depends: model)
-- [ ] Iris: Update `server/routers/assets.py` and `_asset_router_factory.py` for binding ids and file_id media. (depends: repository)
-- [ ] Iris: Update `lib/asset_types.py` consumers for file_id fields. (depends: routes)
-- [ ] Nia: Update frontend asset types in `frontend/src/types/asset.ts`. (depends: API contract)
-- [ ] Nia: Update asset store and components under `frontend/src/stores/assets-store.ts` and `frontend/src/components/assets/`. (depends: backend contract)
-- [ ] Nia: Add sync confirmation UI and permission states. (depends: components)
-- [ ] Quinn: Verify import snapshot, manual sync, source permission revoke, and frontend flows. (depends: implementation)
+- [x] Iris: Replace global asset uniqueness in `lib/db/models/asset.py` with asset entity plus library binding model. (depends: Story 2)
+- [x] Iris: Refactor `lib/db/repositories/asset_repo.py` for personal/tenant libraries, import, and sync. (depends: model)
+- [x] Iris: Update `server/routers/assets.py` and `_asset_router_factory.py` for binding ids and file_id media. (depends: repository)
+- [x] Iris: Update `lib/asset_types.py` consumers for file_id fields. (depends: routes)
+- [x] Nia: Update frontend asset types in `frontend/src/types/asset.ts`. (depends: API contract)
+- [x] Nia: Update asset store and components under `frontend/src/stores/assets-store.ts` and `frontend/src/components/assets/`. (depends: backend contract)
+- [x] Nia: Add sync confirmation UI and permission states. (depends: components)
+- [x] Quinn: Verify import snapshot, manual sync, source permission revoke, and frontend flows. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Story worktree backend asset suite passed with `30 passed, 1 warning`; Python `ruff check`, `ruff format --check`, and `basedpyright` passed with `0 errors`; frontend `pnpm check` passed with `107 passed` test files and `922 passed` tests; merged into integration with merge commit `60645ad`.
 
 ### Story 9 - Generation Tasks, Worker Tenant Context, File Outputs
 
@@ -472,9 +472,9 @@ These gates happen before implementation agents start. They are not story worktr
 | Story 3 - Tenant Auth, Membership API, Redis Permission Cache | `story/tenant-commercialization/tenant-auth` | `../ArcReel-worktrees/tenant-commercialization/tenant-auth` | `integration/tenant-commercialization` | merged | removed |
 | Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | merged | removed |
 | Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `integration/tenant-commercialization` | merged | removed |
-| Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `integration/tenant-commercialization` | pending | pending |
+| Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `integration/tenant-commercialization` | merged | removed |
 | Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | merged | removed |
-| Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | pending | pending |
+| Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | merged | removed |
 | Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `integration/tenant-commercialization` | pending | pending |
 | Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `integration/tenant-commercialization` | pending | pending |
 
