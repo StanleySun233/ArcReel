@@ -189,29 +189,29 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** tenant-switcher-ui
 **User value:** Users see the current tenant, switch tenants deliberately, and the UI updates role-gated actions without trusting cached role for backend authorization.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Auth store persists token, current tenant, tenant list, cached role, and owner flag.
-- [ ] Login callback defaults to personal tenant token.
-- [ ] Tenant listbox switches tenant by calling `/auth/tenant-token`.
-- [ ] 403 stale role/access revoked responses trigger refresh or personal-space fallback.
-- [ ] Role-gated UI hides write actions for `view`, tenant admin actions for non-admin, and admin promotion for non-owner.
-- [ ] Frontend tests cover listbox, switch token replacement, stale role refresh, and access revoked fallback.
+- [x] Auth store persists token, current tenant, tenant list, cached role, and owner flag.
+- [x] Login callback defaults to personal tenant token.
+- [x] Tenant listbox switches tenant by calling `/auth/tenant-token`.
+- [x] 403 stale role/access revoked responses trigger refresh or personal-space fallback.
+- [x] Role-gated UI hides write actions for `view`, tenant admin actions for non-admin, and admin promotion for non-owner.
+- [x] Frontend tests cover listbox, switch token replacement, stale role refresh, and access revoked fallback.
 
 **Engineering Subtasks**
-- [ ] Mira: Extend auth API types and client helpers in `frontend/src/api.ts`. (depends: api-contract)
-- [ ] Mira: Extend `frontend/src/stores/auth-store.ts` for current tenant, tenant list, token switch, and refresh. (depends: API helpers)
-- [ ] Mira: Add tenant listbox component under `frontend/src/components/tenant/`. (depends: store)
-- [ ] Mira: Wire tenant listbox into the app shell/navigation. (depends: component)
-- [ ] Mira: Add frontend permission helpers in `frontend/src/utils/auth.ts`. (depends: store)
-- [ ] Mira: Update auth i18n in `frontend/src/i18n/{zh,en,vi}/auth.ts`. (depends: UI)
-- [ ] Mira: Add frontend tests for auth store, listbox, stale role, and revoked tenant. (depends: implementation)
-- [ ] Quinn: Run `pnpm check` targeted frontend suite. (depends: implementation)
+- [x] Mira: Extend auth API types and client helpers in `frontend/src/api.ts`. (depends: api-contract)
+- [x] Mira: Extend `frontend/src/stores/auth-store.ts` for current tenant, tenant list, token switch, and refresh. (depends: API helpers)
+- [x] Mira: Add tenant listbox component under `frontend/src/components/tenant/`. (depends: store)
+- [x] Mira: Wire tenant listbox into the app shell/navigation. (depends: component)
+- [x] Mira: Add frontend permission helpers in `frontend/src/utils/auth.ts`. (depends: store)
+- [x] Mira: Update auth i18n in `frontend/src/i18n/{zh,en,vi}/auth.ts`. (depends: UI)
+- [x] Mira: Add frontend tests for auth store, listbox, stale role, and revoked tenant. (depends: implementation)
+- [x] Quinn: Run `pnpm check` targeted frontend suite. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Story worktree `pnpm check` passed with `107 passed` test files and `921 passed` tests after type-safety fix commits `cc2ac72` and `d83aa1b`; integration branch `pnpm check` passed with `107 passed` test files and `921 passed` tests after merge `fbfa251`.
 
 ### Story 5 - FileService, MinIO, Private Files, Signed URLs
 
@@ -470,7 +470,7 @@ These gates happen before implementation agents start. They are not story worktr
 | Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `integration/tenant-commercialization` | merged | removed |
 | Story 2A - PostgreSQL App Role RLS Hardening | `story/tenant-commercialization/pg-app-role-rls` | `../ArcReel-worktrees/tenant-commercialization/pg-app-role-rls` | `integration/tenant-commercialization` | merged | removed |
 | Story 3 - Tenant Auth, Membership API, Redis Permission Cache | `story/tenant-commercialization/tenant-auth` | `../ArcReel-worktrees/tenant-commercialization/tenant-auth` | `integration/tenant-commercialization` | merged | removed |
-| Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | pending | pending |
+| Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | merged | removed |
 | Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `integration/tenant-commercialization` | pending | pending |
 | Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `integration/tenant-commercialization` | pending | pending |
 | Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | pending | pending |
