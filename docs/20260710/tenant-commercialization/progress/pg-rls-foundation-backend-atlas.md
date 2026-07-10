@@ -16,7 +16,7 @@
 
 ## Subtasks
 
-- [ ] Finalize middleware and environment documentation.
+- [x] Finalize middleware and environment documentation.
   - Commit: pending
 - [x] Convert runtime engine to PostgreSQL-only.
   - Commit: pending
