@@ -35,6 +35,8 @@ class CurrentUserInfo(BaseModel):
     sub: str
     provider: str = "local"
     role: str = "admin"
+    tenant_id: str | None = None
+    tenant_role: str | None = None
 
     model_config = ConfigDict(frozen=True)
 
@@ -114,7 +116,13 @@ def get_token_secret() -> str:
     return _cached_token_secret
 
 
-def create_token(username: str, user_id: str | None = None, provider: str = "local") -> str:
+def create_token(
+    username: str,
+    user_id: str | None = None,
+    provider: str = "local",
+    tenant_id: str | None = None,
+    tenant_role: str | None = None,
+) -> str:
     """创建 JWT token
 
     Args:
@@ -133,6 +141,10 @@ def create_token(username: str, user_id: str | None = None, provider: str = "loc
         "iat": now,
         "exp": now + TOKEN_EXPIRY_SECONDS,
     }
+    if tenant_id is not None:
+        payload["tenant_id"] = tenant_id
+    if tenant_role is not None:
+        payload["tenant_role"] = tenant_role
     return jwt.encode(payload, get_token_secret(), algorithm="HS256")
 
 
@@ -316,6 +328,16 @@ def _hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+def _api_key_tenant_id(key: str) -> str | None:
+    if not key.startswith(API_KEY_PREFIX):
+        return None
+    parts = key.split("-", 2)
+    if len(parts) != 3:
+        return None
+    tenant_id = parts[1]
+    return tenant_id if tenant_id.startswith("ten_") else None
+
+
 def invalidate_api_key_cache(key_hash: str) -> None:
     """立即清除指定 key_hash 的缓存条目（key 删除时调用）。"""
     _api_key_cache.pop(key_hash, None)
@@ -361,6 +383,10 @@ async def _verify_api_key(token: str) -> dict | None:
     查库成功后更新 last_used_at（后台异步，不阻塞响应）。
     """
     key_hash = _hash_api_key(token)
+    token_tenant_id = _api_key_tenant_id(token)
+    if token_tenant_id is None:
+        _set_api_key_cache(key_hash, None)
+        return None
 
     # 缓存查询
     hit, cached_payload = _get_cached_api_key_payload(key_hash)
@@ -370,13 +396,21 @@ async def _verify_api_key(token: str) -> dict | None:
     # 数据库查询
     from lib.db import async_session_factory
     from lib.db.repositories.api_key_repository import ApiKeyRepository
+    from lib.db.tenant_context import set_tenant_context
 
     async with async_session_factory() as session:
         async with session.begin():
+            await set_tenant_context(session, user_id="api-key-auth", tenant_id=token_tenant_id)
             repo = ApiKeyRepository(session)
             row = await repo.get_by_hash(key_hash)
+            if row is not None and row["tenant_id"] == token_tenant_id:
+                from server.services.tenant_auth import read_tenant_access
 
-    if row is None:
+                access = await read_tenant_access(session, user_id=row["user_id"], tenant_id=row["tenant_id"])
+            else:
+                access = None
+
+    if row is None or access is None:
         _set_api_key_cache(key_hash, None)
         return None
 
@@ -399,7 +433,14 @@ async def _verify_api_key(token: str) -> dict | None:
         except (ValueError, TypeError):
             logger.warning("API Key expires_at 值格式无法解析，忽略过期检查: %r", expires_at)
 
-    payload = {"sub": f"apikey:{row['name']}", "via": "apikey", "user_id": row["user_id"], "provider": "apikey"}
+    payload = {
+        "sub": f"apikey:{row['name']}",
+        "via": "apikey",
+        "user_id": row["user_id"],
+        "provider": "apikey",
+        "tenant_id": row["tenant_id"],
+        "tenant_role": access.role,
+    }
     _set_api_key_cache(key_hash, payload, expires_at_ts=expires_at_monotonic)
 
     # 异步更新 last_used_at（不阻塞，保存引用防止 GC）
@@ -409,7 +450,10 @@ async def _verify_api_key(token: str) -> dict | None:
         try:
             async with async_session_factory() as s:
                 async with s.begin():
-                    await ApiKeyRepository(s).touch_last_used(key_hash)
+                    from lib.db.tenant_context import set_tenant_context
+
+                    await set_tenant_context(s, user_id=str(row["user_id"]), tenant_id=str(row["tenant_id"]))
+                    await ApiKeyRepository(s).touch_last_used(key_hash, tenant_id=str(row["tenant_id"]))
         except Exception:
             logger.exception("更新 API Key last_used_at 失败（非致命）")
 
@@ -453,7 +497,16 @@ def _payload_to_user(payload: dict) -> CurrentUserInfo:
     sub = payload.get("sub", "")
     user_id = payload.get("user_id") or DEFAULT_USER_ID
     provider = payload.get("provider") or payload.get("via") or "local"
-    user = CurrentUserInfo(id=str(user_id), sub=str(sub), provider=str(provider), role="admin")
+    tenant_id = payload.get("tenant_id")
+    tenant_role = payload.get("tenant_role")
+    user = CurrentUserInfo(
+        id=str(user_id),
+        sub=str(sub),
+        provider=str(provider),
+        role="admin",
+        tenant_id=str(tenant_id) if tenant_id is not None else None,
+        tenant_role=str(tenant_role) if tenant_role is not None else None,
+    )
     set_current_user_id(user.id)
     return user
 

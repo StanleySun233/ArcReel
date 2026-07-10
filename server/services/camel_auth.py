@@ -18,6 +18,7 @@ from starlette.responses import RedirectResponse
 from lib.db import async_session_factory
 from lib.db.models.user import User
 from server.auth import create_token, get_token_secret
+from server.services.tenant_auth import ensure_personal_tenant
 
 CAMEL_STATE_COOKIE_NAME = "arcreel_camel_oauth_state"
 CAMEL_STATE_TTL_SECONDS = 600
@@ -39,7 +40,9 @@ class CamelOAuthSettings:
 
     @property
     def configured(self) -> bool:
-        return bool(self.base_url and self.client_id and self.client_secret and (self.redirect_uri or self.redirect_hosts))
+        return bool(
+            self.base_url and self.client_id and self.client_secret and (self.redirect_uri or self.redirect_hosts)
+        )
 
     @property
     def authorize_url(self) -> str:
@@ -87,7 +90,9 @@ def get_camel_oauth_settings() -> CamelOAuthSettings:
         redirect_uri=os.environ.get("CAMEL_OAUTH_REDIRECT_URI", "").strip(),
         redirect_hosts=_split_env_values(os.environ.get("CAMEL_OAUTH_REDIRECT_HOSTS", "")),
         scopes=os.environ.get("CAMEL_OAUTH_SCOPES", "profile email").strip(),
-        bootstrap_scopes=os.environ.get("CAMEL_OAUTH_BOOTSTRAP_SCOPES", "profile email arcreel:token-provision").strip(),
+        bootstrap_scopes=os.environ.get(
+            "CAMEL_OAUTH_BOOTSTRAP_SCOPES", "profile email arcreel:token-provision"
+        ).strip(),
         repair_max_age_seconds=os.environ.get("CAMEL_OAUTH_REPAIR_MAX_AGE_SECONDS", "").strip(),
     )
 
@@ -258,10 +263,21 @@ async def upsert_camel_user(userinfo: dict) -> CamelLocalUser:
             result = await session.execute(select(User).where(User.id == user_id))
             row = result.scalar_one_or_none()
             if row is None:
-                session.add(User(id=user_id, username=username, role="user", is_active=True))
+                session.add(
+                    User(
+                        id=user_id,
+                        username=username,
+                        provider="camel",
+                        provider_subject=camel_user_id,
+                        role="user",
+                        is_active=True,
+                    )
+                )
             else:
                 row.username = username
                 row.is_active = True
+                row.provider = "camel"
+                row.provider_subject = camel_user_id
     return CamelLocalUser(id=user_id, username=username, camel_user_id=camel_user_id)
 
 
@@ -273,7 +289,10 @@ def _frontend_callback_redirect(token: str, return_path: str) -> RedirectRespons
 
 async def _handle_login_intent(userinfo: dict, state: CamelOAuthState) -> RedirectResponse:
     user = await upsert_camel_user(userinfo)
-    token = create_token(user.username, user_id=user.id, provider="camel")
+    async with async_session_factory() as session:
+        async with session.begin():
+            tenant = await ensure_personal_tenant(session, user_id=user.id, username=user.username)
+    token = create_token(user.username, user_id=user.id, provider="camel", tenant_id=tenant.id, tenant_role=tenant.role)
     return _frontend_callback_redirect(token, state.return_path)
 
 
