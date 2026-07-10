@@ -48,13 +48,24 @@ export function AddToLibraryButton({
 
   const handleSubmit = async (payload: { name: string; description: string; voice_style: string; overwrite?: boolean }) => {
     try {
-      await API.addAssetFromProject({
-        project_name: projectName,
-        resource_type: resourceType,
-        resource_id: resourceId,
-        override_name: payload.name !== resourceId ? payload.name : undefined,
-        overwrite: payload.overwrite,
-      });
+      const imageFileId = sheetPath?.startsWith("fil_") ? sheetPath : undefined;
+      if (payload.overwrite && modal?.conflictWith) {
+        await API.updateAsset(modal.conflictWith.id, {
+          name: payload.name,
+          description: payload.description,
+          voice_style: payload.voice_style,
+          ...(imageFileId ? { image_file_id: imageFileId } : {}),
+        });
+      } else {
+        await API.createAsset({
+          library: "tenant",
+          type: resourceType,
+          name: payload.name,
+          description: payload.description,
+          voice_style: payload.voice_style,
+          image_file_id: imageFileId,
+        });
+      }
       useAppStore.getState().pushToast(t("add_to_library_success", { name: payload.name }), "success");
     } catch (err) {
       useAppStore.getState().pushToast(errMsg(err), "error");

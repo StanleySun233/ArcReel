@@ -4,6 +4,8 @@ scenes/props 的 CRUD 行为由 test_scenes_router / test_props_router 覆盖；
 factory 引入的新能力（character extras + extra='allow' 创建语义）。
 """
 
+from typing import Any, cast
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -63,7 +65,8 @@ class TestAssetRouterFactory:
             assert resp.status_code == 200
             entry = fake_pm.projects["demo"]["characters"]["Bob"]
             assert entry["voice_style"] == "calm"
-            assert entry["character_sheet"] == ""
+            assert entry["character_sheet_file_id"] == ""
+            assert "character_sheet" not in entry
             # reference_image 是 character 的 extra 字段，create 时未传则默认 ""
             assert entry["reference_image"] == ""
 
@@ -109,13 +112,15 @@ class TestAssetRouterFactory:
                 json={
                     "description": "new",
                     "voice_style": "strong",
-                    "character_sheet": "characters/Alice.png",
+                    "character_sheet_file_id": "fil_1",
                     "reference_image": "characters/refs/Alice.png",
                 },
             )
             assert resp.status_code == 200
             entry = fake_pm.projects["demo"]["characters"]["Alice"]
             assert entry["voice_style"] == "strong"
+            assert entry["character_sheet_file_id"] == "fil_1"
+            assert entry["character_sheet"] == ""
             assert entry["reference_image"] == "characters/refs/Alice.png"
 
     def test_character_patch_rejects_non_string_value(self, monkeypatch):
@@ -139,7 +144,7 @@ class TestAssetRouterFactory:
         from server.routers._asset_router_factory import build_asset_router
 
         try:
-            build_asset_router(asset_type="unknown", pm_getter=lambda: None)
+            build_asset_router(asset_type="unknown", pm_getter=lambda: cast(Any, None))
         except ValueError as e:
             assert "unknown" in str(e)
         else:

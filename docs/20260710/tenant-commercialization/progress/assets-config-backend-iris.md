@@ -10,9 +10,11 @@
 
 - [x] Provider config, credentials, custom providers, agent config, and API keys are tenant-scoped.
 - [x] Tenant bootstrap completeness is based on tenant config/provider state, not user timestamp alone.
-- Asset libraries support tenant and personal scopes.
-- Asset bindings support snapshot import with `parent_id` and manual sync.
-- Cross-library import requires readable source and `member+` target permission.
+- [x] Asset libraries support tenant and personal scopes.
+- [x] Asset bindings support snapshot import with `parent_id` and manual sync.
+- [x] Cross-library import requires readable source and `member+` target permission.
+- [x] Project-level asset routes consume `*_sheet_file_id` media fields.
+- [x] Frontend exposes tenant/personal library views, sync confirmation, and permission state.
 
 ## Subtasks
 
@@ -20,15 +22,30 @@
   - Commit: 571724b
 - [x] Replace user-level bootstrap timestamp dependency.
   - Commit: 571724b
-- [ ] Implement asset library bindings, snapshots, and manual sync.
-  - Commit: pending
+- [x] Implement asset library bindings, snapshots, and manual sync.
+  - Commit: a69e5b4
 - [x] Add config isolation tests.
   - Commit: 571724b
-- [ ] Add asset import/sync tests.
-  - Commit: pending
+- [x] Add asset import/sync tests.
+  - Commit: a69e5b4
 
 **Story 7 Ready for QA:** yes
-**Story 8 Ready for QA:** no
+**Story 8 Ready for QA:** yes
+
+## Story 8 Verification
+
+- `pytest tests/test_assets_router.py tests/test_asset_repo.py tests/test_asset_model.py -q`: 12 passed.
+- `pytest tests/test_asset_router_factory.py tests/test_asset_types_product.py -q`: 18 passed.
+- `pytest tests/test_assets_router.py tests/test_asset_repo.py tests/test_asset_model.py tests/test_asset_router_factory.py tests/test_asset_types_product.py -q`: 30 passed.
+- `ruff check` on modified Story 8 backend files: passed.
+- `ruff format --check` on modified Story 8 backend files: passed.
+- `basedpyright` on modified Story 8 backend files: reported 0 errors, 0 warnings, 0 notes; command exited 3 because the story worktree has no `.venv` directory referenced by pyright config.
+- `pnpm check`: 107 test files passed, 922 tests passed, using a temporary symlink to the main worktree's existing `frontend/node_modules` because this story worktree has no installed `node_modules`.
+
+## Story 8 Commits
+
+- Backend bindings/import/sync: a69e5b4
+- Project-level file-id fields and frontend library UI: b808bb1
 
 ## Story 7 Verification
 
@@ -41,4 +58,4 @@
 
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
-| 2026-07-10 | Asset bindings | Depends on Story 2 tenant schema and Story 5 file links. | planned |
+| 2026-07-10 | Asset bindings | Depends on Story 2 tenant schema and Story 5 file links. | cleared |

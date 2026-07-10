@@ -1,20 +1,23 @@
 import { create } from "zustand";
 import { API } from "@/api";
-import type { Asset, AssetType } from "@/types/asset";
+import type { Asset, AssetLibrary, AssetType } from "@/types/asset";
 
 interface AssetsStore {
   byType: Record<AssetType, Asset[]>;
-  loadList: (type: AssetType, q?: string) => Promise<void>;
+  library: AssetLibrary;
+  loadList: (library: AssetLibrary, type: AssetType, q?: string) => Promise<void>;
   addAsset: (asset: Asset) => void;
   updateAsset: (asset: Asset) => void;
+  syncAsset: (id: string, type: AssetType) => Promise<void>;
   deleteAsset: (id: string, type: AssetType) => Promise<void>;
 }
 
 export const useAssetsStore = create<AssetsStore>((set) => ({
   byType: { character: [], scene: [], prop: [] },
-  loadList: async (type, q) => {
-    const res = await API.listAssets({ type, q });
-    set((s) => ({ byType: { ...s.byType, [type]: res.items } }));
+  library: "tenant",
+  loadList: async (library, type, q) => {
+    const res = await API.listAssets({ library, type, q });
+    set((s) => ({ library, byType: { ...s.byType, [type]: res.items } }));
   },
   addAsset: (asset) =>
     set((s) => ({
@@ -27,6 +30,12 @@ export const useAssetsStore = create<AssetsStore>((set) => ({
         [asset.type]: s.byType[asset.type].map((a) => (a.id === asset.id ? asset : a)),
       },
     })),
+  syncAsset: async (id, type) => {
+    const { asset } = await API.syncAsset(id, true);
+    set((s) => ({
+      byType: { ...s.byType, [type]: s.byType[type].map((a) => (a.id === id ? asset : a)) },
+    }));
+  },
   deleteAsset: async (id, type) => {
     await API.deleteAsset(id);
     set((s) => ({
