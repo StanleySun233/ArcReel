@@ -119,7 +119,7 @@ def _media_spec(media: str, endpoint_env: str, models_env: str) -> CamelMediaSpe
         raise HTTPException(status_code=503, detail=f"{endpoint_env} is invalid")
     default_keys = {
         "image": ("default_image_backend_t2i", "default_image_backend_i2i"),
-        "text": ("default_text_backend",),
+        "text": ("default_text_backend", "text_backend_script", "text_backend_overview", "text_backend_style"),
         "video": ("default_video_backend",),
         "audio": ("default_audio_backend",),
     }[media]

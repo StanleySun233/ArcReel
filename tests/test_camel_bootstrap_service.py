@@ -218,6 +218,18 @@ async def test_camel_bootstrap_creates_user_owned_providers_and_defaults(
         await service.get_setting("default_text_backend")
         == f"{make_provider_id(by_name['CaMeL Text'].id)}/camel-returned-text"
     )
+    assert (
+        await service.get_setting("text_backend_script")
+        == f"{make_provider_id(by_name['CaMeL Text'].id)}/camel-returned-text"
+    )
+    assert (
+        await service.get_setting("text_backend_overview")
+        == f"{make_provider_id(by_name['CaMeL Text'].id)}/camel-returned-text"
+    )
+    assert (
+        await service.get_setting("text_backend_style")
+        == f"{make_provider_id(by_name['CaMeL Text'].id)}/camel-returned-text"
+    )
     assert await service.get_setting("default_video_backend") == (
         f"{make_provider_id(by_name['CaMeL Video'].id)}/camel-returned-video"
     )
