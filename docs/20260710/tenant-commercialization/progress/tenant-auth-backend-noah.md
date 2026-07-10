@@ -17,15 +17,15 @@
 ## Subtasks
 
 - [x] Implement tenant token issuance and switch endpoint.
-  - Commit: pending
+  - Commit: 941c447
 - [x] Implement membership CRUD and owner invariants.
-  - Commit: pending
+  - Commit: 941c447
 - [x] Implement Redis permission cache and invalidation.
-  - Commit: pending
+  - Commit: 941c447
 - [x] Add auth and role matrix tests.
-  - Commit: pending
+  - Commit: 941c447
 - [x] Tenant-scope API key creation, listing, deletion, and bearer auth.
-  - Commit: pending
+  - Commit: 941c447
 
 **Ready for QA:** yes
 
