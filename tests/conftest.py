@@ -91,6 +91,11 @@ def _reset_app_data_dir_cache():
 
 
 @pytest.fixture(autouse=True)
+def _isolate_redis_env(monkeypatch):
+    monkeypatch.delenv("REDIS_URL", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _stub_sandbox_check(monkeypatch, request):
     """Mock ``check_sandbox_available`` 返回 True，避免测试机不满足真实 bwrap probe。
 
