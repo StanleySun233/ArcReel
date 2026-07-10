@@ -4,6 +4,7 @@ import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { API } from "@/api";
 import { useAssetsStore } from "@/stores/assets-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { AssetLibraryPage } from "./AssetLibraryPage";
 
 vi.mock("@/components/assets/AssetFormModal", () => ({
@@ -25,6 +26,7 @@ function renderPage(initialPath = "/app/assets") {
 describe("AssetLibraryPage tablist (issue #488)", () => {
   beforeEach(() => {
     useAssetsStore.setState(useAssetsStore.getInitialState(), true);
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     vi.spyOn(API, "listAssets").mockResolvedValue({ items: [] });
   });
 
@@ -136,5 +138,25 @@ describe("AssetLibraryPage tablist (issue #488)", () => {
     expect(tabs[0]).toHaveAttribute("aria-selected", "false");
     expect(tabs[1]).toHaveAttribute("aria-selected", "true");
     expect(tabs[2]).toHaveAttribute("aria-selected", "false");
+  });
+
+  it("hides tenant asset create action for view-only tenants", async () => {
+    useAuthStore.setState({
+      currentTenant: {
+        id: "ten_view",
+        name: "View Team",
+        role: "view",
+        is_owner: false,
+        personal: false,
+      },
+      tenantRole: null,
+      tenants: [],
+    });
+
+    renderPage("/app/assets?library=tenant");
+
+    await waitFor(() => {
+      expect(screen.queryByText("新增资产")).not.toBeInTheDocument();
+    });
   });
 });

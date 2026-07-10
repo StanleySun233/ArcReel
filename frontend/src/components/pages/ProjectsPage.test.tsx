@@ -4,6 +4,7 @@ import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { API } from "@/api";
 import { useAppStore } from "@/stores/app-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { useProjectsStore } from "@/stores/projects-store";
 import { ProjectsPage } from "@/components/pages/ProjectsPage";
 
@@ -27,6 +28,7 @@ describe("ProjectsPage", () => {
   beforeEach(() => {
     useProjectsStore.setState(useProjectsStore.getInitialState(), true);
     useAppStore.setState(useAppStore.getInitialState(), true);
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     vi.restoreAllMocks();
   });
 
@@ -147,6 +149,28 @@ describe("ProjectsPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("create-project-modal")).toBeInTheDocument();
     });
+  });
+
+  it("hides project write actions for view-only tenants", async () => {
+    vi.spyOn(API, "listProjects").mockResolvedValue({ projects: [] });
+    useAuthStore.setState({
+      currentTenant: {
+        id: "ten_view",
+        name: "View Team",
+        role: "view",
+        is_owner: false,
+        personal: false,
+      },
+      tenantRole: null,
+      tenants: [],
+    });
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "创建项目" })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("新建项目")).not.toBeInTheDocument();
+    expect(screen.queryByText("导入 ZIP")).not.toBeInTheDocument();
   });
 
   it("imports a zip project, refreshes the list, and navigates to the workspace", async () => {

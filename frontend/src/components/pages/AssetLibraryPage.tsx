@@ -6,6 +6,7 @@ import { AssetGrid } from "@/components/assets/AssetGrid";
 import { AssetFormModal } from "@/components/assets/AssetFormModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAssetsStore } from "@/stores/assets-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { API } from "@/api";
 import { useAppStore } from "@/stores/app-store";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -19,6 +20,7 @@ import {
   ambientGlowStyle,
 } from "@/components/ui/darkroom-tokens";
 import type { Asset, AssetLibrary, AssetType } from "@/types/asset";
+import { canWriteTenant } from "@/utils/auth";
 
 const ASSET_LIBRARY_RETURN_TO_KEY = "assetLibrary:returnTo";
 
@@ -138,6 +140,12 @@ export function AssetLibraryPage() {
   const [syncTarget, setSyncTarget] = useState<Asset | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const currentTenant = useAuthStore((s) => s.currentTenant);
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const canWriteTenantLibrary = currentTenant
+    ? canWriteTenant(currentTenant.role)
+    : tenantRole === null || canWriteTenant(tenantRole);
+  const canWriteActiveLibrary = activeLibrary === "personal" || canWriteTenantLibrary;
 
   const byType = useAssetsStore((s) => s.byType);
   const loadList = useAssetsStore((s) => s.loadList);
@@ -259,16 +267,17 @@ export function AssetLibraryPage() {
                 className={`${INPUT_CLS} w-[240px] pl-8`}
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setFormModal({ mode: "create" })}
-              disabled={assets.some((asset) => !asset.can_write) && assets.every((asset) => !asset.can_write)}
-              className={ACCENT_BTN_CLS}
-              style={ACCENT_BUTTON_STYLE}
-            >
-              <Plus className="h-4 w-4" />
-              {t("add_asset")}
-            </button>
+            {canWriteActiveLibrary ? (
+              <button
+                type="button"
+                onClick={() => setFormModal({ mode: "create" })}
+                className={ACCENT_BTN_CLS}
+                style={ACCENT_BUTTON_STYLE}
+              >
+                <Plus className="h-4 w-4" />
+                {t("add_asset")}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -351,15 +360,17 @@ export function AssetLibraryPage() {
             </div>
             <p className="font-editorial text-[20px] leading-tight text-text">{t(EMPTY_KEY[activeTab])}</p>
             <p className="max-w-sm text-[12px] leading-5 text-text-4">{t("library_empty_hint")}</p>
-            <button
-              type="button"
-              onClick={() => setFormModal({ mode: "create" })}
-              className={`mt-2 ${ACCENT_BTN_SM_CLS}`}
-              style={ACCENT_BUTTON_STYLE}
-            >
-              <Plus className="h-4 w-4" />
-              {t("add_asset")}
-            </button>
+            {canWriteActiveLibrary ? (
+              <button
+                type="button"
+                onClick={() => setFormModal({ mode: "create" })}
+                className={`mt-2 ${ACCENT_BTN_SM_CLS}`}
+                style={ACCENT_BUTTON_STYLE}
+              >
+                <Plus className="h-4 w-4" />
+                {t("add_asset")}
+              </button>
+            ) : null}
           </div>
         ) : (
             <AssetGrid
