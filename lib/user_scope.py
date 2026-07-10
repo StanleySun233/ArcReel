@@ -22,3 +22,8 @@ def scoped_projects_root(base_root: Path) -> Path:
     if user_id == DEFAULT_USER_ID:
         return base_root
     return base_root / "_users" / quote(user_id, safe="") / "projects"
+
+
+def tenant_projects_root(base_root: Path, tenant_id: str) -> Path:
+    normalized = quote((tenant_id or DEFAULT_USER_ID).strip() or DEFAULT_USER_ID, safe="")
+    return base_root / "_tenants" / normalized / "projects"
