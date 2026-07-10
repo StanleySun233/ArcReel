@@ -36,9 +36,10 @@ Deliver the tenant-commercialization foundation as a new ArcReel edition: CaMeL-
 |------|---------|-----------------|
 | 0 | Story 0, Story 1 | Parallel: CaMeL contract preflight is ArcReel-only and Story 1 owns infrastructure baseline. CaMeL-api is an external completed dependency and is not modified. |
 | 1 | Story 2 | Serialized schema/RLS foundation. All later backend stories depend on this. |
-| 2 | Story 3, Story 4, Story 5, Story 7 | Parallel after Story 2. Story 4 may build against `api-contract.md` before Story 3 merges, then final QA after Story 3. |
-| 3 | Story 6, Story 8, Story 9 | Parallel after Story 5 where file-id behavior is needed. Shared frontend asset files are owned by Story 8/9 with explicit split. |
-| 4 | Story 10 | Final cross-story QA and PO acceptance only after all implementation stories merge. |
+| 2 | Story 2A | Serialized RLS hardening. Story 3+ require the app DB role to be non-superuser and non-BYPASSRLS. |
+| 3 | Story 3, Story 4, Story 5, Story 7 | Parallel after Story 2A. Story 4 may build against `api-contract.md` before Story 3 merges, then final QA after Story 3. |
+| 4 | Story 6, Story 8, Story 9 | Parallel after Story 5 where file-id behavior is needed. Shared frontend asset files are owned by Story 8/9 with explicit split. |
+| 5 | Story 10 | Final cross-story QA and PO acceptance only after all implementation stories merge. |
 
 ## Planning Gates
 
@@ -128,6 +129,31 @@ These gates happen before implementation agents start. They are not story worktr
 - [x] Quinn: Verify cross-tenant deny and same-tenant allow cases under PostgreSQL. (depends: implementation)
 
 **QA Evidence:** Story 2 PostgreSQL/RLS regression slice passed with `51 passed in 8.17s`; Python compile check passed. RLS tests use a temporary non-superuser role because the local dev `arcreel` role has `SUPERUSER` and `BYPASSRLS`.
+
+### Story 2A - PostgreSQL App Role RLS Hardening
+
+**Slug:** pg-app-role-rls
+**User value:** ArcReel connects to PostgreSQL through a non-superuser app role, so PostgreSQL RLS is an active production safety boundary instead of a bypassed policy.
+**Status:** completed
+**QA Status:** passed
+**PO Status:** pending
+
+**Acceptance Criteria**
+- [x] Local middleware creates or updates an `arcreel_app` login role with `NOSUPERUSER` and `NOBYPASSRLS`.
+- [x] Default tenant-edition `DATABASE_URL` examples use the app role, not the PostgreSQL admin role.
+- [x] PostgreSQL integration tests can still create isolated schemas through an explicit admin URL while running application DB work as the app role.
+- [x] A regression test fails when `DATABASE_URL` points at a role with `SUPERUSER` or `BYPASSRLS`.
+- [x] RLS tests pass when `DATABASE_URL` uses the app role.
+- [x] Existing development docs explain that existing PostgreSQL volumes need role initialization before switching to the app URL.
+
+**Engineering Subtasks**
+- [x] Atlas: Add dev PostgreSQL app-role init script and compose service. (depends: Story 2)
+- [x] Atlas: Update `.env.example`, `deploy/.env.example`, and `deploy/dev/README.md` for app/admin DB URLs. (depends: init script)
+- [x] Atlas: Update PostgreSQL test helpers to use `ARCREEL_TEST_DATABASE_ADMIN_URL` for schema/role setup. (depends: env docs)
+- [x] Atlas: Add app-role guard test and run Story 2 regression with app `DATABASE_URL`. (depends: test helpers)
+- [x] Quinn: Verify RLS deny/allow tests use the app role and do not rely on superuser bypass. (depends: implementation)
+
+**QA Evidence:** App-role PostgreSQL regression slice passed with `52 passed in 8.26s`; `tests/test_pg_app_role.py` fails as expected when `DATABASE_URL` points at the local superuser `arcreel`; `sh -n deploy/dev/postgres-init-app-role.sh`, `docker compose config`, and `compileall` passed.
 
 ### Story 3 - Tenant Auth, Membership API, Redis Permission Cache
 
@@ -370,8 +396,10 @@ These gates happen before implementation agents start. They are not story worktr
 | `server/services/camel_auth.py` | Tara | Story 0 | exclusive until merged, then Noah may integrate tenant token changes |
 | `tests/test_camel_auth_provider_bootstrap.py` | Tara | Story 0 | exclusive |
 | `deploy/dev/docker-compose.middleware.yml` | Atlas | Story 1 | exclusive |
+| `deploy/dev/postgres-init-app-role.sh` | Atlas | Story 2A | exclusive |
 | `.env.example` | Atlas | Story 1 | exclusive |
 | `deploy/.env.example` | Atlas | Story 1 | exclusive |
+| `deploy/dev/README.md` | Atlas | Story 2A | exclusive |
 | `lib/db/engine.py` | Atlas | Story 1 | exclusive |
 | `tests/conftest.py` | Atlas | Story 1 | exclusive |
 | `tests/agent_session_store/conftest.py` | Atlas | Story 1 | exclusive |
@@ -380,6 +408,7 @@ These gates happen before implementation agents start. They are not story worktr
 | `lib/db/models/*.py` | Atlas | Story 2 | schema owner for columns; later story owners may edit behavior only after Story 2 merge |
 | `lib/db/tenant_context.py` | Atlas | Story 2 | exclusive |
 | `tests/test_tenant_rls.py` | Atlas | Story 2 | exclusive |
+| `tests/test_pg_app_role.py` | Atlas | Story 2A | exclusive |
 | `server/auth.py` | Noah | Story 3 | exclusive after Story 0 merge |
 | `server/routers/auth.py` | Noah | Story 3 | exclusive |
 | `server/routers/tenants.py` | Noah | Story 3 | exclusive |
@@ -438,7 +467,8 @@ These gates happen before implementation agents start. They are not story worktr
 |-------|--------|---------------|--------------|--------------|----------------|
 | Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `integration/tenant-commercialization` | pending | pending |
 | Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline | `story/tenant-commercialization/pg-runtime-baseline` | `../ArcReel-worktrees/tenant-commercialization/pg-runtime-baseline` | `integration/tenant-commercialization` | merged | removed |
-| Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `integration/tenant-commercialization` | pending | pending |
+| Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `integration/tenant-commercialization` | merged | removed |
+| Story 2A - PostgreSQL App Role RLS Hardening | `story/tenant-commercialization/pg-app-role-rls` | `../ArcReel-worktrees/tenant-commercialization/pg-app-role-rls` | `integration/tenant-commercialization` | pending | pending |
 | Story 3 - Tenant Auth, Membership API, Redis Permission Cache | `story/tenant-commercialization/tenant-auth` | `../ArcReel-worktrees/tenant-commercialization/tenant-auth` | `integration/tenant-commercialization` | pending | pending |
 | Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | pending | pending |
 | Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `integration/tenant-commercialization` | pending | pending |

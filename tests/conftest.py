@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -152,15 +153,40 @@ def _pg_database_url() -> str:
     return url
 
 
+def _pg_database_admin_url() -> str:
+    return os.environ.get("ARCREEL_TEST_DATABASE_ADMIN_URL", "").strip() or _pg_database_url()
+
+
+def _database_role(url: str) -> str:
+    role = make_url(url).username
+    if not role:
+        raise RuntimeError("DATABASE_URL must include a PostgreSQL user")
+    return role
+
+
+def _quote_ident(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
 async def _create_pg_test_engine():
+    url = _pg_database_url()
+    admin_url = _pg_database_admin_url()
+    app_role = _database_role(url)
     schema = f"test_{uuid.uuid4().hex[:12]}"
     engine = create_async_engine(
-        _pg_database_url(),
+        url,
         poolclass=NullPool,
         connect_args={"server_settings": {"search_path": schema}},
     )
-    async with engine.begin() as conn:
-        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
+    admin_engine = create_async_engine(admin_url, poolclass=NullPool)
+    try:
+        async with admin_engine.begin() as conn:
+            await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {_quote_ident(schema)}"))
+            await conn.execute(
+                text(f"GRANT USAGE, CREATE ON SCHEMA {_quote_ident(schema)} TO {_quote_ident(app_role)}")
+            )
+    finally:
+        await admin_engine.dispose()
     async with engine.begin() as conn:
         import lib.agent_session_store.models  # noqa: F401
         import lib.db.models  # noqa: F401
@@ -171,8 +197,12 @@ async def _create_pg_test_engine():
 
 async def _drop_pg_test_engine(engine, schema: str) -> None:
     try:
-        async with engine.begin() as conn:
-            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+        admin_engine = create_async_engine(_pg_database_admin_url(), poolclass=NullPool)
+        try:
+            async with admin_engine.begin() as conn:
+                await conn.execute(text(f"DROP SCHEMA IF EXISTS {_quote_ident(schema)} CASCADE"))
+        finally:
+            await admin_engine.dispose()
     finally:
         await engine.dispose()
 

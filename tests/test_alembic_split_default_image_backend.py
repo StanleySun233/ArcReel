@@ -6,6 +6,8 @@ from alembic import command
 
 from tests.alembic_pg import AlembicPostgresDb, alembic_pg  # noqa: F401
 
+TENANT_SETTINGS = {"app.current_tenant_id": "ten_default", "app.current_user_id": "default"}
+
 
 def test_upgrade_copies_legacy_setting_to_two_new_keys(alembic_pg: AlembicPostgresDb):
     command.upgrade(alembic_pg.cfg, "eedf0aa985e6")
@@ -17,7 +19,8 @@ def test_upgrade_copies_legacy_setting_to_two_new_keys(alembic_pg: AlembicPostgr
 
     command.upgrade(alembic_pg.cfg, "head")
 
-    rows = alembic_pg.fetchall(
+    rows = alembic_pg.fetchall_with_settings(
+        TENANT_SETTINGS,
         "SELECT key, value FROM system_setting WHERE key IN "
         "('default_image_backend', 'default_image_backend_t2i', 'default_image_backend_i2i')"
     )
@@ -38,7 +41,8 @@ def test_upgrade_preserves_already_set_new_keys(alembic_pg: AlembicPostgresDb):
 
     command.upgrade(alembic_pg.cfg, "head")
 
-    rows = alembic_pg.fetchall(
+    rows = alembic_pg.fetchall_with_settings(
+        TENANT_SETTINGS,
         "SELECT key, value FROM system_setting WHERE key IN "
         "('default_image_backend_t2i', 'default_image_backend_i2i')"
     )
@@ -50,7 +54,8 @@ def test_upgrade_preserves_already_set_new_keys(alembic_pg: AlembicPostgresDb):
 def test_upgrade_no_op_when_no_legacy(alembic_pg: AlembicPostgresDb):
     command.upgrade(alembic_pg.cfg, "head")
 
-    rows = alembic_pg.fetchall(
+    rows = alembic_pg.fetchall_with_settings(
+        TENANT_SETTINGS,
         "SELECT key FROM system_setting WHERE key IN "
         "('default_image_backend', 'default_image_backend_t2i', 'default_image_backend_i2i')"
     )
@@ -60,7 +65,8 @@ def test_upgrade_no_op_when_no_legacy(alembic_pg: AlembicPostgresDb):
 def test_downgrade_drops_only_new_keys(alembic_pg: AlembicPostgresDb):
     command.upgrade(alembic_pg.cfg, "head")
 
-    alembic_pg.execute(
+    alembic_pg.execute_with_settings(
+        TENANT_SETTINGS,
         "INSERT INTO system_setting (tenant_id, user_id, key, value, updated_at) "
         "VALUES ('ten_default', 'default', 'default_image_backend', 'openai/legacy', CURRENT_TIMESTAMP), "
         "('ten_default', 'default', 'default_image_backend_t2i', 'openai/t2i', CURRENT_TIMESTAMP), "

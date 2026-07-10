@@ -18,6 +18,25 @@ services:
       timeout: 5s
       retries: 20
 
+  postgres-app-role-init:
+    image: postgres:18-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${ARCREEL_DEV_POSTGRES_DB:-arcreel}
+      PGUSER: ${ARCREEL_DEV_POSTGRES_USER:-arcreel}
+      PGPASSWORD: ${ARCREEL_DEV_POSTGRES_PASSWORD:-arcreel_dev_password}
+      POSTGRES_DB: ${ARCREEL_DEV_POSTGRES_DB:-arcreel}
+      ARCREEL_DEV_POSTGRES_APP_USER: ${ARCREEL_DEV_POSTGRES_APP_USER:-arcreel_app}
+      ARCREEL_DEV_POSTGRES_APP_PASSWORD: ${ARCREEL_DEV_POSTGRES_APP_PASSWORD:-arcreel_app_dev_password}
+    volumes:
+      - ./postgres-init-app-role.sh:/usr/local/bin/arcreel-postgres-init-app-role:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/arcreel-postgres-init-app-role"]
+    restart: "no"
+
   redis:
     image: redis:7.4-alpine
     command: ["redis-server", "--appendonly", "yes"]
