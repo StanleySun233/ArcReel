@@ -20,8 +20,13 @@
   - Commit: pending
 - [ ] Convert project media references to file IDs.
   - Commit: pending
-- [ ] Add tenant-aware generation enqueue and worker writeback.
+- [x] Add tenant-aware generation enqueue and worker writeback.
   - Commit: b8393b9 (queue/task tenant snapshot + tenant-scoped repository queries)
+  - Commit: adaa992 (generation enqueue/list/detail/SSE/cancel tenant permission scope + worker task tenant context)
+  - Commit: 9842503 (tenant FileService output records and usage attribution for generation media)
+- [ ] Finish file-id-only project media migration.
+  - Current status: generation outputs now write FileService records and companion `*_file_id` fields while preserving legacy path fields.
+  - Remaining: migrate downstream consumers and project schema to read file IDs as the primary media reference; grid split cell outputs still write legacy storyboard paths only.
 - [ ] Add project and task tenant isolation tests.
   - Commit: pending
 
@@ -32,3 +37,4 @@
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
 | 2026-07-10 | Project file IDs | Depends on Story 5 file service semantics. | planned |
+| 2026-07-10 | Generation FileService outputs | Compatibility slice done; full file-id-only project JSON requires coordinated consumer migration. | open |
