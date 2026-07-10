@@ -79,4 +79,21 @@
 | Targeted backend | Story11 file-id/grid regression and project file-id validation: 4 passed |
 | Scenario runner | 30 + 10 + 113 + 115 tests passed |
 | Frontend | `pnpm check` passed; 107 test files, 925 tests |
-| Remaining live evidence | The current live container predates Story11; rebuild from `986cd22` or later before claiming Story11 live-runtime acceptance |
+| Story11 live evidence | closed by latest-head live acceptance at `4ee8d99` |
+
+## Latest-Head Live Acceptance Evidence
+
+| Area | Evidence |
+|------|----------|
+| Merge | `integration/tenant-commercialization` at merge commit `4ee8d99` |
+| Fresh stack | Container `arcreel-acceptance-current-20260710231108`, DB `arcreel_acceptance_20260710231108`, Alembic head `8d7e6f5a4b3c` |
+| Live API smoke | `deploy/test/arcreel_api_smoke.py` passed 23 checks |
+| Focused tenant/MinIO smoke | `deploy/test/arcreel_tenant_role_minio_smoke.py` passed 4 checks |
+| CaMeL contract | `deploy/test/camel_provisioning_contract_smoke.py` passed 6 checks |
+| MinIO security | `deploy/test/arcreel_minio_security_smoke.py` passed 4 checks |
+| MinIO persistence | `deploy/test/arcreel_minio_persistence_smoke.py --phase seed`, app restart, then `--phase verify` passed |
+| Scenario runner | 30 + 10 + 113 + 115 tests passed |
+| Frontend | `pnpm check` passed; 107 test files, 926 tests |
+| Browser owner path | Real CaMeL login as `po-j1`, default personal space, listbox switch to `Persist j1`, project `Persist j1` displayed after refetch, signed asset media loaded through backend signed-url/content endpoints, personal asset sync confirmed and result displayed |
+| Browser viewer path | Real CaMeL login as `pv-j1`, switch to `Persist j1 View only`, project visible, project write controls hidden, tenant asset `New asset` absent, `Edit`/`Delete` disabled, signed media loaded |
+| Defects | Defect 005 found during browser acceptance and closed by Story12 before final live rerun |

@@ -1,7 +1,7 @@
 # Sprint Backlog: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** in-progress
+**Status:** completed
 **Product brief:** Conversation request: build ArcReel commercial tenant edition with CaMeL login, ArcReel-owned tenants and memberships, PostgreSQL-only storage with RLS, Redis permission cache, MinIO private media storage, file-id project schema, tenant/user asset libraries with snapshot import and manual sync, tenant-scoped configuration/API keys/tasks, and frontend tenant switching. This is a new independent release with no runtime compatibility for SQLite, old local media paths, or old project media schema.
 **Main integration branch:** integration/tenant-commercialization
 
@@ -40,6 +40,7 @@ Deliver the tenant-commercialization foundation as a new ArcReel edition: CaMeL-
 | 3 | Story 3, Story 4, Story 5, Story 7 | Parallel after Story 2A. Story 4 may build against `api-contract.md` before Story 3 merges, then final QA after Story 3. |
 | 4 | Story 6, Story 8, Story 9 | Parallel after Story 5 where file-id behavior is needed. Shared frontend asset files are owned by Story 8/9 with explicit split. |
 | 5 | Story 10 | Final cross-story QA and PO acceptance only after all implementation stories merge. |
+| 6 | Story 11, Story 12 | Follow-up closure stories created from QA defects and merged only after focused regression passes. |
 
 ## Planning Gates
 
@@ -412,6 +413,27 @@ These gates happen before implementation agents start. They are not story worktr
 
 **QA Evidence:** Story worktree `story/tenant-commercialization/strict-file-id-media` passed Python ruff check/format, targeted pytest `4 passed`, and frontend `pnpm check` with 107 test files and 925 tests. Implementation commit `c10d646`. Integration branch `986cd22` passed scoped ruff check/format, targeted pytest `4 passed`, scenario runner `30 + 10 + 113 + 115 passed`, and frontend `pnpm check` with 107 test files and 925 tests.
 
+### Story 12 - Tenant Switch Project List Refresh
+
+**Slug:** tenant-switch-project-refresh
+**User value:** After switching spaces, users immediately see the selected tenant's projects instead of stale project state from the previous tenant.
+**Status:** completed
+**QA Status:** passed
+**PO Status:** accepted
+
+**Acceptance Criteria**
+- [x] Switching `currentTenant` clears stale project list state.
+- [x] `ProjectsPage` refetches `/api/v1/projects` when `currentTenant.id` changes.
+- [x] Regression fails if tenant switch does not trigger a second project list load.
+- [x] Latest production container browser acceptance shows the selected team tenant project after switching.
+
+**Engineering Subtasks**
+- [x] Story12: Update `ProjectsPage` tenant-change effect. (depends: Story 4)
+- [x] Story12: Add `ProjectsPage` regression for current tenant change. (depends: frontend test harness)
+- [x] Story12: Rebuild latest acceptance runtime and rerun live/browser acceptance. (depends: QA)
+
+**QA Evidence:** Story worktree `story/tenant-commercialization/tenant-switch-project-refresh` passed targeted `ProjectsPage.test.tsx` with 11 tests, `pnpm lint`, and frontend `pnpm check` with 107 test files and 926 tests. Integration branch `4ee8d99` passed frontend `pnpm check` with 107 test files and 926 tests, scenario runner `30 + 10 + 113 + 115`, rebuilt acceptance container `arcreel-acceptance-current-20260710231108`, live API/CaMeL/MinIO/persistence smokes, and agent-browser owner/viewer acceptance.
+
 ## File Ownership
 
 | File Path | Owner | Story | Parallel Policy |
@@ -489,12 +511,14 @@ These gates happen before implementation agents start. They are not story worktr
 | `frontend/src/components/canvas/timeline/GridPreviewPanel.tsx` | Story11 | Story 11 | exclusive during strict file-id closure |
 | `frontend/src/components/canvas/timeline/ShotDetail.tsx` | Story11 | Story 11 | exclusive during strict file-id closure |
 | `frontend/src/components/canvas/reference/UnitPreviewPanel.tsx` | Story11 | Story 11 | exclusive during strict file-id closure |
+| `frontend/src/components/pages/ProjectsPage.tsx` | Story12 | Story 12 | exclusive during tenant-switch refresh closure |
+| `frontend/src/components/pages/ProjectsPage.test.tsx` | Story12 | Story 12 | exclusive during tenant-switch refresh closure |
 
 ## Worktrees
 
 | Story | Branch | Worktree Path | Merge Target | Merge Status | Cleanup Status |
 |-------|--------|---------------|--------------|--------------|----------------|
-| Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `integration/tenant-commercialization` | superseded by integration QA evidence | pending cleanup |
+| Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `integration/tenant-commercialization` | superseded by integration QA evidence | retained unmerged; no dirty files |
 | Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline | `story/tenant-commercialization/pg-runtime-baseline` | `../ArcReel-worktrees/tenant-commercialization/pg-runtime-baseline` | `integration/tenant-commercialization` | merged | removed |
 | Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `integration/tenant-commercialization` | merged | removed |
 | Story 2A - PostgreSQL App Role RLS Hardening | `story/tenant-commercialization/pg-app-role-rls` | `../ArcReel-worktrees/tenant-commercialization/pg-app-role-rls` | `integration/tenant-commercialization` | merged | removed |
@@ -505,8 +529,9 @@ These gates happen before implementation agents start. They are not story worktr
 | Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | merged | removed |
 | Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | merged | removed |
 | Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `integration/tenant-commercialization` | merged | removed |
-| Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `integration/tenant-commercialization` | pending | pending |
-| Story 11 - Strict File-Id-Only Project Media Closure | `story/tenant-commercialization/strict-file-id-media` | `../ArcReel-worktrees/tenant-commercialization/strict-file-id-media` | `integration/tenant-commercialization` | pending | pending |
+| Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `integration/tenant-commercialization` | merged | removed |
+| Story 11 - Strict File-Id-Only Project Media Closure | `story/tenant-commercialization/strict-file-id-media` | `../ArcReel-worktrees/tenant-commercialization/strict-file-id-media` | `integration/tenant-commercialization` | merged | removed |
+| Story 12 - Tenant Switch Project List Refresh | `story/tenant-commercialization/tenant-switch-project-refresh` | `../ArcReel-worktrees/tenant-commercialization/tenant-switch-project-refresh` | `integration/tenant-commercialization` | merged | removed |
 
 ## Blockers
 
@@ -518,6 +543,8 @@ These gates happen before implementation agents start. They are not story worktr
 | 2026-07-10 | Story 5 | Cyra | MinIO community/commercial licensing risk is not a code blocker but must be resolved before commercial release. | Track as product/legal release gate. |
 | 2026-07-10 | Story 6 | Dax | `project.json` remains local, so horizontal deployment requires shared filesystem or later project metadata migration. | Accept for first tenant edition; document deployment topology. |
 | 2026-07-10 | Story 8 | Iris/Nia | Manual asset sync overwrites snapshot data. | Require explicit frontend confirmation and backend `confirm_overwrite=true`. |
+| 2026-07-10 | Story 12 | Quinn | Browser acceptance found that switching tenants did not refresh the project list. | Fixed by `facc22d`; latest live browser acceptance verified project refetch/display after switch. |
+| 2026-07-10 | Residual worktree audit | PM | `residual-acceptance` contains uncommitted old QA/frontend changes. | Audited: frontend view-only changes are already superseded in integration; residual contract smoke is superseded by `camel_provisioning_contract_smoke.py`, `arcreel_minio_security_smoke.py`, and `arcreel_minio_persistence_smoke.py`. Worktree retained because it is dirty and not safe to remove. |
 
 ## Definition Of Done For This Sprint
 

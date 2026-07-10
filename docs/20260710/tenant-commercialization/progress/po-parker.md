@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-10
 **Main integration branch:** `integration/tenant-commercialization`
-**Reviewed head:** `986cd22`
-**Status:** accepted for integration-branch automated acceptance; final live container rebuild remains a release-evidence step
+**Reviewed head:** `4ee8d99`
+**Status:** accepted for local live acceptance
 
 ## Accepted Stories
 
@@ -11,7 +11,7 @@
 - Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline: accepted. Evidence: local PostgreSQL/Redis/MinIO stack and PG-only runtime evidence are recorded; acceptance container uses PostgreSQL app role and migrations.
 - Story 2 / 2A - Tenant Schema, RLS, And App Role Hardening: accepted. Evidence: RLS scenario runner and app-role regression evidence passed; runtime app role is non-superuser/non-BYPASSRLS.
 - Story 3 - Tenant Auth, Membership API, Redis Permission Cache: accepted. Evidence: scenario runner `auth_roles` passed 30 tests, live API smoke covered default personal tenant, tenant switching, role matrix, stale/denied paths, and API key tenant auth.
-- Story 4 - Frontend Tenant Switcher And Permission UX: accepted for tested tenant switch and role UI scope. Evidence: agent-browser verified login, default personal space, listbox tenant switch, view-only project controls hidden; `pnpm check` passed 925 tests.
+- Story 4 - Frontend Tenant Switcher And Permission UX: accepted for tested tenant switch and role UI scope. Evidence: agent-browser verified login, default personal space, listbox tenant switch, tenant project refetch after switch, and view-only project controls hidden; `pnpm check` passed 926 tests.
 - Story 5 - FileService, MinIO, Private Files, Signed URLs: accepted for private bucket and backend-signed access. Evidence: live API smoke, focused tenant/MinIO smoke, `arcreel_minio_security_smoke.py`, and restart persistence smoke passed.
 - Story 6 - Tenant Project System And File-Id Project JSON: accepted for tenant-scoped project registry, tenant paths, route isolation, and validator rejection of legacy media paths in covered flows.
 - Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys: accepted for tenant-aware config behavior. Evidence: tenant config scenario runner passed and live CaMeL bootstrap wrote tenant-scoped provider setup.
@@ -19,10 +19,12 @@
 - Story 9 - Generation Tasks, Worker Tenant Context, File Outputs: accepted for enqueue-time permission, tenant task visibility, worker tenant context, usage attribution, and FileService output records in covered flows.
 - Story 10 - Cross-Story QA, Security Review, Product Acceptance: accepted for local CaMeL + MinIO + tenant/browser acceptance evidence.
 - Story 11 - Strict File-Id-Only Project Media Closure: accepted for integration-branch automated acceptance. Evidence: integration branch `986cd22` passed Story11 targeted backend regression with 4 tests, scenario runner with 30 + 10 + 113 + 115 tests, frontend `pnpm check` with 107 test files and 925 tests, and scoped ruff check/format.
+- Story 12 - Tenant Switch Project List Refresh: accepted. Evidence: browser acceptance found Defect 005; fix `facc22d` makes project list refetch on tenant change; story and integration frontend `pnpm check` passed with 107 test files and 926 tests; rebuilt live runtime `arcreel-acceptance-current-20260710231108` showed `Persist j1` project immediately after switching tenants.
 
-## Remaining Release Evidence
+## Release Evidence
 
-- The current live acceptance container predates Story11. Final live release evidence must rebuild the acceptance container from `986cd22` or later and rerun the live smoke scripts before claiming live-runtime acceptance for Story11.
+- Latest local live acceptance used integration branch `4ee8d99`, image `arcreel-acceptance-current:integration`, container `arcreel-acceptance-current-20260710231108`, PostgreSQL DB `arcreel_acceptance_20260710231108`, Redis, MinIO `RELEASE.2025-04-22T22-12-26Z`, and the completed local CaMeL stack.
+- Live checks passed: API smoke 23 checks, tenant/role/MinIO smoke 4 checks, CaMeL provisioning contract 6 checks, MinIO security 4 checks, MinIO persistence seed/restart/verify, scenario runner 30 + 10 + 113 + 115 tests, frontend `pnpm check` 107 test files / 926 tests, and agent-browser owner/viewer click paths.
 
 ## Closed Follow-Up Story
 
@@ -40,4 +42,4 @@
 
 ## Verdict
 
-Tenant + CaMeL authorization login + MinIO private access are locally accepted from Story10 evidence. Strict file-id-only project media semantics are accepted on integration-branch automated evidence at `986cd22`; live-runtime evidence still requires rebuilding the acceptance container from that head.
+Tenant + CaMeL authorization login + MinIO private access + tenant switching + file-id media preview + manual asset sync are accepted on a latest-head local live runtime. No local acceptance blocker remains.

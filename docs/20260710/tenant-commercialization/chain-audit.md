@@ -1,7 +1,7 @@
 # Chain Audit: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** Story10 local live acceptance passed; Story11 file-id/grid closure passed integration-branch automated acceptance
+**Status:** latest-head local live acceptance passed
 
 This audit checks whether every critical chain has an entry path, authority source, data write path, permission check, failure mode, cache invalidation path, and test owner.
 
@@ -11,7 +11,7 @@ This audit checks whether every critical chain has an entry path, authority sour
 |-------|----------|--------------|--------------|
 | CaMeL login to personal tenant token | automated backend + live local CaMeL + browser | localhost/127.0.0.1 OAuth cookie host mismatch documented | Story 3 / Story 10 |
 | CaMeL provider/API key bootstrap | automated backend + live local CaMeL create/conflict/repair/client/scope contract smoke | none | Story 0 / Story 7 |
-| Tenant switch | automated backend/frontend | none | Story 3 / Story 4 |
+| Tenant switch | automated backend/frontend/browser | none | Story 3 / Story 4 / Story 12 |
 | Member CRUD and role matrix | automated backend | none | Story 3 |
 | Redis permission cache | automated backend + smoke | none | Story 3 |
 | PostgreSQL RLS context | automated backend | none for request path; local dev superuser bypass noted in Story 2 evidence | Story 2 |
@@ -21,7 +21,7 @@ This audit checks whether every critical chain has an entry path, authority sour
 | Project CRUD and file-id JSON | automated backend + live smoke | media artifacts and project route tenant roots verified; remaining legacy non-media consumers risk-tracked | Story 6 / Story 10 |
 | Asset library import/sync | automated backend/frontend | none | Story 8 |
 | Tenant provider/config/agent settings | automated backend + live CaMeL bootstrap | legacy provider API unit fixtures are not tenant-aware and are excluded from scenario runner | Story 7 / Story 10 |
-| Generation enqueue and worker writeback | automated backend | none in automated acceptance; live container must be rebuilt from Story11 head before final live-runtime claim | Story 9 / Story 10 / Story 11 |
+| Generation enqueue and worker writeback | automated backend | none in automated acceptance | Story 9 / Story 10 / Story 11 |
 | Usage/cost attribution | automated backend | aggregate report smoke remains Story10/live | Story 9 |
 | Frontend permission UX | automated frontend + browser login/switch/view-only/media/sync smoke | none for tenant/permission UI acceptance | Story 4 / Story 8 / Story 10 |
 
@@ -81,6 +81,21 @@ Story11 integration-branch automated acceptance after strict file-id merge:
 - Story11 targeted backend regression: `tests/test_generation_tasks_service.py::TestGenerationTasks::test_execute_grid_task_records_grid_and_cell_file_ids tests/test_project_file_id_validation.py -q` passed 4 tests.
 - Integration scenario runner: `auth_roles` 30 passed, `rls_config` 10 passed, `files_projects_assets` 113 passed, `generation_tasks_usage` 115 passed.
 - Frontend regression: `pnpm check` passed with 107 test files and 925 tests.
+
+Latest-head local live acceptance after Story12:
+
+- Integration branch: `integration/tenant-commercialization`, merge commit `4ee8d99`.
+- Fresh acceptance DB/container: `arcreel_acceptance_20260710231108` with container `arcreel-acceptance-current-20260710231108`.
+- Full empty-DB Alembic upgrade reached `8d7e6f5a4b3c`.
+- Live API smoke passed 23 checks.
+- Live tenant/MinIO smoke passed 4 checks.
+- CaMeL provisioning contract smoke passed 6 checks.
+- MinIO security smoke passed 4 checks.
+- MinIO persistence seed, app restart, and verify passed.
+- Scenario runner passed `auth_roles` 30, `rls_config` 10, `files_projects_assets` 113, `generation_tasks_usage` 115.
+- Frontend `pnpm check` passed 107 test files and 926 tests.
+- Browser owner path verified real CaMeL login, default personal space, listbox switch to `Persist j1`, project refetch/display, signed media preview, and manual asset sync.
+- Browser viewer path verified project visibility with write controls hidden, asset write controls unavailable, and signed media preview.
 
 ## Chain Details
 
@@ -218,6 +233,7 @@ Story11 integration-branch automated acceptance after strict file-id merge:
 
 ## Residual Risks Before Product Release
 
-- Defect 002 is closed by Story11 on integration-branch automated evidence. The remaining evidence gap is narrower: the live acceptance container must be rebuilt from `986cd22` or later before claiming Story11 live-runtime acceptance.
+- Defect 002 is closed by Story11 and covered by latest-head acceptance evidence.
+- Defect 005 was found during latest-head browser acceptance and closed by Story12 before final live rerun.
 - Older provider/custom-provider/credential API unit tests still use single-tenant fixtures without tenant principal/session context. Story7 tenant-aware tests pass and are used by the scenario runner, but these legacy unit fixtures should be migrated before broad full-suite CI is treated as authoritative.
 - MinIO community/commercial licensing is a product/legal release gate, not a local technical acceptance blocker.

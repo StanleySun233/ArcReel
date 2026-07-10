@@ -1,7 +1,7 @@
 # Scenario Test Matrix: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** local backend/browser acceptance passed; Story11 file-id/grid closure passed integration-branch automated acceptance
+**Status:** latest-head local backend/browser acceptance passed
 
 Coverage labels:
 
@@ -58,6 +58,18 @@ Result:
 - `files_projects_assets`: 113 passed, 1 warning.
 - `generation_tasks_usage`: 115 passed, 1 warning.
 
+Latest-head final acceptance:
+
+- Integration branch `4ee8d99`.
+- Fresh DB/container: `arcreel_acceptance_20260710231108` / `arcreel-acceptance-current-20260710231108`.
+- Live API smoke: 23 checks passed.
+- Tenant/role/MinIO smoke: 4 checks passed.
+- CaMeL provisioning contract smoke: 6 checks passed.
+- MinIO security smoke: 4 checks passed.
+- MinIO persistence seed/restart/verify: passed.
+- Frontend `pnpm check`: 107 test files and 926 tests passed.
+- Browser owner/viewer acceptance: passed login, default personal tenant, tenant listbox switch, team project refetch, view-only UI denial, signed media, and manual asset sync.
+
 Additional integration regression after Story6/8/9 merge:
 
 - Backend targeted suite: 218 passed, 1 warning.
@@ -98,7 +110,7 @@ Residual live acceptance extension after integration merge:
 - Final frontend regression after view-only UI fix: `pnpm lint` passed; `pnpm check` passed with 107 test files and 925 tests.
 - Final smoke-script static checks: `ruff check` and `ruff format --check` passed for `deploy/test/camel_provisioning_contract_smoke.py`, `deploy/test/arcreel_minio_security_smoke.py`, `deploy/test/arcreel_minio_persistence_smoke.py`, and `deploy/test/arcreel_ui_acceptance_setup.py`.
 
-Remaining non-closed scope is not a CaMeL/MinIO/browser evidence gap: `defects/defect-002-file-id-only-migration-gap.md` still tracks grid split and companion legacy media path behavior against the strict "project media references are file_id-only" design.
+No remaining local acceptance scope is open. Defect 002 and Defect 005 are closed.
 
 ## Auth And Tenant Selection
 
