@@ -4,10 +4,10 @@
 **Date:** 2026-07-10
 **Related story:** Story 6 / Story 9 / Story 10
 **Related subtask:** File-id project JSON and generation output writeback
-**Story branch:** story/tenant-commercialization/tenant-commercialization-qa
-**Story worktree:** ../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa
+**Story branch:** story/tenant-commercialization/strict-file-id-media
+**Story worktree:** ../ArcReel-worktrees/tenant-commercialization/strict-file-id-media
 **Severity:** major
-**Status:** fixed in Story 11; pending integration merge and final acceptance rerun
+**Status:** closed on integration branch `986cd22`; live container rebuild evidence remains tracked outside this defect
 
 ## Description
 
@@ -38,3 +38,5 @@ Story11 changes the commercial write/read path so generated media main fields pr
   - Evidence: `test_execute_grid_task_records_grid_and_cell_file_ids` asserts grid composite and split cells persist file IDs and write file IDs into scene generated assets.
 - [x] Run targeted checks.
   - Evidence: Python ruff check/format passed; Story11 targeted pytest passed; frontend `pnpm check` passed with 107 test files and 925 tests.
+- [x] Run integration-branch regression after Story11 merge.
+  - Evidence: integration branch `986cd22` passed scoped ruff check/format, Story11 targeted pytest `4 passed`, scenario runner `30 + 10 + 113 + 115 passed`, and frontend `pnpm check` with 107 test files and 925 tests.

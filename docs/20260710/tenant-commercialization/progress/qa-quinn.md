@@ -41,7 +41,7 @@
 | Fresh stack | Container `arcreel-acceptance-current-20260710214815`, DB `arcreel_acceptance_20260710214815`, Alembic head `8d7e6f5a4b3c` |
 | Live API smoke | `deploy/test/arcreel_api_smoke.py` passed 23 checks |
 | Focused tenant/MinIO smoke | `deploy/test/arcreel_tenant_role_minio_smoke.py` passed 4 checks |
-| Scenario runner | 30 + 10 + 113 + 114 tests passed |
+| Scenario runner | 30 + 10 + 113 + 114 tests passed before Story11 |
 | Frontend | `pnpm lint && pnpm check` passed; 107 test files, 923 tests |
 | Targeted backend | `tests/test_assets_router.py tests/test_db_engine.py tests/test_files_api_minio.py -q`: 14 passed |
 | Static | ruff check/format passed for Story10 changed Python files; scoped basedpyright for smoke scripts: 0 errors, 0 warnings |
@@ -54,7 +54,7 @@
 | Fresh stack | Container `arcreel-acceptance-current-20260710220207`, DB `arcreel_acceptance_20260710220207`, Alembic head `8d7e6f5a4b3c` |
 | Live API smoke | `deploy/test/arcreel_api_smoke.py` passed 23 checks |
 | Focused tenant/MinIO smoke | `deploy/test/arcreel_tenant_role_minio_smoke.py` passed 4 checks |
-| Scenario runner | 30 + 10 + 113 + 114 tests passed |
+| Scenario runner | 30 + 10 + 113 + 114 tests passed before Story11 |
 | Frontend | `pnpm lint && pnpm check` passed; 107 test files, 923 tests |
 | Targeted backend | `tests/test_assets_router.py tests/test_db_engine.py tests/test_files_api_minio.py -q`: 14 passed |
 
@@ -69,3 +69,14 @@
 | Browser deep checks | View tenant cannot see project/asset write actions; signed media loads via backend file endpoints; owner personal asset sync confirmation and result verified |
 | Frontend final | `pnpm lint` passed; `pnpm check` passed with 107 test files and 925 tests |
 | Smoke script static | `ruff check` and `ruff format --check` passed for the four live acceptance helper scripts |
+
+## Story11 Integration Evidence
+
+| Area | Evidence |
+|------|----------|
+| Merge | `integration/tenant-commercialization` at merge commit `986cd22` |
+| Static | scoped ruff check and format check passed for Story11 files |
+| Targeted backend | Story11 file-id/grid regression and project file-id validation: 4 passed |
+| Scenario runner | 30 + 10 + 113 + 115 tests passed |
+| Frontend | `pnpm check` passed; 107 test files, 925 tests |
+| Remaining live evidence | The current live container predates Story11; rebuild from `986cd22` or later before claiming Story11 live-runtime acceptance |

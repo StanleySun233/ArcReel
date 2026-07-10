@@ -1,7 +1,7 @@
 # Scenario Test Matrix: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** local backend/browser acceptance passed; file-id/grid residual remains tracked in Defect 002
+**Status:** local backend/browser acceptance passed; Story11 file-id/grid closure passed integration-branch automated acceptance
 
 Coverage labels:
 
@@ -56,7 +56,7 @@ Result:
 - `auth_roles`: 30 passed, 1 warning.
 - `rls_config`: 10 passed.
 - `files_projects_assets`: 113 passed, 1 warning.
-- `generation_tasks_usage`: 114 passed, 1 warning.
+- `generation_tasks_usage`: 115 passed, 1 warning.
 
 Additional integration regression after Story6/8/9 merge:
 
@@ -82,7 +82,7 @@ Integration merge acceptance evidence:
 - Fresh integration migration head: `8d7e6f5a4b3c`.
 - Integration live API smoke: 23 checks passed.
 - Integration focused tenant/MinIO smoke: 4 checks passed.
-- Integration scenario runner: 30 + 10 + 113 + 114 tests passed.
+- Pre-Story11 integration scenario runner: 30 + 10 + 113 + 114 tests passed.
 - Integration frontend: `pnpm lint && pnpm check`, 107 test files and 923 tests passed.
 - Integration targeted backend: 14 tests passed.
 

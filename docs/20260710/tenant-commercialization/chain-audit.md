@@ -1,7 +1,7 @@
 # Chain Audit: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** Story10 local live acceptance passed; file-id/grid residual remains tracked in Defect 002
+**Status:** Story10 local live acceptance passed; Story11 file-id/grid closure passed integration-branch automated acceptance
 
 This audit checks whether every critical chain has an entry path, authority source, data write path, permission check, failure mode, cache invalidation path, and test owner.
 
@@ -21,7 +21,7 @@ This audit checks whether every critical chain has an entry path, authority sour
 | Project CRUD and file-id JSON | automated backend + live smoke | media artifacts and project route tenant roots verified; remaining legacy non-media consumers risk-tracked | Story 6 / Story 10 |
 | Asset library import/sync | automated backend/frontend | none | Story 8 |
 | Tenant provider/config/agent settings | automated backend + live CaMeL bootstrap | legacy provider API unit fixtures are not tenant-aware and are excluded from scenario runner | Story 7 / Story 10 |
-| Generation enqueue and worker writeback | automated backend | grid split cell file-id migration remains tracked in Defect 002 | Story 9 / Story 10 |
+| Generation enqueue and worker writeback | automated backend | none in automated acceptance; live container must be rebuilt from Story11 head before final live-runtime claim | Story 9 / Story 10 / Story 11 |
 | Usage/cost attribution | automated backend | aggregate report smoke remains Story10/live | Story 9 |
 | Frontend permission UX | automated frontend + browser login/switch/view-only/media/sync smoke | none for tenant/permission UI acceptance | Story 4 / Story 8 / Story 10 |
 
@@ -34,7 +34,7 @@ This audit checks whether every critical chain has an entry path, authority sour
 | `auth_roles` | 30 passed, 1 warning | AUTH-01, AUTH-03, AUTH-04, AUTH-05, AUTH-06, AUTH-07, ROLE-01, ROLE-04, ROLE-05, ROLE-06, ROLE-09, CFG-06, CFG-07 |
 | `rls_config` | 10 passed | RLS-01, RLS-02, RLS-03, RLS-04, RLS-06, CFG-01, CFG-02, CFG-03, CFG-04, CFG-05, CAMEL-08, CAMEL-09 |
 | `files_projects_assets` | 113 passed, 1 warning | FILE-01, FILE-02, FILE-04, FILE-05, PROJ-01, PROJ-02, PROJ-03, PROJ-04, PROJ-05, PROJ-06, PROJ-07, ASSET-01, ASSET-02, ASSET-03, ASSET-04, ASSET-06, ASSET-07, ASSET-08, ASSET-09 |
-| `generation_tasks_usage` | 114 passed, 1 warning | GEN-01, GEN-02, GEN-03, GEN-04, GEN-05, GEN-06, GEN-07, GEN-08 |
+| `generation_tasks_usage` | 115 passed, 1 warning | GEN-01, GEN-02, GEN-03, GEN-04, GEN-05, GEN-06, GEN-07, GEN-08 |
 
 Integration branch regression after Story6/8/9 merge also passed:
 
@@ -73,6 +73,14 @@ Residual live acceptance extension after integration merge:
 - MinIO persistence smoke: `deploy/test/arcreel_minio_persistence_smoke.py --phase seed`, ArcReel app restart, then `--phase verify` passed project/file persistence and backend signed URL access.
 - Browser deep checks: view-only project lobby write controls hidden; view-only tenant asset library create/edit/delete unavailable; signed media loaded only through backend signed URL/content endpoints; owner personal asset manual sync confirmation and result verified.
 - Frontend final regression: `pnpm lint` passed; `pnpm check` passed with 107 test files and 925 tests.
+
+Story11 integration-branch automated acceptance after strict file-id merge:
+
+- Integration branch: `integration/tenant-commercialization`, merge commit `986cd22`.
+- Scoped Python ruff check and format check for Story11 files passed.
+- Story11 targeted backend regression: `tests/test_generation_tasks_service.py::TestGenerationTasks::test_execute_grid_task_records_grid_and_cell_file_ids tests/test_project_file_id_validation.py -q` passed 4 tests.
+- Integration scenario runner: `auth_roles` 30 passed, `rls_config` 10 passed, `files_projects_assets` 113 passed, `generation_tasks_usage` 115 passed.
+- Frontend regression: `pnpm check` passed with 107 test files and 925 tests.
 
 ## Chain Details
 
@@ -210,6 +218,6 @@ Residual live acceptance extension after integration merge:
 
 ## Residual Risks Before Product Release
 
-- Defect 002 remains open: generation outputs create FileService records and companion `*_file_id` fields in tested flows, but some legacy path fields and grid split cell outputs still need a strict file-id-only closure decision or migration.
+- Defect 002 is closed by Story11 on integration-branch automated evidence. The remaining evidence gap is narrower: the live acceptance container must be rebuilt from `986cd22` or later before claiming Story11 live-runtime acceptance.
 - Older provider/custom-provider/credential API unit tests still use single-tenant fixtures without tenant principal/session context. Story7 tenant-aware tests pass and are used by the scenario runner, but these legacy unit fixtures should be migrated before broad full-suite CI is treated as authoritative.
 - MinIO community/commercial licensing is a product/legal release gate, not a local technical acceptance blocker.

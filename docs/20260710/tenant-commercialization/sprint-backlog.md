@@ -58,7 +58,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** The tenant edition can rely on CaMeL OAuth and initial provider/API key bootstrap without ArcReel-side redirect weakness or unverified external contract assumptions.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] CaMeL-api is treated as a completed external dependency; this sprint does not modify CaMeL-api files, branches, tests, or worktrees.
@@ -81,7 +81,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Developers and CI run against the same class of infrastructure as the commercial edition: PostgreSQL, Redis, and private MinIO.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Local middleware compose provides PostgreSQL, Redis, MinIO API, and MinIO Console with fixed MinIO release tag.
@@ -108,7 +108,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Tenant-owned rows are isolated by both application code and PostgreSQL RLS, so accidental cross-tenant SQL does not leak business data.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] `users` stores CaMeL identity without using display name as a unique authorization key.
@@ -136,7 +136,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** ArcReel connects to PostgreSQL through a non-superuser app role, so PostgreSQL RLS is an active production safety boundary instead of a bypassed policy.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Local middleware creates or updates an `arcreel_app` login role with `NOSUPERUSER` and `NOBYPASSRLS`.
@@ -161,7 +161,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** A CaMeL-authenticated user gets a personal tenant by default, can switch into memberships manually, and every backend request uses current real tenant permission.
 **Status:** implementation complete
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] CaMeL login creates personal tenant if missing and signs token for personal tenant.
@@ -191,7 +191,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Users see the current tenant, switch tenants deliberately, and the UI updates role-gated actions without trusting cached role for backend authorization.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Auth store persists token, current tenant, tenant list, cached role, and owner flag.
@@ -219,7 +219,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Media artifacts are stored privately in MinIO, referenced by `file_id`, and exposed to browsers only through authorized short-lived signed URLs.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] `files` table stores object metadata and alias; object key is `{uuid}.{ext}`.
@@ -247,7 +247,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Projects are created and read inside a tenant-scoped project registry and local tenant directory, while all media references use `file_id`.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Project registry table enforces `unique(tenant_id, name)`.
@@ -275,7 +275,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Each tenant has its own provider credentials, custom providers, defaults, Agent credentials, and API keys; personal configuration lives in the personal tenant.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Provider config and system settings are tenant-scoped.
@@ -304,7 +304,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Users can manage personal and tenant asset libraries, import across readable libraries as snapshots, and manually sync from the source when desired.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Asset entity stores file_id media references.
@@ -334,7 +334,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Generation requests enforce permission at submission time, run later under the captured tenant context, and write all outputs as file IDs.
 **Status:** completed
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Task rows include `tenant_id` and `requested_by_user_id`.
@@ -354,7 +354,7 @@ These gates happen before implementation agents start. They are not story worktr
 - [x] Dax: Update usage/cost tracking to include tenant_id. (depends: Story 2)
 - [x] Quinn: Verify enqueue permission, post-enqueue role change, worker writeback, and tenant-scoped task queries. (depends: implementation)
 
-**QA Evidence:** Story worktree generation/task regression suite passed with `114 passed, 1 warning`; `ruff check`, `ruff format --check`, and `basedpyright` passed with `0 errors`; merged into integration with merge commit `67b7f53`. Scope note: generation outputs now create FileService records and companion `*_file_id` fields while preserving legacy path fields; grid split cell outputs still require Story10 audit/follow-up.
+**QA Evidence:** Story worktree generation/task regression suite passed with `114 passed, 1 warning`; `ruff check`, `ruff format --check`, and `basedpyright` passed with `0 errors`; merged into integration with merge commit `67b7f53`. Story11 later closed the strict file-id media residual and integration scenario runner now passes generation/task coverage with 115 tests.
 
 ### Story 10 - Cross-Story QA, Security Review, Product Acceptance
 
@@ -362,7 +362,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** The tenant edition has evidence that the critical cross-tenant, file-access, and auth flows work together before implementation is accepted.
 **Status:** implementation complete
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Fresh PostgreSQL + Redis + MinIO environment can start from empty state.
@@ -384,9 +384,9 @@ These gates happen before implementation agents start. They are not story worktr
 - [x] Quinn: Build frontend integration test matrix for tenant switching and permission UI. (depends: frontend stories)
 - [x] Quinn: Run targeted test suites and record command output. (depends: all stories)
 - [x] Quinn: File defects under `docs/20260710/tenant-commercialization/defects/`. (depends: failures)
-- [ ] Parker: Product Owner review of all acceptance criteria from the main integration branch. (depends: QA passed)
+- [x] Parker: Product Owner review of all acceptance criteria from the main integration branch. (depends: QA passed)
 
-**QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. After merging Story10, integration acceptance also passed on `arcreel-acceptance-current-20260710220207` / `arcreel_acceptance_20260710220207` at merge commit `056e8b7`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, CaMeL contract smoke passed 6 checks, MinIO security smoke passed, MinIO restart persistence smoke passed, browser smoke passed CaMeL login/default personal space/listbox tenant switch/view-only project and asset UI/signed media preview/manual asset sync, frontend `pnpm lint && pnpm check` passed 107 test files and 925 tests, targeted backend regression passed 14 tests, and scenario runner passed 30 + 10 + 113 + 114 tests. Remaining file-id-only scope is tracked in `defects/defect-002-file-id-only-migration-gap.md`.
+**QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. After merging Story10, integration acceptance also passed on `arcreel-acceptance-current-20260710220207` / `arcreel_acceptance_20260710220207` at merge commit `056e8b7`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, CaMeL contract smoke passed 6 checks, MinIO security smoke passed, MinIO restart persistence smoke passed, browser smoke passed CaMeL login/default personal space/listbox tenant switch/view-only project and asset UI/signed media preview/manual asset sync, frontend `pnpm lint && pnpm check` passed 107 test files and 925 tests, targeted backend regression passed 14 tests, and pre-Story11 scenario runner passed 30 + 10 + 113 + 114 tests. Story11 later closed the remaining file-id-only scope.
 
 ### Story 11 - Strict File-Id-Only Project Media Closure
 
@@ -394,7 +394,7 @@ These gates happen before implementation agents start. They are not story worktr
 **User value:** Commercial project media state has one authoritative file reference model, so generated image/video/audio and grid outputs cannot drift between legacy paths and `file_id`.
 **Status:** implementation complete
 **QA Status:** passed
-**PO Status:** pending
+**PO Status:** accepted
 
 **Acceptance Criteria**
 - [x] Storyboard, video, thumbnail, narration audio, reference-video, grid composite, and grid split cell writeback treat file IDs as authoritative when FileService records exist.
@@ -410,7 +410,7 @@ These gates happen before implementation agents start. They are not story worktr
 - [x] Story11: Make frontend media consumers prefer file IDs and backend signed URLs. (depends: file signing API)
 - [x] Story11: Add grid split file-id regression and run frontend/backend checks. (depends: implementation)
 
-**QA Evidence:** Story worktree `story/tenant-commercialization/strict-file-id-media` passed Python ruff check/format, targeted pytest `4 passed`, and frontend `pnpm check` with 107 test files and 925 tests. Implementation commit `c10d646`.
+**QA Evidence:** Story worktree `story/tenant-commercialization/strict-file-id-media` passed Python ruff check/format, targeted pytest `4 passed`, and frontend `pnpm check` with 107 test files and 925 tests. Implementation commit `c10d646`. Integration branch `986cd22` passed scoped ruff check/format, targeted pytest `4 passed`, scenario runner `30 + 10 + 113 + 115 passed`, and frontend `pnpm check` with 107 test files and 925 tests.
 
 ## File Ownership
 

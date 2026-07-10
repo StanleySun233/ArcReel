@@ -2,8 +2,8 @@
 
 **Date:** 2026-07-10
 **Main integration branch:** `integration/tenant-commercialization`
-**Reviewed head:** `8cf6d69`
-**Status:** partially accepted; strict file-id-only scope rejected until Defect 002 is closed
+**Reviewed head:** `986cd22`
+**Status:** accepted for integration-branch automated acceptance; final live container rebuild remains a release-evidence step
 
 ## Accepted Stories
 
@@ -17,14 +17,14 @@
 - Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys: accepted for tenant-aware config behavior. Evidence: tenant config scenario runner passed and live CaMeL bootstrap wrote tenant-scoped provider setup.
 - Story 8 - Asset Libraries, Snapshot Import, Manual Sync: accepted for personal/tenant asset libraries, snapshot import, manual sync, and view-only UI. Evidence: scenario runner asset group passed and agent-browser verified signed media preview plus sync confirmation/result.
 - Story 9 - Generation Tasks, Worker Tenant Context, File Outputs: accepted for enqueue-time permission, tenant task visibility, worker tenant context, usage attribution, and FileService output records in covered flows.
-- Story 10 - Cross-Story QA, Security Review, Product Acceptance: accepted for local CaMeL + MinIO + tenant/browser acceptance evidence, but not for strict full-scope completion because Defect 002 remains open.
+- Story 10 - Cross-Story QA, Security Review, Product Acceptance: accepted for local CaMeL + MinIO + tenant/browser acceptance evidence.
+- Story 11 - Strict File-Id-Only Project Media Closure: accepted for integration-branch automated acceptance. Evidence: integration branch `986cd22` passed Story11 targeted backend regression with 4 tests, scenario runner with 30 + 10 + 113 + 115 tests, frontend `pnpm check` with 107 test files and 925 tests, and scoped ruff check/format.
 
-## Rejected Scope
+## Remaining Release Evidence
 
-- Strict "project media references are file_id-only everywhere" is rejected. Defect 002 remains open: generation outputs still preserve companion legacy path fields in some flows, and grid split cell outputs still require a dedicated file-id-only migration/regression.
-- Sprint completion is not accepted as 100% until Defect 002 is either fixed or explicitly removed from the commercial release scope by product decision.
+- The current live acceptance container predates Story11. Final live release evidence must rebuild the acceptance container from `986cd22` or later and rerun the live smoke scripts before claiming live-runtime acceptance for Story11.
 
-## Follow-Up Story Required
+## Closed Follow-Up Story
 
 ### Story 11 - Strict File-Id-Only Project Media Closure
 
@@ -40,4 +40,4 @@
 
 ## Verdict
 
-Tenant + CaMeL authorization login + MinIO private access are locally accepted. Full original objective is not complete because strict file-id-only project media semantics are not yet proven.
+Tenant + CaMeL authorization login + MinIO private access are locally accepted from Story10 evidence. Strict file-id-only project media semantics are accepted on integration-branch automated evidence at `986cd22`; live-runtime evidence still requires rebuilding the acceptance container from that head.
