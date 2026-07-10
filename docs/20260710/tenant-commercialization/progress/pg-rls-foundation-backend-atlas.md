@@ -22,9 +22,9 @@
   - Commit: edbb97b
 - [x] Convert DB fixtures to PostgreSQL-only.
   - Commit: 265f9b2
-- [ ] Add tenant, membership, tenant-owned model columns, migrations, indexes, and RLS policies.
+- [x] Add tenant, membership, tenant-owned model columns, migrations, indexes, and RLS policies.
   - Commit: pending
-- [ ] Add deny-by-default and cross-tenant RLS tests.
+- [x] Add deny-by-default and cross-tenant RLS tests.
   - Commit: pending
 - [x] Convert SQLite-only Alembic tests to PostgreSQL.
   - Commit: 93423e0
@@ -62,7 +62,34 @@ DATABASE_URL=postgresql+asyncpg://arcreel:arcreel_dev_password@127.0.0.1:15432/a
 23 passed in 6.49s
 ```
 
-**Ready for QA:** Story 1 yes; Story 2 no
+```text
+DATABASE_URL=postgresql+asyncpg://arcreel:arcreel_dev_password@127.0.0.1:15432/arcreel \
+  /data/data1/HOME_DIR/sijin/miniconda3/bin/conda run -n arcreel python -m pytest \
+  tests/test_db_engine.py \
+  tests/test_pg_runtime_baseline.py \
+  tests/test_db_models.py \
+  tests/test_auth_api_key.py \
+  tests/test_alembic_custom_provider_endpoint.py \
+  tests/test_alembic_custom_provider_max_workers.py \
+  tests/test_alembic_split_default_image_backend.py \
+  tests/test_alembic_supported_durations_backfill.py \
+  tests/test_tenant_rls.py \
+  tests/test_tenant_context.py -q
+
+51 passed in 8.17s
+```
+
+```text
+/data/data1/HOME_DIR/sijin/miniconda3/bin/conda run -n arcreel python -m compileall -q \
+  lib/db/base.py lib/db/tenant_context.py lib/db/models tests/alembic_pg.py \
+  tests/test_tenant_rls.py tests/test_tenant_context.py tests/test_db_models.py \
+  tests/test_auth_api_key.py tests/test_alembic_split_default_image_backend.py \
+  alembic/versions/f4a2c8d9e012_add_tenant_schema_rls.py
+
+passed
+```
+
+**Ready for QA:** Story 1 yes; Story 2 yes
 
 ## Blockers
 
@@ -70,3 +97,5 @@ DATABASE_URL=postgresql+asyncpg://arcreel:arcreel_dev_password@127.0.0.1:15432/a
 |------|---------|---------|--------|
 | 2026-07-10 | PostgreSQL baseline | Existing canonical fixtures and Alembic tests still included SQLite assumptions. | resolved |
 | 2026-07-10 | Runtime engine verification | `ruff` is not available in the recorded conda environment; no dependency install was performed. | tracked |
+| 2026-07-10 | Story 2 type verification | `basedpyright` is not available in the recorded conda environment; no dependency install was performed. | tracked |
+| 2026-07-10 | Story 2 RLS verification | The local dev `arcreel` database role has `SUPERUSER` and `BYPASSRLS`, so RLS tests use a temporary non-superuser role with schema grants. | resolved |

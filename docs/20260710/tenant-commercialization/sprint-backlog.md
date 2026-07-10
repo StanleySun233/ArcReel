@@ -105,29 +105,29 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** tenant-schema-rls
 **User value:** Tenant-owned rows are isolated by both application code and PostgreSQL RLS, so accidental cross-tenant SQL does not leak business data.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] `users` stores CaMeL identity without using display name as a unique authorization key.
-- [ ] `tenants` and `tenant_memberships` exist with owner rules and role enum/checks.
-- [ ] Tenant-owned tables have `tenant_id` and indexes/unique constraints scoped by tenant.
-- [ ] RLS is enabled for tenant-owned business tables.
-- [ ] DB session context sets `app.current_user_id` and `app.current_tenant_id` per request/worker transaction.
-- [ ] Missing tenant context denies tenant-owned table access in integration tests.
-- [ ] `files` remains global and is not protected by a fake single-tenant ownership column.
+- [x] `users` stores CaMeL identity without using display name as a unique authorization key.
+- [x] `tenants` and `tenant_memberships` exist with owner rules and role enum/checks.
+- [x] Tenant-owned tables have `tenant_id` and indexes/unique constraints scoped by tenant.
+- [x] RLS is enabled for tenant-owned business tables.
+- [x] DB session context sets `app.current_user_id` and `app.current_tenant_id` per request/worker transaction.
+- [x] Missing tenant context denies tenant-owned table access in integration tests.
+- [x] `files` remains global and is not protected by a fake single-tenant ownership column.
 
 **Engineering Subtasks**
-- [ ] Atlas: Add tenant/membership/project/file/asset-binding ORM models in `lib/db/models/tenant.py`, `lib/db/models/project.py`, `lib/db/models/file.py`, and update `lib/db/models/__init__.py`. (depends: Story 1)
-- [ ] Atlas: Replace `UserOwnedMixin` assumptions with tenant-aware model mixins in `lib/db/base.py`. (depends: Story 1)
-- [ ] Atlas: Add tenant columns to `Task`, `TaskEvent`, API calls, API keys, config, credentials, custom providers, agent credentials, usage/cost models. (depends: model inventory)
-- [ ] Atlas: Create PostgreSQL Alembic migration for new tables, tenant columns, scoped unique constraints, indexes, and RLS policies. (depends: models)
-- [ ] Atlas: Add DB context helper for setting PostgreSQL `app.current_user_id` and `app.current_tenant_id` in `lib/db/tenant_context.py`. (depends: engine)
-- [ ] Atlas: Add RLS integration tests in `tests/test_tenant_rls.py`. (depends: migration)
-- [ ] Quinn: Verify cross-tenant deny and same-tenant allow cases under PostgreSQL. (depends: implementation)
+- [x] Atlas: Add tenant/membership/project/file/asset-binding ORM models in `lib/db/models/tenant.py`, `lib/db/models/project.py`, `lib/db/models/file.py`, and update `lib/db/models/__init__.py`. (depends: Story 1)
+- [x] Atlas: Replace `UserOwnedMixin` assumptions with tenant-aware model mixins in `lib/db/base.py`. (depends: Story 1)
+- [x] Atlas: Add tenant columns to `Task`, `TaskEvent`, API calls, API keys, config, credentials, custom providers, agent credentials, usage/cost models. (depends: model inventory)
+- [x] Atlas: Create PostgreSQL Alembic migration for new tables, tenant columns, scoped unique constraints, indexes, and RLS policies. (depends: models)
+- [x] Atlas: Add DB context helper for setting PostgreSQL `app.current_user_id` and `app.current_tenant_id` in `lib/db/tenant_context.py`. (depends: engine)
+- [x] Atlas: Add RLS integration tests in `tests/test_tenant_rls.py`. (depends: migration)
+- [x] Quinn: Verify cross-tenant deny and same-tenant allow cases under PostgreSQL. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Story 2 PostgreSQL/RLS regression slice passed with `51 passed in 8.17s`; Python compile check passed. RLS tests use a temporary non-superuser role because the local dev `arcreel` role has `SUPERUSER` and `BYPASSRLS`.
 
 ### Story 3 - Tenant Auth, Membership API, Redis Permission Cache
 

@@ -61,10 +61,10 @@ def test_downgrade_drops_only_new_keys(alembic_pg: AlembicPostgresDb):
     command.upgrade(alembic_pg.cfg, "head")
 
     alembic_pg.execute(
-        "INSERT INTO system_setting (key, value, updated_at) "
-        "VALUES ('default_image_backend', 'openai/legacy', CURRENT_TIMESTAMP), "
-        "('default_image_backend_t2i', 'openai/t2i', CURRENT_TIMESTAMP), "
-        "('default_image_backend_i2i', 'openai/i2i', CURRENT_TIMESTAMP)"
+        "INSERT INTO system_setting (tenant_id, user_id, key, value, updated_at) "
+        "VALUES ('ten_default', 'default', 'default_image_backend', 'openai/legacy', CURRENT_TIMESTAMP), "
+        "('ten_default', 'default', 'default_image_backend_t2i', 'openai/t2i', CURRENT_TIMESTAMP), "
+        "('ten_default', 'default', 'default_image_backend_i2i', 'openai/i2i', CURRENT_TIMESTAMP)"
     )
 
     command.downgrade(alembic_pg.cfg, "eedf0aa985e6")

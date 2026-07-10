@@ -7,15 +7,16 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lib.db.base import Base, UserOwnedMixin, utc_now
+from lib.db.base import Base, TenantOwnedMixin, UserOwnedMixin, utc_now
 
 
-class ProviderConfig(UserOwnedMixin, Base):
+class ProviderConfig(TenantOwnedMixin, UserOwnedMixin, Base):
     __tablename__ = "provider_config"
     __table_args__ = (
-        UniqueConstraint("user_id", "provider", "key", name="uq_provider_config_user_provider_key"),
+        UniqueConstraint("tenant_id", "provider", "key", name="uq_provider_config_tenant_provider_key"),
         Index("ix_provider_config_provider", "provider"),
         Index("ix_provider_config_user_provider", "user_id", "provider"),
+        Index("ix_provider_config_tenant_provider", "tenant_id", "provider"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -28,9 +29,9 @@ class ProviderConfig(UserOwnedMixin, Base):
     )
 
 
-class SystemSetting(UserOwnedMixin, Base):
+class SystemSetting(TenantOwnedMixin, UserOwnedMixin, Base):
     __tablename__ = "system_setting"
-    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_system_setting_user_key"),)
+    __table_args__ = (UniqueConstraint("tenant_id", "key", name="uq_system_setting_tenant_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     key: Mapped[str] = mapped_column(String(64), nullable=False)

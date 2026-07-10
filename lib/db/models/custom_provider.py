@@ -5,10 +5,10 @@ from __future__ import annotations
 from sqlalchemy import Boolean, CheckConstraint, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lib.db.base import Base, TimestampMixin, UserOwnedMixin
+from lib.db.base import Base, TenantOwnedMixin, TimestampMixin, UserOwnedMixin
 
 
-class CustomProvider(TimestampMixin, UserOwnedMixin, Base):
+class CustomProvider(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
     """用户自定义的 AI 供应商。"""
 
     __tablename__ = "custom_provider"
@@ -48,12 +48,13 @@ class CustomProvider(TimestampMixin, UserOwnedMixin, Base):
         return make_provider_id(self.id)
 
 
-class CustomProviderModel(TimestampMixin, Base):
+class CustomProviderModel(TimestampMixin, TenantOwnedMixin, Base):
     """自定义供应商下的模型配置。"""
 
     __tablename__ = "custom_provider_model"
     __table_args__ = (
-        UniqueConstraint("provider_id", "model_id", name="uq_custom_provider_model"),
+        UniqueConstraint("tenant_id", "provider_id", "model_id", name="uq_custom_provider_model_tenant"),
+        Index("ix_custom_provider_model_tenant", "tenant_id"),
         Index("ix_custom_provider_model_provider_id", "provider_id"),
     )
 

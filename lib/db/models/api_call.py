@@ -8,10 +8,10 @@ import sqlalchemy as sa
 from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lib.db.base import Base, TimestampMixin, UserOwnedMixin
+from lib.db.base import Base, TenantOwnedMixin, TimestampMixin, UserOwnedMixin
 
 
-class ApiCall(TimestampMixin, UserOwnedMixin, Base):
+class ApiCall(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
     __tablename__ = "api_calls"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -46,4 +46,6 @@ class ApiCall(TimestampMixin, UserOwnedMixin, Base):
         Index("idx_api_calls_call_type", "call_type"),
         Index("idx_api_calls_status", "status"),
         Index("idx_api_calls_started_at", "started_at"),
+        Index("idx_api_calls_tenant_project_name", "tenant_id", "project_name"),
+        Index("idx_api_calls_tenant_started_at", "tenant_id", "started_at"),
     )

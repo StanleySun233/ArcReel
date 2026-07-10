@@ -40,3 +40,12 @@ class UserOwnedMixin:
         server_default=DEFAULT_USER_ID,
         index=True,
     )
+
+
+class TenantOwnedMixin:
+    tenant_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )

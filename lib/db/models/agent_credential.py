@@ -1,27 +1,19 @@
-"""Agent Anthropic 凭证 ORM。
-
-每个 user 至多一条 is_active=True，由 partial unique index 保证 (与
-ProviderCredential 同模式)。
-"""
-
 from __future__ import annotations
 
 from sqlalchemy import Boolean, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lib.db.base import DEFAULT_USER_ID, Base, TimestampMixin
+from lib.db.base import DEFAULT_USER_ID, Base, TenantOwnedMixin, TimestampMixin
 
 
-class AgentAnthropicCredential(TimestampMixin, Base):
-    """用户保存的多套 Anthropic 凭证；可在 UI 上一键切换 active。"""
-
+class AgentAnthropicCredential(TimestampMixin, TenantOwnedMixin, Base):
     __tablename__ = "agent_anthropic_credentials"
     __table_args__ = (
         Index("ix_agent_credential_user", "user_id"),
-        # 每个 user 至多一条 is_active=True
+        Index("ix_agent_credential_tenant", "tenant_id"),
         Index(
-            "uq_agent_credential_one_active_per_user",
-            "user_id",
+            "uq_agent_credential_one_active_per_tenant",
+            "tenant_id",
             unique=True,
             sqlite_where=text("is_active = 1"),
             postgresql_where=text("is_active"),

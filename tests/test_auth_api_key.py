@@ -15,6 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 from lib.db.models.api_key import ApiKey
+from lib.db.models.tenant import Tenant, TenantMembership
 from lib.db.models.user import User
 import server.auth as auth_module
 
@@ -158,8 +159,34 @@ class TestApiKeyOwnerResolution:
         key = "arc-owner-key"
         key_hash = auth_module._hash_api_key(key)
         async with async_session.begin():
-            async_session.add(User(id="camel:owner", username="owner", role="user", is_active=True))
+            async_session.add(
+                User(
+                    id="camel:owner",
+                    username="owner",
+                    provider="camel",
+                    provider_subject="owner",
+                    role="user",
+                    is_active=True,
+                )
+            )
             await async_session.flush()
+            async_session.add(
+                Tenant(
+                    id="ten_owner",
+                    name="Owner Tenant",
+                    owner_user_id="camel:owner",
+                    created_by_user_id="camel:owner",
+                )
+            )
+            await async_session.flush()
+            async_session.add(
+                TenantMembership(
+                    tenant_id="ten_owner",
+                    user_id="camel:owner",
+                    role="admin",
+                    created_by_user_id="camel:owner",
+                )
+            )
             async_session.add(
                 ApiKey(
                     name="owner-key",
@@ -167,6 +194,7 @@ class TestApiKeyOwnerResolution:
                     key_prefix=key[:8],
                     expires_at=datetime.now(UTC) + timedelta(days=1),
                     user_id="camel:owner",
+                    tenant_id="ten_owner",
                 )
             )
 

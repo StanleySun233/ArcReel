@@ -4,12 +4,16 @@ from lib.db.models.agent_credential import AgentAnthropicCredential
 from lib.db.models.api_call import ApiCall
 from lib.db.models.api_key import ApiKey
 from lib.db.models.asset import Asset
+from lib.db.models.asset_binding import AssetLibraryBinding
 from lib.db.models.config import ProviderConfig, SystemSetting
 from lib.db.models.credential import ProviderCredential
 from lib.db.models.custom_provider import CustomProvider, CustomProviderModel
+from lib.db.models.file import File, FileLink
+from lib.db.models.project import Project
 from lib.db.models.session import AgentSession
 from lib.db.models.session_event import AgentSessionEventLogEntry
 from lib.db.models.task import Task, TaskEvent, WorkerLease
+from lib.db.models.tenant import Tenant, TenantMembership
 from lib.db.models.user import User
 
 __all__ = [
@@ -23,9 +27,15 @@ __all__ = [
     "ProviderConfig",
     "SystemSetting",
     "User",
+    "Tenant",
+    "TenantMembership",
+    "Project",
+    "File",
+    "FileLink",
     "ProviderCredential",
     "CustomProvider",
     "CustomProviderModel",
     "Asset",
+    "AssetLibraryBinding",
     "AgentAnthropicCredential",
 ]
