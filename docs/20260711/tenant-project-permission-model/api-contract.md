@@ -22,7 +22,7 @@
 |--------|--------|------|
 | `GET /api/v1/projects/{name}` | `GET /api/v1/projects/{project_id}` | `name` 只在响应里展示 |
 | `PATCH /api/v1/projects/{name}` | `PATCH /api/v1/projects/{project_id}` | 校验当前租户内 `name` 不重复 |
-| `DELETE /api/v1/projects/{name}` | `DELETE /api/v1/projects/{project_id}` | 仅 admin/member 按策略允许 |
+| `DELETE /api/v1/projects/{name}` | `DELETE /api/v1/projects/{project_id}` | 仅 owner/admin 允许 |
 | `POST /api/v1/projects/{name}/generate-overview` | `POST /api/v1/projects/{project_id}/generate-overview` | 使用 ProjectContext |
 | `GET /api/v1/projects/{name}/events/stream` | `GET /api/v1/projects/{project_id}/events/stream` | SSE channel 使用 project_id |
 | `POST /api/v1/projects/{name}/assistant/sessions/send` | `POST /api/v1/projects/{project_id}/assistant/sessions/send` | Agent cwd 使用 project_id |
@@ -49,7 +49,7 @@
 | `GET /api/v1/auth/tenants` | 登录用户 | 返回用户 membership 列表 |
 | `POST /api/v1/auth/tenant-token` | 登录用户 + 目标租户 membership | 切换当前租户，返回新 access token |
 | `POST /api/v1/auth/refresh-current-tenant` | 登录用户 + 当前租户 membership | role 快照过期后刷新 token |
-| `GET /api/v1/tenants/{tenant_id}/members` | admin/member/view 按策略 | 读取成员 |
+| `GET /api/v1/tenants/{tenant_id}/members` | admin/member/view | viewer 允许查询成员列表 |
 | `POST /api/v1/tenants/{tenant_id}/members` | admin/member | admin 可加 member/view；member 只可加 view |
 | `PATCH /api/v1/tenants/{tenant_id}/members/{user_id}` | owner/admin | owner 可加 admin；admin 不可提升 owner |
 | `DELETE /api/v1/tenants/{tenant_id}/members/{user_id}` | owner/admin | 不允许删除最后 owner 预留规则 |
@@ -128,12 +128,12 @@
 
 | Endpoint | 行为 |
 |----------|------|
-| `GET /api/v1/api-keys` | 返回 `404` 或 `{ "enabled": false, "items": [] }`，具体由实现选择并固定 |
+| `GET /api/v1/api-keys` | 返回 `403 feature_disabled` |
 | `POST /api/v1/api-keys` | 返回 `403 feature_disabled` |
 | `PATCH /api/v1/api-keys/{id}` | 返回 `403 feature_disabled` |
 | `DELETE /api/v1/api-keys/{id}` | 返回 `403 feature_disabled` |
 
-前端不展示 API key 设置入口。测试必须覆盖入口不可见和创建接口不可用。
+前端 API key 按钮保留但 disabled，不允许触发创建/更新/删除请求。测试必须覆盖按钮 disabled 和后台接口统一 403。
 
 ## 错误码
 

@@ -35,10 +35,10 @@ User <-- membership --> Tenant <-- owns --> Project
 
 | Role | 可做动作 | 不可做动作 |
 |------|----------|------------|
-| owner | 租户所有者；可添加 admin/member/viewer，可转移或预留转移设计 | 不直接参与项目业务查询键 |
-| admin | 编辑租户配置、创建/编辑项目、添加 member/viewer | 不能添加 owner；是否能添加 admin 预留 owner 策略 |
-| member | 创建项目、上传/生成视频、导入资产、添加 viewer | 不能编辑租户高级配置，不能添加 member/admin |
-| view | 查看项目、查看资产、查看用量中自己被允许看到的范围 | 不能创建、上传、生成、编辑、导入 |
+| owner | 租户所有者；可添加 admin/member/viewer，可删除项目，可转移或预留转移设计 | 不直接参与项目业务查询键 |
+| admin | 编辑租户配置、创建/编辑/删除项目、添加 member/viewer | 不能添加 owner；是否能添加 admin 由 owner 策略控制 |
+| member | 创建项目、上传/生成视频、导入资产、添加 viewer | 不能删除项目，不能编辑租户高级配置，不能添加 member/admin |
+| view | 查看项目、查看资产、查看成员列表、查看用量中自己被允许看到的范围 | 不能创建、上传、生成、编辑、导入、删除 |
 
 第一版落地角色枚举只保留 `admin/member/view`。`owner_user_id` 是租户字段，owner 默认拥有 admin 行为，并额外拥有添加 admin 的能力。owner 转移暂不实现，但表结构和服务接口不得卡死。
 
@@ -118,9 +118,9 @@ $ARCREEL_DATA_DIR/_tenants/{tenant_id}/projects/{project_id}/project.json
 本轮要求：
 
 - 后台不提供可用的 API key 创建、更新、删除、展示密钥接口。
-- 前端设置页隐藏 API key 入口。
-- 现有 API key 路由如果保留代码，默认返回 `404` 或 `403 feature_disabled`，不得参与真实鉴权。
-- 测试覆盖“API key 功能关闭时不能创建 key，UI 不出现入口”。
+- 前端保留入口时按钮必须 disabled，不允许触发创建/更新/删除请求。
+- 现有 API key 路由如果保留代码，统一返回 `403 feature_disabled`，不得参与真实鉴权。
+- 测试覆盖“API key 功能关闭时后台返回 403，前端按钮 disabled”。
 
 后续启用预留：
 
@@ -191,7 +191,7 @@ Agent 会话创建、消息发送、工具调用、任务入队必须携带同�
 - [ ] 所有项目文件路径使用 `project_id`。
 - [ ] 所有 SQL 查询项目时带当前后端 tenant 上下文。
 - [ ] 所有任务、Agent、文件、用量记录持久化 `tenant_id + project_id`。
-- [ ] API key UI 和后台行为默认不可用。
+- [ ] API key 后台统一返回 `403 feature_disabled`，前端按钮 disabled。
 - [ ] 用量统计支持 tenant/project 分组。
 - [ ] 前端所有缓存 key 和 URL 不再使用项目名。
 - [ ] 跨租户同名项目测试通过。
