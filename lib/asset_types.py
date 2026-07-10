@@ -34,6 +34,7 @@ class AssetSpec:
     asset_type: str
     bucket_key: str
     sheet_field: str
+    media_file_field: str
     subdir: str
     label_zh: str
     extra_string_fields: tuple[str, ...] = ()
@@ -47,6 +48,7 @@ ASSET_SPECS: dict[str, AssetSpec] = {
         asset_type="character",
         bucket_key="characters",
         sheet_field="character_sheet",
+        media_file_field="character_sheet_file_id",
         subdir="characters",
         label_zh="角色",
         extra_string_fields=("voice_style", "reference_image"),
@@ -58,6 +60,7 @@ ASSET_SPECS: dict[str, AssetSpec] = {
         asset_type="scene",
         bucket_key="scenes",
         sheet_field="scene_sheet",
+        media_file_field="scene_sheet_file_id",
         subdir="scenes",
         label_zh="场景",
         extra_string_fields=(),
@@ -67,6 +70,7 @@ ASSET_SPECS: dict[str, AssetSpec] = {
         asset_type="prop",
         bucket_key="props",
         sheet_field="prop_sheet",
+        media_file_field="prop_sheet_file_id",
         subdir="props",
         label_zh="道具",
         extra_string_fields=(),
@@ -76,6 +80,7 @@ ASSET_SPECS: dict[str, AssetSpec] = {
         asset_type="product",
         bucket_key="products",
         sheet_field="product_sheet",
+        media_file_field="product_sheet_file_id",
         subdir="products",
         label_zh="产品",
         # brand 是用户填写的品牌要素自由文本；reference_images 是用户上传的多张产品

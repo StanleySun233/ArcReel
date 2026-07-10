@@ -23,6 +23,8 @@ export default {
   "close": "Đóng",
   "library_title": "Thư viện tài nguyên",
   "library_subtitle": "Nhân vật, cảnh và đạo cụ có thể tái sử dụng giữa các dự án",
+  "library.tenant": "Thư viện tenant",
+  "library.personal": "Thư viện cá nhân",
   "library_tabs_label": "Loại tài nguyên",
   "back_to_projects": "Quay lại danh sách dự án",
   "add_asset": "Thêm tài nguyên",
@@ -50,5 +52,8 @@ export default {
   "upload_sheet_short": "Tải lên",
   "edit": "Chỉnh sửa",
   "delete": "Xóa",
+  "sync": "Đồng bộ",
+  "sync_confirm_title": "Đồng bộ \"{{name}}\" từ nguồn?",
+  "sync_confirm_desc": "Thao tác này sẽ ghi đè snapshot hiện tại bằng tài nguyên nguồn.",
   "meta_updated_at": "Cập nhật {{date}}",
 } satisfies Record<keyof typeof enAssets, string>;

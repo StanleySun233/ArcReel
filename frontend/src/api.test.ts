@@ -1044,39 +1044,43 @@ describe("API", () => {
   });
 
   describe("listAssets", () => {
-    it("GETs /api/v1/assets with type query", async () => {
+    it("GETs /api/v1/assets with library and type query", async () => {
       const fetchMock = vi.fn().mockResolvedValue(
         mockResponse({ jsonData: { items: [] } }),
       );
       vi.stubGlobal("fetch", fetchMock);
-      await API.listAssets({ type: "character" });
+      await API.listAssets({ library: "personal", type: "character" });
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/api/v1/assets"),
+        expect.stringContaining("library=personal"),
         expect.anything()
       );
     });
   });
 
   describe("createAsset", () => {
-    it("POSTs multipart to /api/v1/assets", async () => {
+    it("POSTs JSON to /api/v1/assets", async () => {
       const fetchMock = vi.fn().mockResolvedValue(
-        mockResponse({ jsonData: { asset: { id: "x", type: "scene", name: "A", description: "", voice_style: "", image_path: null, source_project: null, updated_at: null } } }),
+        mockResponse({ jsonData: { asset: { id: "x" } } }),
       );
       vi.stubGlobal("fetch", fetchMock);
-      const res = await API.createAsset({ type: "scene", name: "A", description: "d" });
+      const res = await API.createAsset({ library: "tenant", type: "scene", name: "A", description: "d" });
       expect(res.asset.id).toBe("x");
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/assets"),
+        expect.objectContaining({ method: "POST" }),
+      );
     });
   });
 
-  describe("addAssetFromProject", () => {
-    it("POSTs /api/v1/assets/from-project", async () => {
+  describe("importAssetSnapshot", () => {
+    it("POSTs /api/v1/assets/import", async () => {
       const fetchMock = vi.fn().mockResolvedValue(
-        mockResponse({ jsonData: { asset: { id: "x", type: "character", name: "王", description: "", voice_style: "", image_path: null, source_project: "demo", updated_at: null } } }),
+        mockResponse({ jsonData: { asset: { id: "x" } } }),
       );
       vi.stubGlobal("fetch", fetchMock);
-      await API.addAssetFromProject({ project_name: "demo", resource_type: "character", resource_id: "王" });
+      await API.importAssetSnapshot({ source_binding_id: "ab_1", target_library: "personal" });
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/api/v1/assets/from-project"),
+        expect.stringContaining("/api/v1/assets/import"),
         expect.objectContaining({ method: "POST" })
       );
     });

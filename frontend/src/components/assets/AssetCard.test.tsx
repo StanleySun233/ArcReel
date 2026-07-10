@@ -11,8 +11,9 @@ vi.mock("react-i18next", () => ({
 }));
 
 const asset = {
-  id: "1", type: "scene" as const, name: "庙宇", description: "阴森古朴",
-  voice_style: "", image_path: null, source_project: "demo", updated_at: null,
+  id: "1", binding_id: "1", asset_id: "ast_1", type: "scene" as const, name: "庙宇", description: "阴森古朴",
+  voice_style: "", image_file_id: null, image_path: null, source_project: "demo", library: "tenant" as const,
+  parent_binding_id: null, can_write: true, can_sync: false, updated_at: null,
 };
 
 describe("AssetCard", () => {
