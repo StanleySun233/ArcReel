@@ -91,6 +91,11 @@ passed
 
 **Ready for QA:** Story 1 yes; Story 2 yes
 
+## Integration Notes
+
+- Story 2 merged into `integration/tenant-commercialization` at `35af0f2`.
+- Story 2 worktree `tenant-schema-rls` and branch `story/tenant-commercialization/tenant-schema-rls` were removed after merge.
+
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
