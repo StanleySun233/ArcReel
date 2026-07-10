@@ -273,30 +273,30 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** tenant-config
 **User value:** Each tenant has its own provider credentials, custom providers, defaults, Agent credentials, and API keys; personal configuration lives in the personal tenant.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Provider config and system settings are tenant-scoped.
-- [ ] Provider credentials are tenant-scoped.
-- [ ] Custom providers and models are tenant-scoped.
-- [ ] Agent Anthropic credentials are tenant-scoped.
-- [ ] API key names are unique per tenant, not globally.
-- [ ] Existing routes infer tenant from token and never accept frontend tenant id.
-- [ ] CaMeL provider bootstrap writes into current personal tenant or selected tenant according to auth flow rules.
+- [x] Provider config and system settings are tenant-scoped.
+- [x] Provider credentials are tenant-scoped.
+- [x] Custom providers and models are tenant-scoped.
+- [x] Agent Anthropic credentials are tenant-scoped.
+- [x] API key names are unique per tenant, not globally.
+- [x] Existing routes infer tenant from token and never accept frontend tenant id.
+- [x] CaMeL provider bootstrap writes into current personal tenant or selected tenant according to auth flow rules.
 
 **Engineering Subtasks**
-- [ ] Iris: Convert `lib/config/repository.py`, `lib/config/service.py`, `lib/config/resolver.py` to tenant context. (depends: Story 2)
-- [ ] Iris: Convert `lib/db/models/config.py` and related tests to tenant constraints. (depends: Story 2)
-- [ ] Iris: Convert `lib/db/models/credential.py` and `lib/db/repositories/credential_repository.py`. (depends: Story 2)
-- [ ] Iris: Convert `lib/db/models/custom_provider.py` and `lib/db/repositories/custom_provider_repo.py`. (depends: Story 2)
-- [ ] Iris: Convert `lib/db/models/agent_credential.py` and `lib/db/repositories/agent_credential_repo.py`. (depends: Story 2)
-- [ ] Iris: Update `server/routers/system_config.py`, `server/routers/providers.py`, `server/routers/custom_providers.py`, `server/routers/agent_config.py`. (depends: repositories)
-- [ ] Iris: Convert `server/services/camel_bootstrap.py` from user-level completion to tenant-level completeness. (depends: Story 3)
-- [ ] Quinn: Run provider/config/API key/agent credential tests under PostgreSQL. (depends: implementation)
+- [x] Iris: Convert `lib/config/repository.py`, `lib/config/service.py`, `lib/config/resolver.py` to tenant context. (depends: Story 2)
+- [x] Iris: Convert `lib/db/models/config.py` and related tests to tenant constraints. (depends: Story 2)
+- [x] Iris: Convert `lib/db/models/credential.py` and `lib/db/repositories/credential_repository.py`. (depends: Story 2)
+- [x] Iris: Convert `lib/db/models/custom_provider.py` and `lib/db/repositories/custom_provider_repo.py`. (depends: Story 2)
+- [x] Iris: Convert `lib/db/models/agent_credential.py` and `lib/db/repositories/agent_credential_repo.py`. (depends: Story 2)
+- [x] Iris: Update `server/routers/system_config.py`, `server/routers/providers.py`, `server/routers/custom_providers.py`, `server/routers/agent_config.py`. (depends: repositories)
+- [x] Iris: Convert `server/services/camel_bootstrap.py` from user-level completion to tenant-level completeness. (depends: Story 3)
+- [x] Quinn: Run provider/config/API key/agent credential tests under PostgreSQL. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Story worktree tenant config isolation suite passed with `8 passed in 1.83s`; `ruff check`, `ruff format --check`, and `basedpyright` on Story7 modified files passed with `0 errors, 0 warnings, 0 notes`; API key tenant scoping is covered by Story 3 auth/API-key regression evidence; merged into integration with merge commit `28304a7`.
 
 ### Story 8 - Asset Libraries, Snapshot Import, Manual Sync
 
@@ -473,7 +473,7 @@ These gates happen before implementation agents start. They are not story worktr
 | Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | merged | removed |
 | Story 5 - FileService, MinIO, Private Files, Signed URLs | `story/tenant-commercialization/minio-files` | `../ArcReel-worktrees/tenant-commercialization/minio-files` | `integration/tenant-commercialization` | merged | removed |
 | Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `integration/tenant-commercialization` | pending | pending |
-| Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | pending | pending |
+| Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | merged | removed |
 | Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | pending | pending |
 | Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `integration/tenant-commercialization` | pending | pending |
 | Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `integration/tenant-commercialization` | pending | pending |
