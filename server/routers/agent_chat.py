@@ -6,13 +6,13 @@
 
 import asyncio
 import logging
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from lib.i18n import Translator, get_locale
 from server.agent_runtime.models import Heartbeat, LiveMessage
-from server.agent_runtime.service import AssistantService
 from server.agent_runtime.session_manager import SessionCapacityError
 from server.auth import CurrentUser
 from server.routers.assistant import get_assistant_service
@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 SYNC_CHAT_TIMEOUT = 120  # 秒
+AGENT_CHAT_ENABLED = False
+
+
+def _require_agent_chat_enabled() -> None:
+    if not AGENT_CHAT_ENABLED:
+        raise HTTPException(status_code=403, detail="feature_disabled")
 
 
 class AgentChatRequest(BaseModel):
@@ -81,7 +87,7 @@ def _consume_message(message: dict, reply_parts: list[str]) -> str | None:
 
 
 async def _collect_reply(
-    service: AssistantService,
+    service: Any,
     session_id: str,
     timeout: float,
 ) -> tuple[str, str]:
@@ -163,6 +169,7 @@ async def agent_chat(
     - 超过 120 秒返回已收集的部分响应，status 为 "timeout"
     - 流异常收尾时从事件日志补齐回复；无法确认完整的非空回复以 truncated=true 标记
     """
+    _require_agent_chat_enabled()
     service = get_assistant_service()
 
     # 验证项目是否存在

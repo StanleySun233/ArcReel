@@ -7,16 +7,18 @@
 
 ### Issued Tokens disabled, business code retained
 
-The Issued Tokens feature is disabled at invocation boundaries and the existing business implementation remains in place for future development.
+The Issued Tokens feature and OpenClaw synchronous Agent chat entry are disabled at invocation boundaries and the existing business implementations remain in place for future development.
 
 Evidence:
 
 - `server/routers/api_keys.py` keeps create/list/update/delete implementation paths behind `ISSUED_TOKENS_ENABLED = False`.
 - `server/auth.py` rejects `arc-` Bearer tokens with `403 feature_disabled` while keeping `_verify_api_key`.
+- `server/routers/agent_chat.py` keeps the synchronous Agent chat implementation behind `AGENT_CHAT_ENABLED = False`.
 - `frontend/src/components/pages/ApiKeysTab.tsx` keeps the UI and disables actions through `ISSUED_TOKENS_ENABLED = false`.
 - Tests:
   - `tests/test_api_keys_router.py`
   - `tests/test_auth_api_key.py`
+  - `tests/test_agent_chat_router.py`
 
 ### Project identity is now route-id based on the main workspace path
 
@@ -102,8 +104,8 @@ Evidence:
 
 Backend:
 
-- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py tests/test_projects_archive_routes.py tests/test_jianying_draft_routes.py tests/test_usage_router.py tests/test_usage_repo.py tests/test_usage_tracker.py -q`
-  - Result: 397 passed
+- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_agent_chat_router.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py tests/test_projects_archive_routes.py tests/test_jianying_draft_routes.py tests/test_usage_router.py tests/test_usage_repo.py tests/test_usage_tracker.py -q`
+  - Result: 426 passed
 - `python -m ruff check <changed backend files and tests>`
   - Result: passed
 - `basedpyright <changed backend route files>`
@@ -139,8 +141,4 @@ Some persistence models and task/session payload fields still use `project_name`
 
 ### Remaining project-id audit gap
 
-The current pass focused on the scenario-critical path: project CRUD, scripts, segments, source import, drafts, style image upload, files/source upload, project assets, generation entry points, manual shot uploads, script review, cost estimation, tasks, assistant, project event SSE, versions, grids, reference video units, exports, Jianying draft export, and usage reads.
-
-The following route family still requires a dedicated project-id audit before this can be called complete:
-
-- `server/routers/agent_chat.py` legacy `/agent/chat` body currently carries `project_name`.
+No active project route family is currently known to use display name as the lookup key. Some internal persistence/API response field names still use `project_name` while carrying project id values and are tracked as schema vocabulary cleanup rather than route authorization gaps.

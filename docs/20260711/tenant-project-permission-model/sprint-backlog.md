@@ -100,6 +100,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [x] 前端设置页 Issued Tokens 按钮 disabled。
 - [x] 后台 `/api-keys` 列表、创建、更新、删除统一返回 `403 feature_disabled`。
 - [x] Issued Tokens 不参与认证依赖链路。
+- [x] OpenClaw 同步 Agent 入口 `/agent/chat` 默认返回 `403 feature_disabled`，业务代码保留。
 - [x] CaMeL provider keys、媒体供应商凭证、Agent 凭证不受影响。
 
 ### Phase 5 - 全链路审计和测试

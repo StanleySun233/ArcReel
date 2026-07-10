@@ -53,6 +53,7 @@
 | `POST /api/v1/projects/{name}/export/token` | `POST /api/v1/projects/{project_id}/export/token` | 导出 token 签发允许 viewer |
 | `GET /api/v1/projects/{name}/export` | `GET /api/v1/projects/{project_id}/export` | 下载 token 绑定 `tenant_id:project_id` |
 | `GET /api/v1/projects/{name}/export/jianying-draft` | `GET /api/v1/projects/{project_id}/export/jianying-draft` | 剪映草稿导出使用 token 中 tenant 对应项目仓库 |
+| `POST /api/v1/agent/chat` | 当前返回 `403 feature_disabled` | OpenClaw 同步 Agent 入口保留业务代码，随 Issued Tokens 暂停 |
 
 项目响应字段：
 
@@ -167,6 +168,8 @@
 | `DELETE /api/v1/api-keys/{id}` | 返回 `403 feature_disabled` |
 
 前端 Issued Tokens 按钮保留但 disabled，不允许触发创建/更新/删除请求。测试必须覆盖按钮 disabled 和后台接口统一 403。
+
+`POST /api/v1/agent/chat` 属于 OpenClaw 等外部工具同步访问 ArcReel 项目的入口。本轮同 Issued Tokens 一起暂停：后台保留业务实现，入口默认返回 `403 feature_disabled`，不得绕过 tenant/project_id 权限模型。
 
 ## 错误码
 

@@ -17,7 +17,8 @@ from server.auth import CurrentUserInfo, get_current_user
 from server.routers import agent_chat
 
 
-def _make_client() -> TestClient:
+def _make_client(*, agent_chat_enabled: bool = True) -> TestClient:
+    agent_chat.AGENT_CHAT_ENABLED = agent_chat_enabled
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
     app.include_router(agent_chat.router, prefix="/api/v1")
@@ -32,6 +33,18 @@ def _fake_session(session_id: str = "sess-1", project_name: str = "demo"):
 
 
 class TestAgentChatEndpoint:
+    def test_agent_chat_disabled_by_default(self):
+        with _make_client(agent_chat_enabled=False) as client:
+            resp = client.post(
+                "/api/v1/agent/chat",
+                json={
+                    "project_name": "demo",
+                    "message": "帮我写剧本",
+                },
+            )
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "feature_disabled"
+
     def _patch_service(
         self, monkeypatch, *, project_exists=True, reply_text="你好", status="completed", session_id="sess-1"
     ):
