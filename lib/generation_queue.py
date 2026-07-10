@@ -14,7 +14,8 @@ from typing import Any
 
 from lib.db import safe_session_factory
 from lib.db.base import DEFAULT_USER_ID
-from lib.db.repositories.task_repo import TaskRepository
+from lib.db.repositories.task_repo import DEFAULT_TENANT_ID, TaskRepository
+from lib.db.tenant_context import set_tenant_context
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,22 @@ _QUEUE_INSTANCE: GenerationQueue | None = None
 WorkerCancelCallback = Callable[[str], bool]
 
 
+def _is_postgresql_session(session: Any) -> bool:
+    try:
+        return session.get_bind().dialect.name == "postgresql"
+    except Exception:
+        return False
+
+
+async def _prepare_task_session(session: Any, *, tenant_id: str | None, user_id: str | None) -> None:
+    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
+    resolved_user_id = user_id or DEFAULT_USER_ID
+    session.info["tenant_id"] = resolved_tenant_id
+    session.info["user_id"] = resolved_user_id
+    if _is_postgresql_session(session):
+        await set_tenant_context(session, user_id=resolved_user_id, tenant_id=resolved_tenant_id)
+
+
 class GenerationQueue:
     """Async queue manager wrapping TaskRepository."""
 
@@ -100,8 +117,11 @@ class GenerationQueue:
         dependency_group: str | None = None,
         dependency_index: int | None = None,
         user_id: str = DEFAULT_USER_ID,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
         provider_id: str | None = None,
     ) -> dict[str, Any]:
+        requested_by_user_id = requested_by_user_id or user_id
         # caller 没传 provider_id → 入队时主动派生一次，让 claim 走 SQL 池过滤快路径；
         # 派生失败留 NULL，走 IS NULL 兜底，由 worker claim 后 _extract_provider 二次校验。
         if provider_id is None:
@@ -113,7 +133,8 @@ class GenerationQueue:
             )
 
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             result = await repo.enqueue(
                 project_name=project_name,
                 task_type=task_type,
@@ -125,7 +146,9 @@ class GenerationQueue:
                 dependency_task_id=dependency_task_id,
                 dependency_group=dependency_group,
                 dependency_index=dependency_index,
-                user_id=user_id,
+                user_id=requested_by_user_id,
+                tenant_id=tenant_id,
+                requested_by_user_id=requested_by_user_id,
                 provider_id=provider_id,
             )
         if not result.get("deduped"):
@@ -170,10 +193,18 @@ class GenerationQueue:
             repo = TaskRepository(session)
             await repo.persist_api_call_id(task_id, call_id)
 
-    async def mark_task_succeeded(self, task_id: str, result: dict[str, Any] | None) -> int:
+    async def mark_task_succeeded(
+        self,
+        task_id: str,
+        result: dict[str, Any] | None,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> int:
         """Returns rows_affected (0 = 已被外部翻成非 running 终/中间态，worker 走 0-rows-cancelled 协议)."""
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             affected = await repo.mark_succeeded(task_id, result)
         if affected > 0:
             logger.info("任务成功 task_id=%s", task_id)
@@ -181,10 +212,18 @@ class GenerationQueue:
             logger.info("mark_succeeded 0 rows task_id=%s (已被外部翻状态)", task_id)
         return affected
 
-    async def mark_task_failed(self, task_id: str, error_message: str) -> int:
+    async def mark_task_failed(
+        self,
+        task_id: str,
+        error_message: str,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> int:
         """Returns rows_affected (0 = 已被外部翻状态，worker 走 0-rows-cancelled 协议)."""
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             affected = await repo.mark_failed(task_id, error_message)
         if affected > 0:
             logger.warning("任务失败 task_id=%s error=%s", task_id, error_message[:200])
@@ -192,7 +231,14 @@ class GenerationQueue:
             logger.info("mark_failed 0 rows task_id=%s (已被外部翻状态)", task_id)
         return affected
 
-    async def mark_task_cancelled(self, task_id: str, *, cancelled_by: str = "user") -> int:
+    async def mark_task_cancelled(
+        self,
+        task_id: str,
+        *,
+        cancelled_by: str = "user",
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> int:
         """Worker finally 0-rows-cancelled 协议兜底入口（SQL 守卫 status IN queued|cancelling）。
 
         Repository 返回 ``{"rows", "cancelling"}``：cancelling 是级联出来的 running 下游
@@ -201,7 +247,8 @@ class GenerationQueue:
         而不必等它跑完整个 provider 调用。返回 rows 兼容现有 0-rows-cancelled 协议 caller。
         """
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             result = await repo.finalize_cancelled(task_id, cancelled_by=cancelled_by)
 
         callback = self._worker_cancel_callback
@@ -214,9 +261,16 @@ class GenerationQueue:
 
         return int(result.get("rows", 0))
 
-    async def cancel_task(self, task_id: str) -> dict[str, Any]:
+    async def cancel_task(
+        self,
+        task_id: str,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> dict[str, Any]:
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             result = await repo.cancel_task(task_id)
 
         # Repository 返回 cancelling 意图列表 → GenerationQueue 同步分发 in-process 信号。
@@ -244,28 +298,56 @@ class GenerationQueue:
             )
         return result
 
-    async def get_cancel_preview(self, task_id: str) -> dict[str, Any]:
+    async def get_cancel_preview(
+        self,
+        task_id: str,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> dict[str, Any]:
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.get_cancel_preview(task_id)
 
-    async def cancel_all_queued(self, project_name: str) -> dict[str, Any]:
+    async def cancel_all_queued(
+        self,
+        project_name: str,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> dict[str, Any]:
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             result = await repo.cancel_all_queued(project_name)
         if result["cancelled_count"] > 0:
             logger.info("批量取消 project=%s 共取消 %d 个", project_name, result["cancelled_count"])
         return result
 
-    async def get_cancel_all_preview(self, project_name: str) -> int:
+    async def get_cancel_all_preview(
+        self,
+        project_name: str,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> int:
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.get_cancel_all_preview(project_name)
 
-    async def get_task(self, task_id: str) -> dict[str, Any] | None:
+    async def get_task(
+        self,
+        task_id: str,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> dict[str, Any] | None:
 
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.get(task_id)
 
     async def list_tasks(
@@ -277,10 +359,13 @@ class GenerationQueue:
         source: str | None = None,
         page: int = 1,
         page_size: int = 50,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
     ) -> dict[str, Any]:
 
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.list_tasks(
                 project_name=project_name,
                 status=status,
@@ -290,10 +375,17 @@ class GenerationQueue:
                 page_size=page_size,
             )
 
-    async def get_task_stats(self, project_name: str | None = None) -> dict[str, int]:
+    async def get_task_stats(
+        self,
+        project_name: str | None = None,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> dict[str, int]:
 
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.get_stats(project_name=project_name)
 
     async def get_recent_tasks_snapshot(
@@ -301,10 +393,13 @@ class GenerationQueue:
         *,
         project_name: str | None = None,
         limit: int = 200,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
     ) -> list[dict[str, Any]]:
 
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.get_recent_tasks_snapshot(
                 project_name=project_name,
                 limit=limit,
@@ -316,20 +411,30 @@ class GenerationQueue:
         last_event_id: int,
         project_name: str | None = None,
         limit: int = 200,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
     ) -> list[dict[str, Any]]:
 
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.get_events_since(
                 last_event_id=last_event_id,
                 project_name=project_name,
                 limit=limit,
             )
 
-    async def get_latest_event_id(self, *, project_name: str | None = None) -> int:
+    async def get_latest_event_id(
+        self,
+        *,
+        project_name: str | None = None,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> int:
 
         async with self._session_factory() as session:
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             return await repo.get_latest_event_id(project_name=project_name)
 
     async def acquire_or_renew_worker_lease(

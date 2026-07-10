@@ -99,6 +99,43 @@ class TestGenerationQueue:
         latest_id = await queue.get_latest_event_id()
         assert latest_id == all_events[-1]["id"]
 
+    async def test_enqueue_stores_tenant_and_requested_user_snapshot(self, queue):
+        alpha = await queue.enqueue_task(
+            project_name="demo",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="E1S01",
+            payload={"prompt": "alpha"},
+            script_file="episode_01.json",
+            source="webui",
+            tenant_id="ten_alpha",
+            requested_by_user_id="camel:alice",
+        )
+        beta = await queue.enqueue_task(
+            project_name="demo",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="E1S01",
+            payload={"prompt": "beta"},
+            script_file="episode_01.json",
+            source="webui",
+            tenant_id="ten_beta",
+            requested_by_user_id="camel:bob",
+        )
+
+        assert beta["task_id"] != alpha["task_id"]
+
+        alpha_task = await queue.get_task(alpha["task_id"], tenant_id="ten_alpha")
+        assert alpha_task is not None
+        assert alpha_task["tenant_id"] == "ten_alpha"
+        assert alpha_task["requested_by_user_id"] == "camel:alice"
+        assert await queue.get_task(beta["task_id"], tenant_id="ten_alpha") is None
+
+        alpha_list = await queue.list_tasks(tenant_id="ten_alpha")
+        beta_list = await queue.list_tasks(tenant_id="ten_beta")
+        assert alpha_list["total"] == 1
+        assert beta_list["total"] == 1
+
     async def test_worker_lease_takeover(self, queue):
         first_ok = await queue.acquire_or_renew_worker_lease(
             name="default",

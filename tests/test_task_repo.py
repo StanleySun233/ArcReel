@@ -194,6 +194,47 @@ class TestTaskRepository:
         result = await repo.list_tasks()
         assert result["total"] == 2
 
+    async def test_tenant_snapshot_and_scoped_queries(self, db_session):
+        alpha = TaskRepository(db_session, tenant_id="ten_alpha", requested_by_user_id="camel:alice")
+        first = await alpha.enqueue(
+            project_name="demo",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="E1S01",
+            payload={"prompt": "alpha"},
+            script_file="ep1.json",
+            tenant_id="ten_alpha",
+            requested_by_user_id="camel:alice",
+        )
+        beta = TaskRepository(db_session, tenant_id="ten_beta", requested_by_user_id="camel:bob")
+        second = await beta.enqueue(
+            project_name="demo",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="E1S01",
+            payload={"prompt": "beta"},
+            script_file="ep1.json",
+            tenant_id="ten_beta",
+            requested_by_user_id="camel:bob",
+        )
+
+        assert second["task_id"] != first["task_id"]
+
+        alpha_task = await alpha.get(first["task_id"])
+        assert alpha_task["tenant_id"] == "ten_alpha"
+        assert alpha_task["requested_by_user_id"] == "camel:alice"
+        assert await alpha.get(second["task_id"]) is None
+
+        beta_task = await beta.get(second["task_id"])
+        assert beta_task["tenant_id"] == "ten_beta"
+        assert beta_task["requested_by_user_id"] == "camel:bob"
+        assert await beta.get(first["task_id"]) is None
+
+        assert (await alpha.list_tasks())["total"] == 1
+        assert (await beta.list_tasks())["total"] == 1
+        assert [event["tenant_id"] for event in await alpha.get_events_since(last_event_id=0)] == ["ten_alpha"]
+        assert [event["tenant_id"] for event in await beta.get_events_since(last_event_id=0)] == ["ten_beta"]
+
     async def test_task_has_cancelled_by_field(self, db_session):
         repo = TaskRepository(db_session)
         task = await repo.enqueue(
