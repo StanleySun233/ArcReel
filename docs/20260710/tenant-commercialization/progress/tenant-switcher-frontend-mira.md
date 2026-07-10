@@ -20,8 +20,8 @@
   - Commit: 36c65c0
 - [x] Update auth store token and role snapshot handling.
   - Commit: 4a42e1a
-- [ ] Add stale-role and revoked-access UI tests.
-  - Commit: pending
+- [x] Add stale-role and revoked-access UI tests.
+  - Commit: 676e191
 
 **Ready for QA:** no
 
