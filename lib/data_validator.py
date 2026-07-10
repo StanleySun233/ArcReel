@@ -76,6 +76,7 @@ class DataValidator:
     # ad reference 路径的剧本模型同口径），避免两处枚举漂移。
     VALID_SHOT_DURATION_RANGE = REFERENCE_SHOT_DURATION_RANGE
     ID_PATTERN = re.compile(r"^E\d+S\d+(?:_\d+)?$")
+    FILE_ID_PATTERN = re.compile(r"^fil_[A-Za-z0-9_-]+$")
     EXTERNAL_URI_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
     ALLOWED_ROOT_ENTRIES = {
         "project.json",
@@ -192,6 +193,20 @@ class DataValidator:
         if error:
             errors.append(f"{field_name}: {error}")
         return resolved_path
+
+    def _validate_file_id_reference(self, value: Any, errors: list[str], field_name: str) -> str | None:
+        if value in (None, ""):
+            return None
+        if not isinstance(value, str):
+            errors.append(f"{field_name} 必须是字符串")
+            return None
+        raw_value = value.strip()
+        if not raw_value:
+            return None
+        if not self.FILE_ID_PATTERN.fullmatch(raw_value):
+            errors.append(f"{field_name} 必须是 file_id，不能使用本地路径: {raw_value}")
+            return None
+        return raw_value
 
     @staticmethod
     def _validate_episode_ledger_fields(episode: dict[str, Any], prefix: str, errors: list[str]) -> None:
@@ -316,6 +331,8 @@ class DataValidator:
             except ValidationError as exc:
                 errors.append(f"planning_cursor 不合法: {_pydantic_error_summary(exc)}")
 
+        self._validate_file_id_reference(project.get("style_image"), errors, "project.style_image")
+
         characters = project.get("characters", {})
         if isinstance(characters, dict):
             char_extra_fields = ASSET_SPECS["character"].extra_string_fields
@@ -335,6 +352,16 @@ class DataValidator:
                     val = char_data.get(field_name)
                     if val is not None and not isinstance(val, str):
                         errors.append(f"角色 '{char_name}'.{field_name} 必须是字符串，当前为 {type(val).__name__}")
+                self._validate_file_id_reference(
+                    char_data.get("character_sheet"),
+                    errors,
+                    f"characters[{char_name}].character_sheet",
+                )
+                self._validate_file_id_reference(
+                    char_data.get("reference_image"),
+                    errors,
+                    f"characters[{char_name}].reference_image",
+                )
 
         if project.get("clues") is not None:
             errors.append("project.json 含已废弃字段 clues，请等待自动迁移或手动重启服务")
@@ -375,6 +402,7 @@ class DataValidator:
         spec = ASSET_SPECS.get(asset_type)
         extra_fields = spec.extra_string_fields if spec else ()
         extra_list_fields = spec.extra_list_fields if spec else ()
+        sheet_field = {"scenes": "scene_sheet", "props": "prop_sheet", "products": "product_sheet"}.get(field_label)
         for name, data in catalog.items():
             if not isinstance(data, dict):
                 errors.append(f"{kind_label} '{name}' 数据格式错误，应为对象")
@@ -387,6 +415,14 @@ class DataValidator:
                 val = data.get(field_name)
                 if val is not None and not isinstance(val, str):
                     errors.append(f"{kind_label} '{name}'.{field_name} 必须是字符串，当前为 {type(val).__name__}")
+                if field_name.endswith("_sheet"):
+                    self._validate_file_id_reference(val, errors, f"{field_label}[{name}].{field_name}")
+            if sheet_field is not None:
+                self._validate_file_id_reference(
+                    data.get(sheet_field),
+                    errors,
+                    f"{field_label}[{name}].{sheet_field}",
+                )
             for field_name in extra_list_fields:
                 # spec 声明的 extra_list_fields（reference_images / selling_points 等）若存在
                 # 须为字符串列表：下游把元素当路径拼接 / 当文本注入 prompt，混入非 str 会
@@ -401,6 +437,12 @@ class DataValidator:
                     if not isinstance(item, str):
                         errors.append(
                             f"{kind_label} '{name}'.{field_name}[{idx}] 必须是字符串，当前为 {type(item).__name__}"
+                        )
+                    elif field_name == "reference_images":
+                        self._validate_file_id_reference(
+                            item,
+                            errors,
+                            f"{field_label}[{name}].{field_name}[{idx}]",
                         )
 
     def _validate_segment_refs(
@@ -468,41 +510,35 @@ class DataValidator:
             errors.append(f"{prefix}.generated_assets 必须是对象")
             return
 
-        self._validate_local_reference(
-            project_dir,
+        self._validate_file_id_reference(
             assets.get("storyboard_image"),
             errors,
             f"{prefix}.generated_assets.storyboard_image",
-            default_dir="storyboards",
         )
-        self._validate_local_reference(
-            project_dir,
+        self._validate_file_id_reference(
             assets.get("storyboard_last_image"),
             errors,
             f"{prefix}.generated_assets.storyboard_last_image",
-            default_dir="storyboards",
         )
-        self._validate_local_reference(
-            project_dir,
+        self._validate_file_id_reference(
             assets.get("video_clip"),
             errors,
             f"{prefix}.generated_assets.video_clip",
-            default_dir="videos",
         )
-        self._validate_local_reference(
-            project_dir,
+        self._validate_file_id_reference(
             assets.get("video_uri"),
             errors,
             f"{prefix}.generated_assets.video_uri",
-            default_dir="videos",
-            allow_external=True,
         )
-        self._validate_local_reference(
-            project_dir,
+        self._validate_file_id_reference(
             assets.get("narration_audio"),
             errors,
             f"{prefix}.generated_assets.narration_audio",
-            default_dir="audio",
+        )
+        self._validate_file_id_reference(
+            assets.get("video_thumbnail"),
+            errors,
+            f"{prefix}.generated_assets.video_thumbnail",
         )
 
     def _validate_segments(
