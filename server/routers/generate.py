@@ -7,15 +7,18 @@
 
 import asyncio
 import logging
+from typing import Annotated
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib.app_data_dir import app_data_dir
 from lib.asset_types import ASSET_SPECS
 from lib.config.resolver import ConfigResolver
+from lib.db import get_async_session
 from lib.generation_queue import get_generation_queue
 from lib.generation_queue_client import TaskSpec, TaskSpecValidationError
 from lib.i18n import Translator
@@ -26,6 +29,7 @@ from lib.storyboard_sequence import (
     get_storyboard_items,
 )
 from server.auth import CurrentUser
+from server.services.tenant_auth import ROLE_MEMBER, require_tenant_access
 
 router = APIRouter()
 
@@ -82,6 +86,7 @@ async def generate_storyboard(
     req: GenerateStoryboardRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """
     提交分镜图生成任务到队列，立即返回 task_id。
@@ -89,6 +94,7 @@ async def generate_storyboard(
     生成由 GenerationWorker 异步执行，状态通过 SSE 推送。
     """
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync():
             get_project_manager().load_project(project_name)
@@ -123,6 +129,8 @@ async def generate_storyboard(
             payload=spec.payload,
             source="webui",
             user_id=_user.id,
+            tenant_id=access.id,
+            requested_by_user_id=_user.id,
         )
 
         return {
@@ -153,6 +161,7 @@ async def generate_video(
     req: GenerateVideoRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """
     提交视频生成任务到队列，立即返回 task_id。
@@ -160,6 +169,7 @@ async def generate_video(
     需要先有分镜图作为起始帧。生成由 GenerationWorker 异步执行。
     """
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync():
             pm_local = get_project_manager()
@@ -225,6 +235,8 @@ async def generate_video(
             payload=spec.payload,
             source="webui",
             user_id=_user.id,
+            tenant_id=access.id,
+            requested_by_user_id=_user.id,
         )
 
         return {
@@ -245,7 +257,7 @@ async def generate_video(
 # ==================== 旁白配音（TTS）生成 ====================
 
 
-async def _require_audio_provider_configured(project: dict, _t: Translator) -> str:
+async def _require_audio_provider_configured(project: dict, _t: Translator, *, user_id: str, tenant_id: str) -> str:
     """未配置任何 audio 供应商时直接 400，让用户在生成入口就看到清晰提示。
 
     解析失败（无全局默认且 auto-resolve 找不到 ready 的 audio 供应商）即视为未配置；
@@ -255,7 +267,12 @@ async def _require_audio_provider_configured(project: dict, _t: Translator) -> s
     from lib.db import async_session_factory
 
     try:
-        resolved = await ConfigResolver(async_session_factory).resolve_audio_backend(project, None)
+        resolved = await ConfigResolver(
+            async_session_factory, user_id=user_id, tenant_id=tenant_id
+        ).resolve_audio_backend(
+            project,
+            None,
+        )
     except ValueError:
         raise HTTPException(status_code=400, detail=_t("audio_provider_not_configured"))
     return resolved.provider_id
@@ -272,6 +289,7 @@ async def _enqueue_tts_segment(
     segment_id: str,
     script_file: str,
     user_id: str,
+    tenant_id: str,
     provider_id: str | None,
     _t: Translator,
 ) -> dict:
@@ -295,6 +313,8 @@ async def _enqueue_tts_segment(
         payload=spec.payload,
         source="webui",
         user_id=user_id,
+        tenant_id=tenant_id,
+        requested_by_user_id=user_id,
         provider_id=provider_id,
     )
 
@@ -306,12 +326,14 @@ async def generate_tts(
     req: GenerateTtsRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """提交单段旁白配音任务到队列，立即返回 task_id。
 
     文本由执行层从剧本 segment 的 novel_text 读取；已有旁白的段允许重生成。
     """
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync() -> tuple[dict, dict]:
             pm_local = get_project_manager()
@@ -328,13 +350,14 @@ async def generate_tts(
         if not _narration_text(segment):
             raise HTTPException(status_code=400, detail=_t("tts_novel_text_missing", segment_id=segment_id))
 
-        provider_id = await _require_audio_provider_configured(project, _t)
+        provider_id = await _require_audio_provider_configured(project, _t, user_id=_user.id, tenant_id=access.id)
 
         result = await _enqueue_tts_segment(
             project_name=project_name,
             segment_id=segment_id,
             script_file=req.script_file,
             user_id=_user.id,
+            tenant_id=access.id,
             provider_id=provider_id,
             _t=_t,
         )
@@ -362,9 +385,11 @@ async def generate_tts_batch(
     req: GenerateTtsRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """批量提交旁白配音任务：只入队缺少 narration_audio 且有小说原文的段（断点补缺）。"""
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
 
         def _sync() -> tuple[dict, list[str]]:
             pm_local = get_project_manager()
@@ -388,7 +413,7 @@ async def generate_tts_batch(
         if not missing_ids:
             return {"success": True, "task_ids": [], "message": _t("tts_batch_none_missing")}
 
-        provider_id = await _require_audio_provider_configured(project, _t)
+        provider_id = await _require_audio_provider_configured(project, _t, user_id=_user.id, tenant_id=access.id)
 
         task_ids: list[str] = []
         for seg_id in missing_ids:
@@ -397,6 +422,7 @@ async def generate_tts_batch(
                 segment_id=seg_id,
                 script_file=req.script_file,
                 user_id=_user.id,
+                tenant_id=access.id,
                 provider_id=provider_id,
                 _t=_t,
             )
@@ -435,6 +461,7 @@ async def _enqueue_asset_generation(
     resource_name: str,
     prompt: str,
     user_id: str,
+    tenant_id: str,
     _t: Translator,
 ) -> dict:
     """项目级资产（character / scene / prop / product）设计图生成共用入队逻辑。"""
@@ -467,6 +494,8 @@ async def _enqueue_asset_generation(
         payload=task_spec.payload,
         source="webui",
         user_id=user_id,
+        tenant_id=tenant_id,
+        requested_by_user_id=user_id,
     )
 
     return {
@@ -483,15 +512,18 @@ async def generate_character(
     req: GenerateCharacterRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """提交角色设计图生成任务到队列，立即返回 task_id。"""
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="character",
             project_name=project_name,
             resource_name=char_name,
             prompt=req.prompt,
             user_id=_user.id,
+            tenant_id=access.id,
             _t=_t,
         )
     except FileNotFoundError as e:
@@ -510,15 +542,18 @@ async def generate_scene(
     req: GenerateSceneRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """提交场景设计图生成任务到队列，立即返回 task_id。"""
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="scene",
             project_name=project_name,
             resource_name=scene_name,
             prompt=req.prompt,
             user_id=_user.id,
+            tenant_id=access.id,
             _t=_t,
         )
     except FileNotFoundError as e:
@@ -537,15 +572,18 @@ async def generate_prop(
     req: GeneratePropRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """提交道具设计图生成任务到队列，立即返回 task_id。"""
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="prop",
             project_name=project_name,
             resource_name=prop_name,
             prompt=req.prompt,
             user_id=_user.id,
+            tenant_id=access.id,
             _t=_t,
         )
     except FileNotFoundError as e:
@@ -564,15 +602,18 @@ async def generate_product(
     req: GenerateProductRequest,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """提交产品标准参考图（product sheet）生成任务到队列，立即返回 task_id。"""
     try:
+        access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
         return await _enqueue_asset_generation(
             asset_type="product",
             project_name=project_name,
             resource_name=product_name,
             prompt=req.prompt,
             user_id=_user.id,
+            tenant_id=access.id,
             _t=_t,
         )
     except FileNotFoundError as e:

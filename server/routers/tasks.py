@@ -7,11 +7,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from lib.db import get_async_session
 from lib.generation_queue import (
     get_generation_queue,
     read_queue_poll_interval,
@@ -19,6 +21,7 @@ from lib.generation_queue import (
 from lib.i18n import Translator
 from lib.task_failure import render_failure
 from server.auth import CurrentUser, CurrentUserFlexible
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
 
@@ -70,9 +73,18 @@ def _transform_task_event(raw_event: dict, stats: dict) -> dict:
 
 
 @router.get("/tasks/stats")
-async def get_task_stats(_user: CurrentUser, project_name: str | None = None):
+async def get_task_stats(
+    _user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    project_name: str | None = None,
+):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
-    stats = await queue.get_task_stats(project_name=project_name)
+    stats = await queue.get_task_stats(
+        project_name=project_name,
+        tenant_id=access.id,
+        requested_by_user_id=_user.id,
+    )
     return {"stats": stats}
 
 
@@ -80,6 +92,7 @@ async def get_task_stats(_user: CurrentUser, project_name: str | None = None):
 async def list_tasks(
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     project_name: str | None = None,
     status: str | None = None,
     task_type: str | None = None,
@@ -87,6 +100,7 @@ async def list_tasks(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=500),
 ):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
     result = await queue.list_tasks(
         project_name=project_name,
@@ -95,6 +109,8 @@ async def list_tasks(
         source=source,
         page=page,
         page_size=page_size,
+        tenant_id=access.id,
+        requested_by_user_id=_user.id,
     )
     result["items"] = [_localize_task(task, _t) for task in result.get("items", [])]
     return result
@@ -105,12 +121,14 @@ async def list_project_tasks(
     project_name: str,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     status: str | None = None,
     task_type: str | None = None,
     source: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=500),
 ):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
     result = await queue.list_tasks(
         project_name=project_name,
@@ -119,6 +137,8 @@ async def list_project_tasks(
         source=source,
         page=page,
         page_size=page_size,
+        tenant_id=access.id,
+        requested_by_user_id=_user.id,
     )
     result["items"] = [_localize_task(task, _t) for task in result.get("items", [])]
     return result
@@ -128,10 +148,12 @@ async def list_project_tasks(
 async def stream_tasks(
     request: Request,
     _user: CurrentUserFlexible,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     project_name: str | None = None,
     last_event_id: int | None = Query(default=None, ge=0),
     last_event_header: str | None = Header(default=None, alias="Last-Event-ID"),
 ) -> AsyncIterator[ServerSentEvent]:
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
     poll_interval = read_queue_poll_interval()
 
@@ -142,12 +164,13 @@ async def stream_tasks(
         cursor = 0
     cursor = max(0, int(cursor))
 
-    latest_event_id = await queue.get_latest_event_id(project_name=project_name)
+    scope = {"tenant_id": access.id, "requested_by_user_id": _user.id}
+    latest_event_id = await queue.get_latest_event_id(project_name=project_name, **scope)
     snapshot_last_event_id = max(cursor, latest_event_id) if resume_requested else latest_event_id
     snapshot = {
         "project_name": project_name,
-        "tasks": await queue.get_recent_tasks_snapshot(project_name=project_name, limit=1000),
-        "stats": await queue.get_task_stats(project_name=project_name),
+        "tasks": await queue.get_recent_tasks_snapshot(project_name=project_name, limit=1000, **scope),
+        "stats": await queue.get_task_stats(project_name=project_name, **scope),
         "last_event_id": snapshot_last_event_id,
         "generated_at": _utc_now_iso(),
     }
@@ -162,9 +185,10 @@ async def stream_tasks(
             last_event_id=cursor,
             project_name=project_name,
             limit=200,
+            **scope,
         )
         if events:
-            batch_stats = await queue.get_task_stats(project_name=project_name)
+            batch_stats = await queue.get_task_stats(project_name=project_name, **scope)
             for event in events:
                 cursor = int(event["id"])
                 transformed = _transform_task_event(event, batch_stats)
@@ -179,36 +203,60 @@ async def stream_tasks(
 
 
 @router.get("/tasks/{task_id}/cancel-preview")
-async def cancel_preview(task_id: str, _user: CurrentUser):
+async def cancel_preview(
+    task_id: str,
+    _user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
     queue = get_task_queue()
     try:
-        preview = await queue.get_cancel_preview(task_id)
+        preview = await queue.get_cancel_preview(task_id, tenant_id=access.id, requested_by_user_id=_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return preview
 
 
 @router.post("/tasks/{task_id}/cancel")
-async def cancel_task(task_id: str, _user: CurrentUser):
+async def cancel_task(
+    task_id: str,
+    _user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
     queue = get_task_queue()
     try:
-        result = await queue.cancel_task(task_id)
+        result = await queue.cancel_task(task_id, tenant_id=access.id, requested_by_user_id=_user.id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return result
 
 
 @router.get("/projects/{project_name}/tasks/cancel-all-preview")
-async def cancel_all_preview(project_name: str, _user: CurrentUser):
+async def cancel_all_preview(
+    project_name: str,
+    _user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
     queue = get_task_queue()
-    queued_count = await queue.get_cancel_all_preview(project_name)
+    queued_count = await queue.get_cancel_all_preview(
+        project_name,
+        tenant_id=access.id,
+        requested_by_user_id=_user.id,
+    )
     return {"queued_count": queued_count}
 
 
 @router.post("/projects/{project_name}/tasks/cancel-all")
-async def cancel_all_queued(project_name: str, _user: CurrentUser):
+async def cancel_all_queued(
+    project_name: str,
+    _user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
     queue = get_task_queue()
-    result = await queue.cancel_all_queued(project_name)
+    result = await queue.cancel_all_queued(project_name, tenant_id=access.id, requested_by_user_id=_user.id)
     return result
 
 
@@ -217,9 +265,11 @@ async def get_task(
     task_id: str,
     _user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
+    access = await require_tenant_access(session, _user, minimum_role=ROLE_VIEW)
     queue = get_task_queue()
-    task = await queue.get_task(task_id)
+    task = await queue.get_task(task_id, tenant_id=access.id, requested_by_user_id=_user.id)
     if not task:
         raise HTTPException(status_code=404, detail=_t("task_not_found", id=task_id))
     return {"task": _localize_task(task, _t)}

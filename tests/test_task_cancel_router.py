@@ -9,6 +9,7 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from lib.db import get_async_session
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import tasks as tasks_router
 
@@ -41,20 +42,20 @@ class _FakeQueue:
         self._cancel_task_result.setdefault("cancelling", [])
         self._cancel_task_result.setdefault("skipped_terminal", [])
 
-    async def get_cancel_preview(self, task_id: str):
+    async def get_cancel_preview(self, task_id: str, **kwargs):
         if self._cancel_preview_error:
             raise ValueError(self._cancel_preview_error)
         return self._cancel_preview_result
 
-    async def cancel_task(self, task_id: str):
+    async def cancel_task(self, task_id: str, **kwargs):
         if self._cancel_task_error:
             raise ValueError(self._cancel_task_error)
         return self._cancel_task_result
 
-    async def get_cancel_all_preview(self, project_name: str) -> int:
+    async def get_cancel_all_preview(self, project_name: str, **kwargs) -> int:
         return self._cancel_all_preview_count
 
-    async def cancel_all_queued(self, project_name: str):
+    async def cancel_all_queued(self, project_name: str, **kwargs):
         return self._cancel_all_result
 
 
@@ -63,10 +64,24 @@ class _FakeQueue:
 # ---------------------------------------------------------------------------
 
 
+class _Access:
+    id = "ten_test"
+    name = "Test"
+    role = "admin"
+    is_owner = True
+    personal = False
+
+
+async def _fake_require_tenant_access(*args, **kwargs):
+    return _Access()
+
+
 def _make_app() -> FastAPI:
     """构建用于测试的最小 FastAPI 应用，注入假用户。"""
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_async_session] = lambda: object()
+    tasks_router.require_tenant_access = _fake_require_tenant_access
     app.include_router(tasks_router.router, prefix="/api/v1")
     return app
 

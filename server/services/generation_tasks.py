@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import mimetypes
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -17,7 +18,10 @@ from lib.app_data_dir import app_data_dir
 from lib.asset_types import ASSET_SPECS
 from lib.backend_assembly import assemble_backend
 from lib.config.registry import PROVIDER_REGISTRY
+from lib.db import safe_session_factory
 from lib.db.base import DEFAULT_USER_ID
+from lib.db.tenant_context import set_tenant_context
+from lib.files import FileLinkSpec, FileService
 from lib.gemini_shared import get_shared_rate_limiter
 from lib.i18n import DEFAULT_LOCALE
 from lib.i18n import _ as i18n_translate
@@ -42,6 +46,7 @@ from lib.prompt_utils import (
 )
 from lib.reference_compression import ReferencePayloadFloorError
 from lib.resource_paths import resource_relative_path
+from lib.storage import get_storage_service
 from lib.storyboard_sequence import (
     build_previous_storyboard_reference,
     find_storyboard_item,
@@ -61,6 +66,37 @@ logger = logging.getLogger(__name__)
 _backend_cache: dict[tuple[str, str, str | None], Any] = {}
 
 
+async def _record_output_file(
+    *,
+    file_path: Path,
+    project_name: str,
+    created_by_user_id: str,
+    tenant_id: str | None,
+    task_id: str | None,
+    link_type: str,
+) -> str | None:
+    if tenant_id is None or not file_path.exists():
+        return None
+    content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+    links = [FileLinkSpec(resource_type="project", resource_id=project_name, link_type=link_type)]
+    if task_id:
+        links.append(FileLinkSpec(resource_type="task", resource_id=task_id, link_type=link_type))
+    async with safe_session_factory() as session:
+        session.info["tenant_id"] = tenant_id
+        session.info["user_id"] = created_by_user_id
+        if session.get_bind().dialect.name == "postgresql":
+            await set_tenant_context(session, user_id=created_by_user_id, tenant_id=tenant_id)
+        record = await FileService(session, get_storage_service()).create_file(
+            content=await asyncio.to_thread(file_path.read_bytes),
+            alias=file_path.name,
+            content_type=content_type,
+            created_by_user_id=created_by_user_id,
+            links=links,
+        )
+        await session.commit()
+        return record.file_id
+
+
 def get_project_manager() -> ProjectManager:
     return pm
 
@@ -75,6 +111,7 @@ async def _resolve_effective_image_backend(
     payload: dict | None,
     *,
     user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
     needs_i2i: bool = False,
 ) -> ProviderModel:
     """图片 provider 解析的薄投影：委托 ``ConfigResolver.resolve_image_backend``。
@@ -86,7 +123,7 @@ async def _resolve_effective_image_backend(
     from lib.config.resolver import ConfigResolver
     from lib.db import async_session_factory
 
-    resolver = ConfigResolver(async_session_factory, user_id=user_id)
+    resolver = ConfigResolver(async_session_factory, user_id=user_id, tenant_id=tenant_id)
     capability = "i2i" if needs_i2i else "t2i"
     return await resolver.resolve_image_backend(project, payload, capability=capability)
 
@@ -201,6 +238,7 @@ async def get_media_generator(
     payload: dict | None = None,
     *,
     user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
     require_image_backend: bool = True,
     needs_i2i: bool = False,
     needs_audio: bool = False,
@@ -215,7 +253,7 @@ async def get_media_generator(
     from lib.db import async_session_factory
 
     project_path = await asyncio.to_thread(get_project_manager().get_project_path, project_name)
-    resolver = ConfigResolver(async_session_factory, user_id=user_id)
+    resolver = ConfigResolver(async_session_factory, user_id=user_id, tenant_id=tenant_id)
 
     # provider_id 须在 async with 之前初始化：纯视频任务（require_image_backend=False）取不到
     # image provider，纯图任务也要拿到 video provider，两个分支各自赋值后传给 MediaGenerator。
@@ -242,6 +280,7 @@ async def get_media_generator(
                     project,
                     payload,
                     user_id=user_id,
+                    tenant_id=tenant_id,
                     needs_i2i=needs_i2i,
                 )
                 # 解析失败 → provider_id 为空，让 _get_or_create_image_backend 抛出清晰错误
@@ -268,6 +307,7 @@ async def get_media_generator(
         audio_backend=audio_backend,
         config_resolver=resolver,
         user_id=user_id,
+        tenant_id=tenant_id,
         image_provider_id=image_provider_id,
         video_provider_id=video_provider_id,
     )
@@ -782,6 +822,7 @@ async def execute_storyboard_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     script_file = payload.get("script_file")
     if not script_file:
@@ -829,6 +870,7 @@ async def execute_storyboard_task(
         project_name,
         payload=payload,
         user_id=user_id,
+        tenant_id=tenant_id,
         needs_i2i=_needs_i2i,
     )
     aspect_ratio = get_aspect_ratio(project, "storyboards")
@@ -837,17 +879,26 @@ async def execute_storyboard_task(
         project,
         payload,
         user_id=user_id,
+        tenant_id=tenant_id,
         needs_i2i=_needs_i2i,
     )
     image_size = await resolve_resolution(project, resolved_image.provider_id, resolved_image.model_id)
 
-    _, version = await generator.generate_image_async(
+    image_path, version = await generator.generate_image_async(
         prompt=prompt_text,
         resource_type="storyboards",
         resource_id=resource_id,
         reference_images=reference_images,
         aspect_ratio=aspect_ratio,
         image_size=image_size,
+    )
+    file_id = await _record_output_file(
+        file_path=image_path,
+        project_name=project_name,
+        created_by_user_id=user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
+        link_type="storyboard_image",
     )
 
     def _finalize():
@@ -858,6 +909,14 @@ async def execute_storyboard_task(
             asset_type="storyboard_image",
             asset_path=f"storyboards/scene_{resource_id}.png",
         )
+        if file_id:
+            get_project_manager().update_scene_asset(
+                project_name=project_name,
+                script_filename=script_file,
+                scene_id=resource_id,
+                asset_type="storyboard_image_file_id",
+                asset_path=file_id,
+            )
         return generator.versions.get_versions("storyboards", resource_id)["versions"][-1]["created_at"]
 
     created_at = await asyncio.to_thread(_finalize)
@@ -868,6 +927,7 @@ async def execute_storyboard_task(
         "created_at": created_at,
         "resource_type": "storyboards",
         "resource_id": resource_id,
+        "file_id": file_id,
     }
 
 
@@ -878,6 +938,7 @@ async def execute_tts_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     """为说书模式单个 segment 合成旁白音频（同步 TTS，无续传）。
 
@@ -909,6 +970,7 @@ async def execute_tts_task(
         project_name,
         payload=payload,
         user_id=user_id,
+        tenant_id=tenant_id,
         require_image_backend=False,
         needs_audio=True,
     )
@@ -916,11 +978,11 @@ async def execute_tts_task(
     from lib.config.resolver import ConfigResolver
     from lib.db import async_session_factory
 
-    resolver = ConfigResolver(async_session_factory, user_id=user_id)
+    resolver = ConfigResolver(async_session_factory, user_id=user_id, tenant_id=tenant_id)
     voice = await resolver.resolve_narration_voice(project)
     speed = await resolver.resolve_narration_speed(project)
 
-    _, version = await generator.generate_audio_async(
+    audio_path, version = await generator.generate_audio_async(
         text=text,
         resource_id=resource_id,
         voice=voice,
@@ -928,6 +990,14 @@ async def execute_tts_task(
     )
 
     audio_rel = resource_relative_path("audio", resource_id)
+    file_id = await _record_output_file(
+        file_path=audio_path,
+        project_name=project_name,
+        created_by_user_id=user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
+        link_type="narration_audio",
+    )
 
     def _finalize():
         if script_file:
@@ -938,6 +1008,14 @@ async def execute_tts_task(
                 asset_type="narration_audio",
                 asset_path=audio_rel,
             )
+            if file_id:
+                get_project_manager().update_scene_asset(
+                    project_name=project_name,
+                    script_filename=script_file,
+                    scene_id=resource_id,
+                    asset_type="narration_audio_file_id",
+                    asset_path=file_id,
+                )
         return generator.versions.get_versions("audio", resource_id)["versions"][-1]["created_at"]
 
     created_at = await asyncio.to_thread(_finalize)
@@ -948,6 +1026,7 @@ async def execute_tts_task(
         "created_at": created_at,
         "resource_type": "audio",
         "resource_id": resource_id,
+        "file_id": file_id,
     }
 
 
@@ -958,6 +1037,7 @@ async def execute_video_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     script_file = payload.get("script_file")
     if not script_file:
@@ -978,7 +1058,7 @@ async def execute_video_task(
         return _project, _project_path, _item
 
     project, project_path, item = await asyncio.to_thread(_load)
-    generator = await get_media_generator(project_name, payload=payload, user_id=user_id)
+    generator = await get_media_generator(project_name, payload=payload, user_id=user_id, tenant_id=tenant_id)
 
     # 优先读取 generated_assets.storyboard_image，回退默认路径。
     # 旧宫格项目 storyboard_image 指向 scene_{id}_first.png，仍可正常解析。
@@ -1015,7 +1095,7 @@ async def execute_video_task(
     from lib.config.resolver import ConfigResolver
     from lib.db import async_session_factory
 
-    _resolver = ConfigResolver(async_session_factory)
+    _resolver = ConfigResolver(async_session_factory, user_id=user_id, tenant_id=tenant_id)
     try:
         resolved_video = await _resolver.resolve_video_backend(project, payload)
         registry_provider_id = resolved_video.provider_id
@@ -1081,6 +1161,9 @@ async def execute_video_task(
         version=version,
         video_uri=video_uri,
         generator=generator,
+        created_by_user_id=user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
     )
 
 
@@ -1093,6 +1176,9 @@ async def _finalize_video_task(
     version: int,
     video_uri: str | None,
     generator: Any,
+    created_by_user_id: str,
+    tenant_id: str | None,
+    task_id: str | None,
 ) -> dict[str, Any]:
     """Normal + resume 共用的 finalize 逻辑：写 scene asset + 抽缩略图 + 返回 result dict。"""
 
@@ -1116,8 +1202,35 @@ async def _finalize_video_task(
     await asyncio.to_thread(_update_video_metadata)
 
     video_file = project_path / f"videos/scene_{resource_id}.mp4"
+    video_file_id = await _record_output_file(
+        file_path=video_file,
+        project_name=project_name,
+        created_by_user_id=created_by_user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
+        link_type="video_clip",
+    )
+    if video_file_id:
+        await asyncio.to_thread(
+            get_project_manager().update_scene_asset,
+            project_name=project_name,
+            script_filename=script_file,
+            scene_id=resource_id,
+            asset_type="video_clip_file_id",
+            asset_path=video_file_id,
+        )
+
     thumbnail_file = project_path / f"thumbnails/scene_{resource_id}.jpg"
+    thumbnail_file_id = None
     if await extract_video_thumbnail(video_file, thumbnail_file):
+        thumbnail_file_id = await _record_output_file(
+            file_path=thumbnail_file,
+            project_name=project_name,
+            created_by_user_id=created_by_user_id,
+            tenant_id=tenant_id,
+            task_id=task_id,
+            link_type="video_thumbnail",
+        )
         await asyncio.to_thread(
             get_project_manager().update_scene_asset,
             project_name=project_name,
@@ -1126,6 +1239,15 @@ async def _finalize_video_task(
             asset_type="video_thumbnail",
             asset_path=f"thumbnails/scene_{resource_id}.jpg",
         )
+        if thumbnail_file_id:
+            await asyncio.to_thread(
+                get_project_manager().update_scene_asset,
+                project_name=project_name,
+                script_filename=script_file,
+                scene_id=resource_id,
+                asset_type="video_thumbnail_file_id",
+                asset_path=thumbnail_file_id,
+            )
     else:
         thumbnail_file.unlink(missing_ok=True)
 
@@ -1140,6 +1262,8 @@ async def _finalize_video_task(
         "resource_type": "videos",
         "resource_id": resource_id,
         "video_uri": video_uri,
+        "file_id": video_file_id,
+        "thumbnail_file_id": thumbnail_file_id,
     }
 
 
@@ -1150,6 +1274,7 @@ async def execute_character_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     prompt = str(payload.get("prompt", "") or "").strip()
     if not prompt:
@@ -1175,13 +1300,25 @@ async def execute_character_task(
     project, full_prompt, reference_images = await asyncio.to_thread(_prepare_char)
     _needs_i2i = bool(reference_images)
 
-    generator = await get_media_generator(project_name, payload=payload, user_id=user_id, needs_i2i=_needs_i2i)
+    generator = await get_media_generator(
+        project_name,
+        payload=payload,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        needs_i2i=_needs_i2i,
+    )
     aspect_ratio = get_aspect_ratio(project, "characters")
 
-    resolved_image = await _resolve_effective_image_backend(project, payload, user_id=user_id, needs_i2i=_needs_i2i)
+    resolved_image = await _resolve_effective_image_backend(
+        project,
+        payload,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        needs_i2i=_needs_i2i,
+    )
     image_size = await resolve_resolution(project, resolved_image.provider_id, resolved_image.model_id)
 
-    _, version = await generator.generate_image_async(
+    image_path, version = await generator.generate_image_async(
         prompt=full_prompt,
         resource_type="characters",
         resource_id=resource_id,
@@ -1191,10 +1328,20 @@ async def execute_character_task(
     )
 
     sheet_path = f"characters/{resource_id}.png"
+    file_id = await _record_output_file(
+        file_path=image_path,
+        project_name=project_name,
+        created_by_user_id=user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
+        link_type="character_sheet",
+    )
 
     def _finalize_char():
         def _set_character_sheet(p: dict) -> None:
             p["characters"][resource_id]["character_sheet"] = sheet_path
+            if file_id:
+                p["characters"][resource_id]["character_sheet_file_id"] = file_id
 
         get_project_manager().update_project(project_name, _set_character_sheet)
         return generator.versions.get_versions("characters", resource_id)["versions"][-1]["created_at"]
@@ -1207,6 +1354,7 @@ async def execute_character_task(
         "created_at": created_at,
         "resource_type": "characters",
         "resource_id": resource_id,
+        "file_id": file_id,
     }
 
 
@@ -1249,6 +1397,8 @@ async def execute_design_task(
     payload: dict[str, Any],
     *,
     user_id: str = DEFAULT_USER_ID,
+    task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     """合并 execute_scene_task / execute_prop_task / execute_product_task：按 kind 查表派发。"""
     spec = ASSET_SPECS[kind]
@@ -1274,13 +1424,25 @@ async def execute_design_task(
     project, full_prompt, reference_images = await asyncio.to_thread(_prepare)
     needs_i2i = bool(reference_images)
 
-    generator = await get_media_generator(project_name, payload=payload, user_id=user_id, needs_i2i=needs_i2i)
+    generator = await get_media_generator(
+        project_name,
+        payload=payload,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        needs_i2i=needs_i2i,
+    )
     aspect_ratio = get_aspect_ratio(project, bucket_key)
 
-    resolved_image = await _resolve_effective_image_backend(project, payload, user_id=user_id, needs_i2i=needs_i2i)
+    resolved_image = await _resolve_effective_image_backend(
+        project,
+        payload,
+        user_id=user_id,
+        tenant_id=tenant_id,
+        needs_i2i=needs_i2i,
+    )
     image_size = await resolve_resolution(project, resolved_image.provider_id, resolved_image.model_id)
 
-    _, version = await generator.generate_image_async(
+    image_path, version = await generator.generate_image_async(
         prompt=full_prompt,
         resource_type=bucket_key,
         resource_id=resource_id,
@@ -1290,9 +1452,23 @@ async def execute_design_task(
     )
 
     sheet_path = f"{bucket_key}/{resource_id}.png"
+    file_id = await _record_output_file(
+        file_path=image_path,
+        project_name=project_name,
+        created_by_user_id=user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
+        link_type=f"{kind}_sheet",
+    )
 
     def _finalize():
         get_project_manager()._update_asset_sheet(kind, project_name, resource_id, sheet_path)
+        if file_id:
+
+            def _set_file_id(p: dict) -> None:
+                p[bucket_key][resource_id][f"{spec.sheet_field}_file_id"] = file_id
+
+            get_project_manager().update_project(project_name, _set_file_id)
         return generator.versions.get_versions(bucket_key, resource_id)["versions"][-1]["created_at"]
 
     created_at = await asyncio.to_thread(_finalize)
@@ -1303,6 +1479,7 @@ async def execute_design_task(
         "created_at": created_at,
         "resource_type": bucket_key,
         "resource_id": resource_id,
+        "file_id": file_id,
     }
 
 
@@ -1313,8 +1490,17 @@ async def execute_scene_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
-    return await execute_design_task("scene", project_name, resource_id, payload, user_id=user_id)
+    return await execute_design_task(
+        "scene",
+        project_name,
+        resource_id,
+        payload,
+        user_id=user_id,
+        task_id=task_id,
+        tenant_id=tenant_id,
+    )
 
 
 async def execute_prop_task(
@@ -1324,8 +1510,17 @@ async def execute_prop_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
-    return await execute_design_task("prop", project_name, resource_id, payload, user_id=user_id)
+    return await execute_design_task(
+        "prop",
+        project_name,
+        resource_id,
+        payload,
+        user_id=user_id,
+        task_id=task_id,
+        tenant_id=tenant_id,
+    )
 
 
 async def execute_product_task(
@@ -1335,8 +1530,17 @@ async def execute_product_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
-    return await execute_design_task("product", project_name, resource_id, payload, user_id=user_id)
+    return await execute_design_task(
+        "product",
+        project_name,
+        resource_id,
+        payload,
+        user_id=user_id,
+        task_id=task_id,
+        tenant_id=tenant_id,
+    )
 
 
 def _group_scenes_by_segment_break(items: list[dict], id_field: str) -> list[list[dict]]:
@@ -1429,6 +1633,7 @@ async def execute_grid_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a grid image generation task.
 
@@ -1479,13 +1684,20 @@ async def execute_grid_task(
             project_name,
             payload=payload,
             user_id=user_id,
+            tenant_id=tenant_id,
             needs_i2i=_needs_i2i,
         )
 
         project = await asyncio.to_thread(get_project_manager().load_project, project_name)
         aspect_ratio = payload.get("grid_aspect_ratio") or get_aspect_ratio(project, "storyboards")
 
-        resolved_image = await _resolve_effective_image_backend(project, payload, user_id=user_id, needs_i2i=_needs_i2i)
+        resolved_image = await _resolve_effective_image_backend(
+            project,
+            payload,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            needs_i2i=_needs_i2i,
+        )
         # 回填 grid metadata：route 层创建/重建时无法预知 needs_i2i，由此处补齐
         grid.provider = resolved_image.provider_id
         grid.model = resolved_image.model_id
@@ -1501,6 +1713,14 @@ async def execute_grid_task(
             reference_images=reference_images,
             aspect_ratio=aspect_ratio,
             image_size=image_size,
+        )
+        file_id = await _record_output_file(
+            file_path=image_path,
+            project_name=project_name,
+            created_by_user_id=user_id,
+            tenant_id=tenant_id,
+            task_id=task_id,
+            link_type="grid_image",
         )
 
         # e) Set grid_image_path, status to splitting
@@ -1604,6 +1824,7 @@ async def execute_grid_task(
         "created_at": created_at,
         "resource_type": "grids",
         "resource_id": resource_id,
+        "file_id": file_id,
     }
 
 
@@ -1614,11 +1835,19 @@ async def _execute_reference_video_task_proxy(
     *,
     user_id: str,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     """Lazy proxy to avoid circular import: reference_video_tasks imports from this module."""
     from server.services.reference_video_tasks import execute_reference_video_task
 
-    return await execute_reference_video_task(project_name, resource_id, payload, user_id=user_id, task_id=task_id)
+    return await execute_reference_video_task(
+        project_name,
+        resource_id,
+        payload,
+        user_id=user_id,
+        task_id=task_id,
+        tenant_id=tenant_id,
+    )
 
 
 _TASK_EXECUTORS = {
@@ -1640,6 +1869,7 @@ async def execute_generation_task(task: dict[str, Any]) -> dict[str, Any]:
     resource_id = str(task.get("resource_id"))
     payload = task.get("payload") or {}
     user_id = task.get("user_id", DEFAULT_USER_ID)
+    tenant_id = task.get("tenant_id")
     queue_task_id = task.get("task_id")
 
     if not project_name:
@@ -1653,7 +1883,14 @@ async def execute_generation_task(task: dict[str, Any]) -> dict[str, Any]:
 
     with project_change_source("worker"):
         try:
-            result = await executor(project_name, resource_id, payload, user_id=user_id, task_id=queue_task_id)
+            result = await executor(
+                project_name,
+                resource_id,
+                payload,
+                user_id=user_id,
+                task_id=queue_task_id,
+                tenant_id=tenant_id,
+            )
         except (ImageCapabilityError, VideoCapabilityError, ReferencePayloadFloorError) as err:
             # Worker 后台无 request 上下文，按 DEFAULT_LOCALE 渲染稳定的 i18n 文案
             # 落到 task.error_message，前端轮询时即可看到本地化提示。

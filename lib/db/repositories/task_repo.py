@@ -13,13 +13,14 @@ from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 
-from lib.db.base import DEFAULT_USER_ID, dt_to_iso, utc_now
+from lib.db.base import DEFAULT_USER_ID, Base, dt_to_iso, utc_now
 from lib.db.models.task import Task, TaskEvent, WorkerLease
 from lib.db.repositories.base import BaseRepository, rowcount
 
 logger = logging.getLogger(__name__)
 
 ACTIVE_TASK_STATUSES = ("queued", "running", "cancelling")
+DEFAULT_TENANT_ID = "ten_default"
 
 
 def _json_dumps(value: Any) -> str:
@@ -59,6 +60,8 @@ def _task_to_dict(row: Task) -> dict[str, Any]:
         "finished_at": dt_to_iso(row.finished_at),
         "updated_at": dt_to_iso(row.updated_at),
         "user_id": row.user_id,
+        "tenant_id": row.tenant_id,
+        "requested_by_user_id": row.user_id,
     }
 
 
@@ -71,10 +74,35 @@ def _event_to_dict(row: TaskEvent) -> dict[str, Any]:
         "status": row.status,
         "data": _json_loads(row.data_json, {}),
         "created_at": dt_to_iso(row.created_at),
+        "tenant_id": row.tenant_id,
     }
 
 
 class TaskRepository(BaseRepository):
+    def __init__(
+        self,
+        session,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ):
+        super().__init__(session)
+        self.tenant_id = tenant_id or session.info.get("tenant_id")
+        self.requested_by_user_id = requested_by_user_id or session.info.get("user_id")
+        if self.tenant_id is not None:
+            self.session.info["tenant_id"] = str(self.tenant_id)
+        if self.requested_by_user_id is not None:
+            self.session.info["user_id"] = str(self.requested_by_user_id)
+
+    def _scope_query(self, stmt: Any, model: type[Base]) -> Any:
+        tenant_column = getattr(model, "tenant_id", None)
+        if self.tenant_id is None or tenant_column is None:
+            return stmt
+        return stmt.where(tenant_column == str(self.tenant_id))
+
+    def _tenant_id_for_write(self) -> str:
+        return str(self.tenant_id or self.session.info.get("tenant_id") or DEFAULT_TENANT_ID)
+
     async def _append_event(
         self,
         *,
@@ -92,6 +120,7 @@ class TaskRepository(BaseRepository):
             status=status,
             data_json=_json_dumps(data or {}),
             created_at=now,
+            tenant_id=self._tenant_id_for_write(),
         )
         self.session.add(event)
         await self.session.flush()
@@ -111,13 +140,22 @@ class TaskRepository(BaseRepository):
         dependency_group: str | None = None,
         dependency_index: int | None = None,
         user_id: str = DEFAULT_USER_ID,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
         provider_id: str | None = None,
     ) -> dict[str, Any]:
         now = utc_now()
+        write_tenant_id = str(tenant_id or self.tenant_id or DEFAULT_TENANT_ID)
+        write_user_id = str(requested_by_user_id or user_id or self.requested_by_user_id or DEFAULT_USER_ID)
+        self.tenant_id = write_tenant_id
+        self.requested_by_user_id = write_user_id
+        self.session.info["tenant_id"] = write_tenant_id
+        self.session.info["user_id"] = write_user_id
 
         task_id = uuid.uuid4().hex
         task = Task(
             task_id=task_id,
+            tenant_id=write_tenant_id,
             project_name=project_name,
             task_type=task_type,
             media_type=media_type,
@@ -132,7 +170,7 @@ class TaskRepository(BaseRepository):
             provider_id=provider_id,
             queued_at=now,
             updated_at=now,
-            user_id=user_id,
+            user_id=write_user_id,
         )
         self.session.add(task)
         try:
@@ -145,6 +183,7 @@ class TaskRepository(BaseRepository):
                 select(Task)
                 .where(
                     Task.project_name == project_name,
+                    Task.tenant_id == write_tenant_id,
                     Task.task_type == task_type,
                     Task.resource_id == resource_id,
                     func.coalesce(Task.script_file, "") == sf,
@@ -406,7 +445,9 @@ class TaskRepository(BaseRepository):
         以避免吓人：running / cancelling 下游运行期数量不稳定，由 cancel 操作实际触发后再
         通过 SSE 反映。终态 task 调用方应在前端避免触发。
         """
-        result = await self.session.execute(select(Task).where(Task.task_id == task_id))
+        stmt = select(Task).where(Task.task_id == task_id)
+        stmt = self._scope_query(stmt, Task)
+        result = await self.session.execute(stmt)
         task = result.scalar_one_or_none()
         if not task:
             raise ValueError(f"任务 '{task_id}' 不存在")
@@ -423,7 +464,7 @@ class TaskRepository(BaseRepository):
 
     async def _collect_queued_dependents(self, task_id: str) -> list[dict[str, Any]]:
         """递归收集依赖于 task_id 的所有 queued 任务摘要。"""
-        result = await self.session.execute(
+        stmt = (
             select(Task.task_id, Task.task_type, Task.resource_id)
             .where(
                 Task.dependency_task_id == task_id,
@@ -431,6 +472,8 @@ class TaskRepository(BaseRepository):
             )
             .order_by(Task.queued_at.asc())
         )
+        stmt = self._scope_query(stmt, Task)
+        result = await self.session.execute(stmt)
         dependents = []
         for row in result.all():
             summary = {"task_id": row[0], "task_type": row[1], "resource_id": row[2]}
@@ -452,7 +495,9 @@ class TaskRepository(BaseRepository):
         Repository 只更新 DB，不持有 worker callback。``cancelling`` 列表交由
         上层（GenerationQueue）拿到后同步分发 in-process cancel 信号。
         """
-        result = await self.session.execute(select(Task).where(Task.task_id == task_id))
+        stmt = select(Task).where(Task.task_id == task_id)
+        stmt = self._scope_query(stmt, Task)
+        result = await self.session.execute(stmt)
         task = result.scalar_one_or_none()
         if not task:
             raise ValueError(f"任务 '{task_id}' 不存在")
@@ -639,9 +684,9 @@ class TaskRepository(BaseRepository):
         grandchildren——即使下游 task 是 running（落 cancelling、不在本帧级联），
         其 worker finally 走 ``finalize_cancelled`` 时仍会触发对它自己下游的级联。
         """
-        result = await self.session.execute(
-            select(Task).where(Task.dependency_task_id == task_id).order_by(Task.queued_at.asc())
-        )
+        stmt = select(Task).where(Task.dependency_task_id == task_id).order_by(Task.queued_at.asc())
+        stmt = self._scope_query(stmt, Task)
+        result = await self.session.execute(stmt)
         for dep_task in result.scalars().all():
             await self._dispatch_cancel(
                 dep_task,
@@ -731,28 +776,26 @@ class TaskRepository(BaseRepository):
 
     async def get_cancel_all_preview(self, project_name: str) -> int:
         """返回项目中当前 queued 状态的任务数量。"""
-        result = await self.session.execute(
-            select(func.count()).select_from(Task).where(Task.project_name == project_name, Task.status == "queued")
-        )
+        stmt = select(func.count()).select_from(Task).where(Task.project_name == project_name, Task.status == "queued")
+        stmt = self._scope_query(stmt, Task)
+        result = await self.session.execute(stmt)
         return result.scalar_one()
 
     async def cancel_all_queued(self, project_name: str) -> dict[str, Any]:
         """取消项目中所有 queued 任务。"""
-        queued_result = await self.session.execute(
-            select(Task).where(Task.project_name == project_name, Task.status == "queued")
-        )
+        queued_stmt = select(Task).where(Task.project_name == project_name, Task.status == "queued")
+        queued_stmt = self._scope_query(queued_stmt, Task)
+        queued_result = await self.session.execute(queued_stmt)
         queued_tasks = list(queued_result.scalars().all())
 
         now = utc_now()
-        stmt = (
-            update(Task)
-            .where(Task.project_name == project_name, Task.status == "queued")
-            .values(
-                status="cancelled",
-                cancelled_by="user",
-                finished_at=now,
-                updated_at=now,
-            )
+        stmt = update(Task).where(Task.project_name == project_name, Task.status == "queued")
+        stmt = self._scope_query(stmt, Task)
+        stmt = stmt.values(
+            status="cancelled",
+            cancelled_by="user",
+            finished_at=now,
+            updated_at=now,
         )
         result = await self.session.execute(stmt)
         cancelled_count = rowcount(result)
@@ -826,6 +869,7 @@ class TaskRepository(BaseRepository):
                 status="queued",
                 data_json=_json_dumps(_task_to_dict(t)),
                 created_at=event_now,
+                tenant_id=t.tenant_id,
             )
             for t in requeued_tasks
         ]
@@ -943,6 +987,7 @@ class TaskRepository(BaseRepository):
         if project_name:
             stmt = stmt.where(TaskEvent.project_name == project_name)
         stmt = stmt.order_by(TaskEvent.id.asc()).limit(limit)
+        stmt = self._scope_query(stmt, TaskEvent)
 
         result = await self.session.execute(stmt)
         return [_event_to_dict(e) for e in result.scalars().all()]
@@ -952,6 +997,7 @@ class TaskRepository(BaseRepository):
         stmt = select(func.max(TaskEvent.id))
         if project_name:
             stmt = stmt.where(TaskEvent.project_name == project_name)
+        stmt = self._scope_query(stmt, TaskEvent)
         result = await self.session.execute(stmt)
         return result.scalar() or 0
 

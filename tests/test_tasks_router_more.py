@@ -2,6 +2,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from lib.db import get_async_session
 from server.auth import CurrentUserInfo, get_current_user, get_current_user_flexible
 from server.routers import tasks as tasks_router
 
@@ -16,6 +17,18 @@ class _FakeRequest:
         return self._calls > self._disconnect_after
 
 
+class _Access:
+    id = "ten_test"
+    name = "Test"
+    role = "admin"
+    is_owner = True
+    personal = False
+
+
+async def _fake_require_tenant_access(*args, **kwargs):
+    return _Access()
+
+
 class _FakeQueue:
     def __init__(self, *, latest=0, snapshot=None, stats=None, events=None, task=None):
         self.latest = latest
@@ -25,16 +38,16 @@ class _FakeQueue:
         self.task = task
         self.cursors = []
 
-    async def get_latest_event_id(self, project_name=None):
+    async def get_latest_event_id(self, project_name=None, **kwargs):
         return self.latest
 
-    async def get_recent_tasks_snapshot(self, project_name=None, limit=1000):
+    async def get_recent_tasks_snapshot(self, project_name=None, limit=1000, **kwargs):
         return self.snapshot
 
-    async def get_task_stats(self, project_name=None):
+    async def get_task_stats(self, project_name=None, **kwargs):
         return self.stats
 
-    async def get_events_since(self, last_event_id, project_name=None, limit=200):
+    async def get_events_since(self, last_event_id, project_name=None, limit=200, **kwargs):
         self.cursors.append(last_event_id)
         if self.events:
             events = self.events
@@ -42,7 +55,7 @@ class _FakeQueue:
             return events
         return []
 
-    async def get_task(self, task_id):
+    async def get_task(self, task_id, **kwargs):
         return self.task
 
 
@@ -66,11 +79,13 @@ class TestTasksRouterMore:
         )
         monkeypatch.setattr(tasks_router, "get_task_queue", lambda: queue)
         monkeypatch.setattr(tasks_router, "read_queue_poll_interval", lambda: 0.0)
+        monkeypatch.setattr(tasks_router, "require_tenant_access", _fake_require_tenant_access)
 
         request = _FakeRequest(disconnect_after=2)
         stream = tasks_router.stream_tasks(
             request=request,
             _user=CurrentUserInfo(id="default", sub="testuser", role="admin"),
+            session=object(),
             project_name="demo",
             last_event_id=None,
             last_event_header=" 7 ",
@@ -98,11 +113,13 @@ class TestTasksRouterMore:
         queue = _FakeQueue(latest=0)
         monkeypatch.setattr(tasks_router, "get_task_queue", lambda: queue)
         monkeypatch.setattr(tasks_router, "read_queue_poll_interval", lambda: 0.0)
+        monkeypatch.setattr(tasks_router, "require_tenant_access", _fake_require_tenant_access)
 
         request = _FakeRequest(disconnect_after=1)
         stream = tasks_router.stream_tasks(
             request=request,
             _user=CurrentUserInfo(id="default", sub="testuser", role="admin"),
+            session=object(),
             project_name="demo",
             last_event_id=0,
             last_event_header=None,
@@ -122,6 +139,8 @@ class TestTasksRouterMore:
         app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(
             id="default", sub="testuser", role="admin"
         )
+        app.dependency_overrides[get_async_session] = lambda: object()
+        monkeypatch.setattr(tasks_router, "require_tenant_access", _fake_require_tenant_access)
         app.include_router(tasks_router.router, prefix="/api/v1")
 
         with TestClient(app) as client:
@@ -161,7 +180,7 @@ class _RenderQueue:
             "page_size": 50,
         }
 
-    async def get_task(self, task_id):
+    async def get_task(self, task_id, **kwargs):
         return dict(self._task) if self._task is not None else None
 
 
@@ -173,6 +192,8 @@ class TestTaskErrorLocalization:
         app.dependency_overrides[get_current_user_flexible] = lambda: CurrentUserInfo(
             id="default", sub="testuser", role="admin"
         )
+        app.dependency_overrides[get_async_session] = lambda: object()
+        monkeypatch.setattr(tasks_router, "require_tenant_access", _fake_require_tenant_access)
         app.include_router(tasks_router.router, prefix="/api/v1")
         return TestClient(app)
 
