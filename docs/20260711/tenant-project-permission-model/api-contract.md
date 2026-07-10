@@ -122,9 +122,9 @@
 
 返回聚合项必须包含对应 ID；name 只作为 display 字段。
 
-## API key 禁用契约
+## Issued Tokens 禁用契约
 
-本轮后台 API key 功能默认不可用。
+本轮后台 Issued Tokens 功能默认不可用。这里指设置页里“API 密钥管理 / Issued Tokens”，用于 OpenClaw 等外部工具访问 ArcReel 项目；不包括 CaMeL provider provisioning keys、媒体供应商凭证、Anthropic Bridge / Agent 凭证。
 
 | Endpoint | 行为 |
 |----------|------|
@@ -133,7 +133,7 @@
 | `PATCH /api/v1/api-keys/{id}` | 返回 `403 feature_disabled` |
 | `DELETE /api/v1/api-keys/{id}` | 返回 `403 feature_disabled` |
 
-前端 API key 按钮保留但 disabled，不允许触发创建/更新/删除请求。测试必须覆盖按钮 disabled 和后台接口统一 403。
+前端 Issued Tokens 按钮保留但 disabled，不允许触发创建/更新/删除请求。测试必须覆盖按钮 disabled 和后台接口统一 403。
 
 ## 错误码
 
@@ -145,4 +145,4 @@
 | role 快照过期 | 403 | `tenant_role_stale` |
 | 项目不存在或不属于当前租户 | 404 | `project_not_found` |
 | 权限不足 | 403 | `permission_denied` |
-| API key 功能关闭 | 403 | `feature_disabled` |
+| Issued Tokens 功能关闭 | 403 | `feature_disabled` |

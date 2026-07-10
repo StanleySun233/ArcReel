@@ -2,7 +2,7 @@
 
 **Date:** 20260711
 **Status:** planned
-**Product brief:** 基于当前对话：ArcReel 新商业发行版需要重新收敛 user/tenant/project 权限关系。租户承载系统配置和权限，项目只属于一个租户，所有项目业务逻辑按 project_id 查询。API key 功能本轮先下掉，后续再启用。用量统计需要按 tenant/project 分组。无旧版本兼容。
+**Product brief:** 基于当前对话：ArcReel 新商业发行版需要重新收敛 user/tenant/project 权限关系。租户承载系统配置和权限，项目只属于一个租户，所有项目业务逻辑按 project_id 查询。Issued Tokens 功能本轮先下掉，后续再启用；这里不包括 CaMeL provider keys、媒体供应商凭证、Agent 凭证。用量统计需要按 tenant/project 分组。无旧版本兼容。
 **Main integration branch:** main
 
 ## Sprint Goal
@@ -29,11 +29,11 @@
 
 | Gate | Owner | Required Output | Pass Condition |
 |------|-------|-----------------|----------------|
-| G1 权限模型确认 | 用户 + PM | `permission-model-design.md` | 用户确认 user/tenant/project 不变量、role 矩阵、API key 暂停策略无歧义 |
-| G2 API 契约确认 | 用户 + PM | `api-contract.md` | 用户确认项目路由全部转 project_id，错误码、用量接口、API key 禁用行为可接受 |
+| G1 权限模型确认 | 用户 + PM | `permission-model-design.md` | 用户确认 user/tenant/project 不变量、role 矩阵、Issued Tokens 暂停策略无歧义 |
+| G2 API 契约确认 | 用户 + PM | `api-contract.md` | 用户确认项目路由全部转 project_id，错误码、用量接口、Issued Tokens 禁用行为可接受 |
 | G3 串行执行边界确认 | PM | 本 backlog 的串行实施顺序 | 用户确认不拆 story、不启用 worktree 并行开发 |
 
-Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled；viewer 可查询成员；项目删除仅 owner/admin；本轮串行实现，不拆 story、不启用 worktree 并行。
+Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 disabled；viewer 可查询成员；项目删除仅 owner/admin；本轮串行实现，不拆 story、不启用 worktree 并行。
 
 ## Serial Implementation Plan
 
@@ -42,7 +42,7 @@ Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled
 **Status:** planned
 
 **Acceptance Criteria**
-- [x] `permission-model-design.md` 明确定义 User/Tenant/Project 关系、不变量、role 矩阵、ProjectContextResolver、API key 暂停策略。
+- [x] `permission-model-design.md` 明确定义 User/Tenant/Project 关系、不变量、role 矩阵、ProjectContextResolver、Issued Tokens 暂停策略。
 - [x] `api-contract.md` 明确定义项目 API 全部使用 `project_id`，错误码、租户 API、用量 API、文件 API、任务 API。
 - [x] 本 backlog 明确串行执行顺序，不再拆 story 或启用并行 worktree。
 
@@ -83,7 +83,7 @@ Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled
 - [ ] `project.json` 内媒体引用全部是 `file_id`。
 - [ ] 后端 service 直接读文件，前端只拿短签名 URL。
 
-### Phase 4 - 用量统计和 API key 禁用
+### Phase 4 - 用量统计和 Issued Tokens 禁用
 
 **Status:** planned
 
@@ -92,9 +92,10 @@ Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled
 - [ ] 后端提供租户总览、项目详情、用户维度查询。
 - [ ] 聚合查询不按项目名 group，只 join name 作展示。
 - [ ] 前端用量页支持 tenant/project 分组显示。
-- [ ] 前端设置页 API key 按钮 disabled。
-- [ ] 后台 API key 列表、创建、更新、删除统一返回 `403 feature_disabled`。
-- [ ] API key 不参与认证依赖链路。
+- [ ] 前端设置页 Issued Tokens 按钮 disabled。
+- [ ] 后台 `/api-keys` 列表、创建、更新、删除统一返回 `403 feature_disabled`。
+- [ ] Issued Tokens 不参与认证依赖链路。
+- [ ] CaMeL provider keys、媒体供应商凭证、Agent 凭证不受影响。
 
 ### Phase 5 - 全链路审计和测试
 
@@ -106,7 +107,7 @@ Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled
 - [ ] 场景矩阵覆盖只允许 owner/admin 删除项目。
 - [ ] 场景矩阵覆盖跨租户同名项目。
 - [ ] 场景矩阵覆盖创建项目、上传文件、生成图片、生成视频、Agent 输入文本、资产导入、用量查看。
-- [ ] 场景矩阵覆盖 API key disabled。
+- [ ] 场景矩阵覆盖 Issued Tokens disabled。
 - [ ] 自动测试和必须手动验证项都写入 QA evidence。
 
 ## Serial File Touch Order
@@ -120,7 +121,7 @@ Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled
 | 5 | Agent runtime | `server/routers/assistant.py`, `server/agent_runtime/*`, `lib/agent_session_store/*` |
 | 6 | 文件和资产 | `lib/files/*`, `server/routers/files.py`, `lib/db/repositories/asset*` |
 | 7 | 用量统计 | `server/routers/usage.py`, `lib/usage_tracker.py` |
-| 8 | API key 禁用 | `server/routers/api_keys.py`, `frontend/src/pages/settings*` |
+| 8 | Issued Tokens 禁用 | `server/routers/api_keys.py`, `frontend/src/pages/settings*` |
 | 9 | 测试和审计 | `tests/*`, `frontend/src/**/*.test.*`, `scenario-test-matrix.md` |
 
 ## Execution Workspace
@@ -131,4 +132,4 @@ Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled
 
 | Date | Story/Subtask | Owner | Blocker | Resolution |
 |------|---------------|-------|---------|------------|
-| 2026-07-11 | G1/G2/G3 | 用户 + PM | API key 禁用行为、role 权限矩阵、project_id 路由迁移口径和串行执行方式 | 已确认：后台 API key 403，前端按钮 disabled；viewer 可查成员；项目删除仅 owner/admin；串行实现 |
+| 2026-07-11 | G1/G2/G3 | 用户 + PM | Issued Tokens 禁用行为、role 权限矩阵、project_id 路由迁移口径和串行执行方式 | 已确认：后台 `/api-keys` 403，前端按钮 disabled；viewer 可查成员；项目删除仅 owner/admin；串行实现 |

@@ -28,7 +28,7 @@ User <-- membership --> Tenant <-- owns --> Project
 6. 所有写操作权限由后端实时查询真实 membership 得到，不相信前端 JWT 里的 role。
 7. JWT 中的 `tenant_role` 只作为 UI 快照。请求实际授权路径是 `user_id + tenant_id -> membership -> permission`。
 8. 已提交任务不随 membership 后续变化中断；权限只在用户发出请求、入队、创建会话时检查。
-9. API key 功能本轮下掉：后台路由、前端入口、创建/展示动作默认 disabled。后续再以 feature flag 或显式配置启用。
+9. Issued Tokens 功能本轮下掉：即用于 OpenClaw 等外部工具访问 ArcReel 项目的 API 密钥管理，后台路由统一 403，前端按钮 disabled。后续再以 feature flag 或显式配置启用。
 10. 文件存储统一使用 `file_id`，对象存储 key 使用 UUID 样式，真实文件名保存在 `alias`。
 
 ## 角色模型
@@ -111,23 +111,25 @@ $ARCREEL_DATA_DIR/_tenants/{tenant_id}/projects/{project_id}/project.json
 
 本发行版不做旧数据迁移兼容。Alembic 可以直接表达新表结构，但不需要写旧 SQLite 或旧 project.json 转换逻辑。
 
-## API key 暂停策略
+## Issued Tokens 暂停策略
 
-当前阶段不实现用户级 API token 授权链路，原因是它会引入第四类授权入口，且现在主线目标是先把 `user/tenant/project` 三元模型收敛。
+当前阶段不实现用户级 external access token 授权链路，原因是它会引入第四类授权入口，且现在主线目标是先把 `user/tenant/project` 三元模型收敛。
+
+这里的 Issued Tokens 仅指设置页里“API 密钥管理 / Issued Tokens”功能，用于 OpenClaw 等外部工具访问 ArcReel 项目。不包括 CaMeL 登录后自动创建的 provider provisioning keys，不包括媒体供应商凭证，也不包括 Anthropic Bridge / Agent 凭证。
 
 本轮要求：
 
-- 后台不提供可用的 API key 创建、更新、删除、展示密钥接口。
+- 后台不提供可用的 Issued Token 创建、更新、删除、展示密钥接口。
 - 前端保留入口时按钮必须 disabled，不允许触发创建/更新/删除请求。
-- 现有 API key 路由如果保留代码，统一返回 `403 feature_disabled`，不得参与真实鉴权。
-- 测试覆盖“API key 功能关闭时后台返回 403，前端按钮 disabled”。
+- 现有 `/api-keys` 路由如果保留代码，统一返回 `403 feature_disabled`，不得参与真实鉴权。
+- 测试覆盖“Issued Tokens 功能关闭时后台返回 403，前端按钮 disabled”。
 
 后续启用预留：
 
-- API key 属于创建它的 `user_id`。
-- API key 权限来自创建者可见的 tenant/project 范围快照或显式 allowlist。
-- API key 不允许跨越创建者没有 membership 的 tenant。
-- API key 访问项目仍必须走 `tenant_id + project_id`。
+- Issued Token 属于创建它的 `user_id`。
+- Issued Token 权限来自创建者可见的 tenant/project 范围快照或显式 allowlist。
+- Issued Token 不允许跨越创建者没有 membership 的 tenant。
+- Issued Token 访问项目仍必须走 `tenant_id + project_id`。
 
 ## 用量统计
 
@@ -191,7 +193,7 @@ Agent 会话创建、消息发送、工具调用、任务入队必须携带同�
 - [ ] 所有项目文件路径使用 `project_id`。
 - [ ] 所有 SQL 查询项目时带当前后端 tenant 上下文。
 - [ ] 所有任务、Agent、文件、用量记录持久化 `tenant_id + project_id`。
-- [ ] API key 后台统一返回 `403 feature_disabled`，前端按钮 disabled。
+- [ ] Issued Tokens 后台统一返回 `403 feature_disabled`，前端按钮 disabled。
 - [ ] 用量统计支持 tenant/project 分组。
 - [ ] 前端所有缓存 key 和 URL 不再使用项目名。
 - [ ] 跨租户同名项目测试通过。
