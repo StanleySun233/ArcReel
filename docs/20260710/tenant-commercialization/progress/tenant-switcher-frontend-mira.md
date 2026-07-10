@@ -22,11 +22,19 @@
   - Commit: 4a42e1a
 - [x] Add stale-role and revoked-access UI tests.
   - Commit: 676e191
+- [x] Fix tenant session store type safety and frontend quality gate.
+  - Commit: cc2ac72
 
-**Ready for QA:** no
+**Ready for QA:** yes
 
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
 | 2026-07-10 | Tenant switcher | Depends on Story 3 tenant API contract or compatible mock contract. | resolved |
+
+## Verification
+
+| Date | Command | Result |
+|------|---------|--------|
+| 2026-07-10 | `pnpm check` | `107 passed`, `921 passed` |
