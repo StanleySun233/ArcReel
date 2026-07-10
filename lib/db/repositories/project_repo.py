@@ -50,6 +50,14 @@ class ProjectRepository:
         ).scalar_one_or_none()
         return _project_row(row) if row is not None else None
 
+    async def get_by_id(self, project_id: str) -> ProjectRow | None:
+        row = (
+            await self.session.execute(
+                select(Project).where(Project.tenant_id == self.tenant_id, Project.id == project_id)
+            )
+        ).scalar_one_or_none()
+        return _project_row(row) if row is not None else None
+
     async def list_all(self) -> list[ProjectRow]:
         rows = (
             await self.session.execute(
@@ -68,9 +76,33 @@ class ProjectRepository:
         await self.session.flush()
         return _project_row(row)
 
+    async def touch_local_path_by_id(self, project_id: str, local_path: str) -> ProjectRow | None:
+        row = (
+            await self.session.execute(
+                select(Project).where(Project.tenant_id == self.tenant_id, Project.id == project_id)
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        row.local_path = local_path
+        await self.session.flush()
+        return _project_row(row)
+
     async def delete_by_name(self, name: str) -> bool:
         row = (
             await self.session.execute(select(Project).where(Project.tenant_id == self.tenant_id, Project.name == name))
+        ).scalar_one_or_none()
+        if row is None:
+            return False
+        await self.session.delete(row)
+        await self.session.flush()
+        return True
+
+    async def delete_by_id(self, project_id: str) -> bool:
+        row = (
+            await self.session.execute(
+                select(Project).where(Project.tenant_id == self.tenant_id, Project.id == project_id)
+            )
         ).scalar_one_or_none()
         if row is None:
             return False

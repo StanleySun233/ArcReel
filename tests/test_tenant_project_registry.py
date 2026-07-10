@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from lib.db.models import Tenant, TenantMembership, User
 from lib.db.repositories.project_repo import ProjectRepository
+from lib.project_context import project_json_local_path, resolve_project_context
 from lib.project_manager import ProjectManager
 
 
@@ -74,3 +75,40 @@ async def test_project_registry_rejects_same_name_in_same_tenant(async_session) 
             created_by_user_id="usr_1",
             local_path="_tenants/ten_1/projects/demo-2/project.json",
         )
+
+
+@pytest.mark.asyncio
+async def test_project_registry_id_lookup_is_tenant_scoped(async_session) -> None:
+    await _seed_tenants(async_session)
+    repo_1 = ProjectRepository(async_session, tenant_id="ten_1")
+    repo_2 = ProjectRepository(async_session, tenant_id="ten_2")
+    await repo_1.create(
+        project_id="prj_same",
+        name="demo",
+        created_by_user_id="usr_1",
+        local_path="_tenants/ten_1/projects/prj_same/project.json",
+    )
+
+    assert await repo_1.get_by_id("prj_same") is not None
+    assert await repo_2.get_by_id("prj_same") is None
+
+
+@pytest.mark.asyncio
+async def test_project_context_uses_project_id_path(async_session) -> None:
+    await _seed_tenants(async_session)
+    await ProjectRepository(async_session, tenant_id="ten_1").create(
+        project_id="prj_abc",
+        name="display-name",
+        created_by_user_id="usr_1",
+        local_path="_tenants/ten_1/projects/display-name/project.json",
+    )
+
+    context = await resolve_project_context(async_session, tenant_id="ten_1", project_id="prj_abc")
+
+    assert context is not None
+    assert context.project_name == "display-name"
+    assert context.project_root.name == "prj_abc"
+    assert context.project_json_path.name == "project.json"
+    assert project_json_local_path(tenant_id="ten_1", project_id="prj_abc") == (
+        "_tenants/ten_1/projects/prj_abc/project.json"
+    )
