@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { API, ConflictError } from "@/api";
+import { useAuthStore } from "@/stores/auth-store";
 import type { TaskItem } from "@/types";
 
 type JsonResponseOptions = {
@@ -62,6 +63,22 @@ function makeTask(overrides: Partial<TaskItem> = {}): TaskItem {
   };
 }
 
+const personalTenant = {
+  id: "ten_personal",
+  name: "Alice Personal",
+  role: "admin" as const,
+  is_owner: true,
+  personal: true,
+};
+
+const teamTenant = {
+  id: "ten_team",
+  name: "Studio Team",
+  role: "member" as const,
+  is_owner: false,
+  personal: false,
+};
+
 class MockEventSource {
   onerror: ((event: Event) => void) | null = null;
   close = vi.fn();
@@ -88,6 +105,8 @@ describe("API", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    window.localStorage.clear();
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
   });
 
   describe("request", () => {
@@ -164,6 +183,83 @@ describe("API", () => {
       await expect(API.request("/projects")).rejects.toThrow("认证已过期，请重新登录");
 
       expect(location.href).toBe("/login?from=%2Fapp%2Fprojects%2Fdemo");
+    });
+
+    it("refreshes stale tenant role tokens and retries the request", async () => {
+      window.localStorage.setItem("arcreel_auth_token", "stale-token");
+      useAuthStore.setState({
+        token: "stale-token",
+        isAuthenticated: true,
+        currentTenant: teamTenant,
+        tenants: [personalTenant, teamTenant],
+        tenantRole: "member",
+        isTenantOwner: false,
+      });
+      const downgradedTeam = { ...teamTenant, role: "view" as const };
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(mockResponse({ ok: false, status: 403, jsonData: { error: "STALE_TENANT_ROLE" } }))
+        .mockResolvedValueOnce(mockResponse({
+          jsonData: {
+            access_token: "fresh-view-token",
+            token_type: "bearer",
+            tenant: downgradedTeam,
+          },
+        }))
+        .mockResolvedValueOnce(mockResponse({ jsonData: { projects: [] } }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(API.request("/projects")).resolves.toEqual({ projects: [] });
+
+      expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/auth/refresh-current-tenant", expect.any(Object));
+      expect(useAuthStore.getState()).toMatchObject({
+        token: "fresh-view-token",
+        currentTenant: downgradedTeam,
+        tenantRole: "view",
+      });
+      const retryHeaders = fetchMock.mock.calls[2][1].headers as Headers;
+      expect(retryHeaders.get("Authorization")).toBe("Bearer fresh-view-token");
+    });
+
+    it("falls back to personal space when tenant access is revoked", async () => {
+      window.localStorage.setItem("arcreel_auth_token", "revoked-token");
+      useAuthStore.setState({
+        token: "revoked-token",
+        isAuthenticated: true,
+        currentTenant: teamTenant,
+        tenants: [personalTenant, teamTenant],
+        tenantRole: "member",
+        isTenantOwner: false,
+      });
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(mockResponse({
+          ok: false,
+          status: 403,
+          jsonData: { error: "TENANT_ACCESS_REVOKED", fallback_tenant_id: "ten_personal" },
+        }))
+        .mockResolvedValueOnce(mockResponse({
+          jsonData: {
+            access_token: "personal-token",
+            token_type: "bearer",
+            tenant: personalTenant,
+          },
+        }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      await expect(API.request("/projects")).rejects.toThrow("TENANT_ACCESS_REVOKED");
+
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        "/api/v1/auth/tenant-token",
+        expect.objectContaining({ body: JSON.stringify({ tenant_id: "ten_personal" }) }),
+      );
+      expect(useAuthStore.getState()).toMatchObject({
+        token: "personal-token",
+        currentTenant: personalTenant,
+        tenantRole: "admin",
+        isTenantOwner: true,
+      });
     });
   });
 
