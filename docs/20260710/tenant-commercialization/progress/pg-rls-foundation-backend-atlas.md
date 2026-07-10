@@ -18,7 +18,9 @@
 
 - [ ] Finalize middleware and environment documentation.
   - Commit: pending
-- [ ] Convert runtime engine and DB fixtures to PostgreSQL-only.
+- [x] Convert runtime engine to PostgreSQL-only.
+  - Commit: pending
+- [ ] Convert DB fixtures to PostgreSQL-only.
   - Commit: pending
 - [ ] Add tenant, membership, tenant-owned model columns, migrations, indexes, and RLS policies.
   - Commit: pending
@@ -32,3 +34,4 @@
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
 | 2026-07-10 | PostgreSQL baseline | Existing tests still include SQLite assumptions. | planned |
+| 2026-07-10 | Runtime engine verification | `ruff` is not available in the recorded conda environment; no dependency install was performed. | active |

@@ -8,7 +8,6 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 
-from sqlalchemy import event
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -25,49 +24,32 @@ logging.getLogger("sqlalchemy.pool.impl").setLevel(logging.CRITICAL)
 
 
 def get_database_url() -> str:
-    """Resolve DATABASE_URL from environment or default to SQLite."""
+    """Resolve the required PostgreSQL DATABASE_URL from environment."""
     url = os.environ.get("DATABASE_URL", "").strip()
-    if url:
-        return url
-    from lib.app_data_dir import app_data_dir
-
-    db_path = app_data_dir() / ".arcreel.db"
-    return f"sqlite+aiosqlite:///{db_path}"
+    if not url:
+        raise RuntimeError("DATABASE_URL is required for ArcReel tenant edition")
+    if not url.startswith("postgresql+asyncpg://"):
+        raise RuntimeError("ArcReel tenant edition requires postgresql+asyncpg DATABASE_URL")
+    return url
 
 
 def is_sqlite_backend() -> bool:
-    """Check whether the configured backend is SQLite."""
-    return get_database_url().startswith("sqlite")
+    """Return False after validating the configured tenant-edition database."""
+    get_database_url()
+    return False
 
 
 def _create_engine():
     url = get_database_url()
-    _is_sqlite = url.startswith("sqlite")
-
-    connect_args = {}
-    kwargs = {}
-    if _is_sqlite:
-        connect_args["timeout"] = 30
-    else:
-        kwargs.update(pool_size=10, max_overflow=20, pool_recycle=3600)
 
     engine = create_async_engine(
         url,
         echo=False,
         pool_pre_ping=True,
-        connect_args=connect_args,
-        **kwargs,
+        pool_size=10,
+        max_overflow=20,
+        pool_recycle=3600,
     )
-
-    if _is_sqlite:
-
-        @event.listens_for(engine.sync_engine, "connect")
-        def _set_sqlite_pragma(dbapi_conn, connection_record):
-            cursor = dbapi_conn.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
-            cursor.execute("PRAGMA busy_timeout=30000")
-            cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.close()
 
     return engine
 
