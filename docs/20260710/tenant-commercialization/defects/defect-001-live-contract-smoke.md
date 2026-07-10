@@ -25,7 +25,7 @@ Story10 later added live local-stack evidence for CaMeL OAuth login, provider bo
 ## Affected Files
 
 - `docs/20260710/tenant-commercialization/chain-audit.md`: records this as an open acceptance gap.
-- `docs/20260710/tenant-commercialization/scenario-test-matrix.md`: SMOKE-01..SMOKE-04 remain live/manual pending.
+- `docs/20260710/tenant-commercialization/scenario-test-matrix.md`: updated with live/manual acceptance evidence for SMOKE-01..SMOKE-04.
 
 ## Resolution
 
