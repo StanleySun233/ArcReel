@@ -25,7 +25,7 @@ export interface AuthStatus {
   providers: AuthProvider[];
 }
 
-interface AuthState {
+export interface AuthState {
   token: string | null;
   username: string | null;
   currentTenant: AuthTenant | null;
@@ -57,6 +57,12 @@ interface AuthTenantsResponse {
 interface TenantTokenResponse {
   access_token: string;
   tenant: AuthTenant;
+}
+
+class AuthRequestError extends Error {
+  constructor(readonly response: Response) {
+    super(`auth request failed: ${response.status}`);
+  }
 }
 
 function parseAuthStatus(payload: unknown): AuthStatus {
@@ -97,7 +103,7 @@ function authHeaders(token: string): Headers {
 async function fetchJson<T>(url: string, token: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(url, { ...init, headers: authHeaders(token) });
   if (!response.ok) {
-    throw response;
+    throw new AuthRequestError(response);
   }
   return response.json() as Promise<T>;
 }
@@ -116,7 +122,7 @@ function persistTenantFields(currentTenant: AuthTenant | null, tenants: AuthTena
   return tenantFields(currentTenant, tenants);
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   username: null,
   currentTenant: null,
@@ -195,7 +201,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   setLoading: (isLoading) => set({ isLoading }),
 
   switchTenant: async (tenantId) => {
-    const token = useAuthStore.getState().token ?? getToken();
+    const token = get().token ?? getToken();
     if (!token) return;
     const payload = await fetchJson<TenantTokenResponse>("/api/v1/auth/tenant-token", token, {
       method: "POST",
@@ -214,7 +220,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   refreshCurrentTenant: async () => {
-    const token = useAuthStore.getState().token ?? getToken();
+    const token = get().token ?? getToken();
     if (!token) return false;
     try {
       const payload = await fetchJson<TenantTokenResponse>("/api/v1/auth/refresh-current-tenant", token, {
@@ -230,18 +236,18 @@ export const useAuthStore = create<AuthState>((set) => ({
       }));
       return true;
     } catch (error) {
-      if (!(error instanceof Response) || error.status !== 403) return false;
-      const payload = await error.json().catch(() => ({})) as { error?: string; fallback_tenant_id?: string };
+      if (!(error instanceof AuthRequestError) || error.response.status !== 403) return false;
+      const payload = await error.response.json().catch(() => ({})) as { error?: string; fallback_tenant_id?: string };
       return payload.error === "TENANT_ACCESS_REVOKED"
-        ? useAuthStore.getState().fallbackToPersonalTenant(payload.fallback_tenant_id)
+        ? get().fallbackToPersonalTenant(payload.fallback_tenant_id)
         : false;
     }
   },
 
   fallbackToPersonalTenant: async (fallbackTenantId) => {
-    const targetTenantId = fallbackTenantId ?? useAuthStore.getState().tenants.find((tenant) => tenant.personal)?.id;
+    const targetTenantId = fallbackTenantId ?? get().tenants.find((tenant) => tenant.personal)?.id;
     if (!targetTenantId) return false;
-    await useAuthStore.getState().switchTenant(targetTenantId);
+    await get().switchTenant(targetTenantId);
     return true;
   },
 }));

@@ -1,6 +1,7 @@
 import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuthStore } from "@/stores/auth-store";
+import type { AuthTenant } from "@/utils/auth";
 import { recoverTenantAccess } from "@/utils/auth";
 
 function jsonResponse(jsonData: unknown, options: Partial<Response> = {}): Response {
@@ -12,7 +13,7 @@ function jsonResponse(jsonData: unknown, options: Partial<Response> = {}): Respo
   } as unknown as Response;
 }
 
-const personalTenant = {
+const personalTenant: AuthTenant = {
   id: "ten_personal",
   name: "Alice Personal",
   role: "admin",
@@ -20,7 +21,7 @@ const personalTenant = {
   personal: true,
 };
 
-const teamTenant = {
+const teamTenant: AuthTenant = {
   id: "ten_team",
   name: "Studio Team",
   role: "member",
@@ -81,7 +82,10 @@ describe("useAuthStore", () => {
   it("persists token, current tenant, tenant list, role and owner snapshot after login", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ user: { id: "camel:1", username: "alice", provider: "camel" }, tenant: personalTenant }))
+      .mockResolvedValueOnce(jsonResponse({
+        user: { id: "camel:1", username: "alice", provider: "camel" },
+        tenant: personalTenant,
+      }))
       .mockResolvedValueOnce(jsonResponse({ tenants: [personalTenant, teamTenant] }))
       .mockResolvedValueOnce(jsonResponse({ enabled: true, mode: "camel", providers: [] }));
     vi.stubGlobal("fetch", fetchMock);
