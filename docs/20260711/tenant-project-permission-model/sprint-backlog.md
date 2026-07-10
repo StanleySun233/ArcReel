@@ -13,6 +13,7 @@
 
 - 权限关系设计: [permission-model-design.md](./permission-model-design.md)
 - API 契约: [api-contract.md](./api-contract.md)
+- 文档审计: [document-audit.md](./document-audit.md)
 
 ## Team
 
@@ -122,7 +123,7 @@ Gate 已按用户确认口径更新：API key 后台 403、前端按钮 disabled
 | 8 | API key 禁用 | `server/routers/api_keys.py`, `frontend/src/pages/settings*` |
 | 9 | 测试和审计 | `tests/*`, `frontend/src/**/*.test.*`, `scenario-test-matrix.md` |
 
-## Worktrees
+## Execution Workspace
 
 本轮不使用 worktree 并行开发。所有实现串行落在当前集成分支，按阶段提交，每个阶段完成后再进入下一阶段。
 

@@ -11,4 +11,3 @@
 
 | Date | Feature | Sprint Backlog |
 |------|---------|----------------|
-| 20260710 | tenant-commercialization | [->](./20260710/tenant-commercialization/sprint-backlog.md) |
