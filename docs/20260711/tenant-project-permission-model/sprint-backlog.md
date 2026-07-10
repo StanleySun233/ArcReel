@@ -14,6 +14,7 @@
 - 权限关系设计: [permission-model-design.md](./permission-model-design.md)
 - API 契约: [api-contract.md](./api-contract.md)
 - 文档审计: [document-audit.md](./document-audit.md)
+- 实现审计: [implementation-audit.md](./implementation-audit.md)
 
 ## Team
 
@@ -92,10 +93,10 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [ ] 后端提供租户总览、项目详情、用户维度查询。
 - [ ] 聚合查询不按项目名 group，只 join name 作展示。
 - [ ] 前端用量页支持 tenant/project 分组显示。
-- [ ] 前端设置页 Issued Tokens 按钮 disabled。
-- [ ] 后台 `/api-keys` 列表、创建、更新、删除统一返回 `403 feature_disabled`。
-- [ ] Issued Tokens 不参与认证依赖链路。
-- [ ] CaMeL provider keys、媒体供应商凭证、Agent 凭证不受影响。
+- [x] 前端设置页 Issued Tokens 按钮 disabled。
+- [x] 后台 `/api-keys` 列表、创建、更新、删除统一返回 `403 feature_disabled`。
+- [x] Issued Tokens 不参与认证依赖链路。
+- [x] CaMeL provider keys、媒体供应商凭证、Agent 凭证不受影响。
 
 ### Phase 5 - 全链路审计和测试
 
@@ -107,7 +108,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [ ] 场景矩阵覆盖只允许 owner/admin 删除项目。
 - [ ] 场景矩阵覆盖跨租户同名项目。
 - [ ] 场景矩阵覆盖创建项目、上传文件、生成图片、生成视频、Agent 输入文本、资产导入、用量查看。
-- [ ] 场景矩阵覆盖 Issued Tokens disabled。
+- [x] 场景矩阵覆盖 Issued Tokens disabled。
 - [ ] 自动测试和必须手动验证项都写入 QA evidence。
 
 ## Serial File Touch Order
