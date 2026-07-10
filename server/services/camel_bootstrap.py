@@ -20,6 +20,14 @@ from lib.db.tenant_context import set_tenant_context
 
 CamelBootstrapMode = Literal["create", "repair"]
 MEDIA_ORDER = ("image", "text", "video", "audio")
+_TOKEN_PROVISION_PATH = "/api/oauth/provider/arcreel-tokens"
+_TOKEN_LINK_TEMPLATE_PATH = "/token/{token_name}"
+_DEFAULT_MEDIA_SPECS = {
+    "image": ("CaMeL Image", "openai-images", ("camel-image",)),
+    "text": ("CaMeL Text", "openai-chat", ("camel-text",)),
+    "video": ("CaMeL Video", "ark-seedance", ("doubao-seedance-2-0-260128",)),
+    "audio": ("CaMeL Audio", "openai-tts", ("camel-audio",)),
+}
 
 
 @dataclass(frozen=True)
@@ -52,15 +60,56 @@ def _env(name: str) -> str:
     return value
 
 
-def _env_models(name: str) -> tuple[str, ...]:
-    models = tuple(m.strip() for m in _env(name).split(",") if m.strip())
+def _env_or_default(name: str, default: str) -> str:
+    return os.environ.get(name, "").strip() or default
+
+
+def _env_models(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    models = tuple(m.strip() for m in raw.split(",") if m.strip())
     if not models:
         raise HTTPException(status_code=503, detail=f"{name} is not configured")
     return models
 
 
-def _media_spec(media: str, display_name: str, endpoint_env: str, models_env: str) -> CamelMediaSpec:
-    endpoint = _env(endpoint_env)
+def _oauth_public_base_url() -> str:
+    return _env("CAMEL_OAUTH_BASE_URL").rstrip("/")
+
+
+def _oauth_internal_base_url() -> str:
+    return os.environ.get("CAMEL_OAUTH_INTERNAL_BASE_URL", "").strip().rstrip("/") or _oauth_public_base_url()
+
+
+def _provider_base_url() -> str:
+    override = os.environ.get("CAMEL_ARCREEL_PROVIDER_BASE_URL", "").strip()
+    if override:
+        return override.rstrip("/")
+    return _oauth_internal_base_url()
+
+
+def _token_provision_url(provider_base_url: str) -> str:
+    override = os.environ.get("CAMEL_ARCREEL_TOKEN_PROVISION_URL", "").strip()
+    if override:
+        return override
+    return _join_url(provider_base_url, _TOKEN_PROVISION_PATH)
+
+
+def _token_link_template() -> str:
+    override = os.environ.get("CAMEL_ARCREEL_TOKEN_LINK_TEMPLATE", "").strip()
+    if override:
+        return override
+    return _join_url(_oauth_public_base_url(), _TOKEN_LINK_TEMPLATE_PATH)
+
+
+def _join_url(base_url: str, path: str) -> str:
+    return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+
+def _media_spec(media: str, endpoint_env: str, models_env: str) -> CamelMediaSpec:
+    display_name, default_endpoint, default_models = _DEFAULT_MEDIA_SPECS[media]
+    endpoint = _env_or_default(endpoint_env, default_endpoint)
     if endpoint not in ENDPOINT_REGISTRY:
         raise HTTPException(status_code=503, detail=f"{endpoint_env} is invalid")
     default_keys = {
@@ -69,19 +118,20 @@ def _media_spec(media: str, display_name: str, endpoint_env: str, models_env: st
         "video": ("default_video_backend",),
         "audio": ("default_audio_backend",),
     }[media]
-    return CamelMediaSpec(media, display_name, endpoint, _env_models(models_env), default_keys)
+    return CamelMediaSpec(media, display_name, endpoint, _env_models(models_env, default_models), default_keys)
 
 
 def get_camel_bootstrap_settings() -> CamelBootstrapSettings:
+    provider_base_url = _provider_base_url()
     return CamelBootstrapSettings(
-        provider_base_url=_env("CAMEL_ARCREEL_PROVIDER_BASE_URL").rstrip("/"),
-        token_provision_url=_env("CAMEL_ARCREEL_TOKEN_PROVISION_URL"),
-        token_link_template=_env("CAMEL_ARCREEL_TOKEN_LINK_TEMPLATE"),
+        provider_base_url=provider_base_url,
+        token_provision_url=_token_provision_url(provider_base_url),
+        token_link_template=_token_link_template(),
         media_specs=(
-            _media_spec("image", "CaMeL Image", "CAMEL_ARCREEL_IMAGE_ENDPOINT", "CAMEL_ARCREEL_IMAGE_MODELS"),
-            _media_spec("text", "CaMeL Text", "CAMEL_ARCREEL_TEXT_ENDPOINT", "CAMEL_ARCREEL_TEXT_MODELS"),
-            _media_spec("video", "CaMeL Video", "CAMEL_ARCREEL_VIDEO_ENDPOINT", "CAMEL_ARCREEL_VIDEO_MODELS"),
-            _media_spec("audio", "CaMeL Audio", "CAMEL_ARCREEL_AUDIO_ENDPOINT", "CAMEL_ARCREEL_AUDIO_MODELS"),
+            _media_spec("image", "CAMEL_ARCREEL_IMAGE_ENDPOINT", "CAMEL_ARCREEL_IMAGE_MODELS"),
+            _media_spec("text", "CAMEL_ARCREEL_TEXT_ENDPOINT", "CAMEL_ARCREEL_TEXT_MODELS"),
+            _media_spec("video", "CAMEL_ARCREEL_VIDEO_ENDPOINT", "CAMEL_ARCREEL_VIDEO_MODELS"),
+            _media_spec("audio", "CAMEL_ARCREEL_AUDIO_ENDPOINT", "CAMEL_ARCREEL_AUDIO_MODELS"),
         ),
     )
 
@@ -98,17 +148,13 @@ async def _request_camel_tokens(
     mode: CamelBootstrapMode,
     idempotency_key: str | None,
 ) -> dict:
+    payload = _camel_token_provision_payload(settings, mode=mode, idempotency_key=idempotency_key)
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 settings.token_provision_url,
                 headers={"Authorization": f"Bearer {access_token}"},
-                json={
-                    "client": "arcreel",
-                    "mode": mode,
-                    "idempotency_key": idempotency_key,
-                    "dry_run": False,
-                },
+                json=payload,
             )
             response.raise_for_status()
     except httpx.HTTPError as exc:
@@ -120,6 +166,27 @@ async def _request_camel_tokens(
     if not isinstance(body, dict):
         raise HTTPException(status_code=502, detail="CaMeL token provisioning response was invalid")
     return body
+
+
+def _camel_token_provision_payload(
+    settings: CamelBootstrapSettings,
+    *,
+    mode: CamelBootstrapMode,
+    idempotency_key: str | None,
+) -> dict:
+    return {
+        "client": "arcreel",
+        "mode": mode,
+        "idempotency_key": idempotency_key,
+        "dry_run": False,
+        "media_specs": [
+            {
+                "media": spec.media,
+                "models": list(spec.models),
+            }
+            for spec in settings.media_specs
+        ],
+    }
 
 
 def _token_link(settings: CamelBootstrapSettings, token_name: str, media: str) -> str:

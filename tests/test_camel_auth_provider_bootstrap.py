@@ -11,6 +11,7 @@ from server.auth import CurrentUserInfo, get_current_user
 from server.routers import camel_bootstrap
 from server.services import camel_auth
 from server.services.camel_auth import CamelOAuthExchange, CamelOAuthState
+from server.services.tenant_auth import TenantAccess
 
 AUTH_TOKEN_SECRET = "oauth-test-secret-32-bytes-long-value"
 
@@ -26,13 +27,22 @@ def configure_oauth_env(monkeypatch):
     monkeypatch.setenv("CAMEL_OAUTH_REPAIR_MAX_AGE_SECONDS", "120")
 
 
-def build_app() -> FastAPI:
+def build_app(monkeypatch: pytest.MonkeyPatch | None = None) -> FastAPI:
+    if monkeypatch is not None:
+
+        async def fake_require_tenant_access(*args, **kwargs):
+            return TenantAccess(id="ten_test", name="测试空间", role="admin", is_owner=True, personal=True)
+
+        monkeypatch.setattr(camel_bootstrap, "require_tenant_access", fake_require_tenant_access)
+
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
         id="camel:123",
         sub="camel-user",
         provider="camel",
         role="admin",
+        tenant_id="ten_test",
+        tenant_role="admin",
     )
     app.include_router(camel_bootstrap.router, prefix="/api/v1")
     return app
@@ -123,7 +133,7 @@ async def test_login_callback_creates_personal_tenant_and_returns_tenant_token(m
 async def test_start_url_create_returns_authorization_url_and_provider_bootstrap_state_cookie(monkeypatch):
     configure_oauth_env(monkeypatch)
 
-    response = await post_start_url(build_app(), {"mode": "create", "from": "/app/projects?camel=1"})
+    response = await post_start_url(build_app(monkeypatch), {"mode": "create", "from": "/app/projects?camel=1"})
 
     assert response.status_code == 200
     assert "authorization_url" in response.json()
@@ -149,7 +159,7 @@ async def test_start_url_uses_current_allowed_host_for_redirect_uri(monkeypatch)
     monkeypatch.setenv("CAMEL_OAUTH_REDIRECT_HOSTS", "dream.camel-hub.com,dream.camel-hub.cn")
 
     response = await post_start_url(
-        build_app(),
+        build_app(monkeypatch),
         {"mode": "create", "from": "/app/projects"},
         base_url="http://dream.camel-hub.cn",
         headers={"x-forwarded-proto": "https"},
@@ -169,7 +179,7 @@ async def test_start_url_rejects_invalid_forwarded_proto(monkeypatch):
     monkeypatch.setenv("CAMEL_OAUTH_REDIRECT_HOSTS", "dream.camel-hub.cn")
 
     response = await post_start_url(
-        build_app(),
+        build_app(monkeypatch),
         {"mode": "create", "from": "/app/projects"},
         base_url="http://dream.camel-hub.cn",
         headers={"x-forwarded-proto": "javascript"},
@@ -183,7 +193,7 @@ async def test_start_url_rejects_invalid_forwarded_proto(monkeypatch):
 async def test_start_url_repair_returns_authorization_url_and_provider_repair_state_cookie(monkeypatch):
     configure_oauth_env(monkeypatch)
 
-    response = await post_start_url(build_app(), {"mode": "repair", "from": "/app/settings?section=account"})
+    response = await post_start_url(build_app(monkeypatch), {"mode": "repair", "from": "/app/settings?section=account"})
 
     assert response.status_code == 200
     assert "authorization_url" in response.json()

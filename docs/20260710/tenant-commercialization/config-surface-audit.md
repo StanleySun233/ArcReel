@@ -4,6 +4,15 @@
 
 审计对象：`integration/tenant-commercialization` 当前新项目实现。
 
+## 实施结果
+
+2026-07-10 已按审计结论完成第一轮收敛：
+
+- `CAMEL_ARCREEL_*` 不再出现在 ArcReel 的 `.env.example`、`deploy/.env.example` 和测试 compose 必要运行参数中。
+- ArcReel 在 CaMeL token provisioning 请求中携带 `media_specs`，媒体类型、endpoint 映射和 model 清单由 ArcReel bootstrap settings 统一拥有。
+- CaMeL-api 侧移除了 ArcReel image/text/video/audio model 默认值和 model env 读取，只按 ArcReel 请求传入的 `media_specs` 创建/修复 token。
+- `ARCREEL_FILE_STORAGE_BACKEND` 已从 ArcReel env 模板移除；当前发行版明确固定使用 MinIO。
+
 ## 结论
 
 当前最大初始化风险不是租户权限、PG、Redis 或 MinIO，而是 CaMeL 供应商引导参数被拆成了过多必填环境变量。
@@ -185,4 +194,3 @@ PG、Redis、MinIO 均由 `deploy/dev/docker-compose.middleware.yml` 的默认�
 3. 更新 `.env.example` / `deploy/.env.example`：拆成最小模板和高级模板。
 4. 从模板移除 `ARCREEL_FILE_STORAGE_BACKEND`，或者实现真实 backend switch；二选一，不保留假配置。
 5. 增加启动配置诊断：输出 blocking / degraded / optional 三类状态，覆盖 PG、CaMeL、Redis、MinIO、storage bucket private 检查。
-

@@ -23,7 +23,6 @@ Use PostgreSQL. SQLite is not a supported runtime database for this edition.
 export DATABASE_URL=postgresql+asyncpg://arcreel_app:arcreel_app_dev_password@127.0.0.1:15432/arcreel
 export ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://arcreel:arcreel_dev_password@127.0.0.1:15432/arcreel
 export REDIS_URL=redis://127.0.0.1:16379/0
-export ARCREEL_FILE_STORAGE_BACKEND=minio
 export ARCREEL_MINIO_ENDPOINT=http://127.0.0.1:19000
 export ARCREEL_MINIO_PUBLIC_ENDPOINT=http://127.0.0.1:19000
 export ARCREEL_MINIO_ACCESS_KEY=arcreelminio

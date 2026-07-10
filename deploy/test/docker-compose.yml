@@ -16,19 +16,6 @@ services:
       CAMEL_OAUTH_CLIENT_ID: arc-test-client
       CAMEL_OAUTH_CLIENT_SECRET: arc-test-secret
       CAMEL_OAUTH_REDIRECT_URI: http://localhost:11241/api/v1/auth/camel/callback
-      CAMEL_OAUTH_SCOPES: profile email
-      CAMEL_OAUTH_BOOTSTRAP_SCOPES: profile email arcreel:token-provision
-      CAMEL_ARCREEL_PROVIDER_BASE_URL: http://host.docker.internal:13080
-      CAMEL_ARCREEL_TOKEN_PROVISION_URL: http://host.docker.internal:13080/api/oauth/provider/arcreel-tokens
-      CAMEL_ARCREEL_TOKEN_LINK_TEMPLATE: http://localhost:13080/token/{token_name}
-      CAMEL_ARCREEL_IMAGE_ENDPOINT: openai-images
-      CAMEL_ARCREEL_IMAGE_MODELS: camel-image-test
-      CAMEL_ARCREEL_TEXT_ENDPOINT: openai-chat
-      CAMEL_ARCREEL_TEXT_MODELS: camel-text-test
-      CAMEL_ARCREEL_VIDEO_ENDPOINT: ark-seedance
-      CAMEL_ARCREEL_VIDEO_MODELS: doubao-seedance-2-0-260128
-      CAMEL_ARCREEL_AUDIO_ENDPOINT: openai-tts
-      CAMEL_ARCREEL_AUDIO_MODELS: camel-audio-test
       ARCREEL_DATA_DIR: /app/testdata/projects
       ARCREEL_LOG_FILE_DISABLED: "1"
       ARCREEL_SDK_SESSION_STORE: "off"
