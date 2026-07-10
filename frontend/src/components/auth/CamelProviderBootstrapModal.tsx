@@ -147,7 +147,14 @@ export function CamelProviderBootstrapModal() {
   };
 
   return (
-    <GlassModal open={open} onClose={dismiss} labelledBy={titleId} describedBy={descId} widthClassName="w-full max-w-2xl" closeOnBackdrop={isSuccess}>
+    <GlassModal
+      open={open}
+      onClose={dismiss}
+      labelledBy={titleId}
+      describedBy={descId}
+      widthClassName="w-[min(520px,calc(100vw-32px))]"
+      closeOnBackdrop={isSuccess}
+    >
       <div className="px-6 pb-6 pt-5">
         <div className="flex items-start gap-3">
           <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-hairline-soft bg-bg-grad-a/55 text-accent-2">
