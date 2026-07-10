@@ -145,6 +145,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
         ...tenantFields(tenantSession.currentTenant, tenantSession.tenants),
       });
+      Promise.all([
+        fetchJson<AuthMeResponse>("/api/v1/auth/me", token),
+        fetchJson<AuthTenantsResponse>("/api/v1/auth/tenants", token),
+      ])
+        .then(([me, tenants]) => {
+          set(persistTenantFields(me.tenant, tenants.tenants));
+        })
+        .catch(() => {});
     } else {
       set({ isLoading: true });
     }

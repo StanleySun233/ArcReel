@@ -23,14 +23,30 @@ from sqlalchemy.ext.asyncio import (
 logging.getLogger("sqlalchemy.pool.impl").setLevel(logging.CRITICAL)
 
 
+def _postgres_url_from_env(name: str) -> str:
+    url = os.environ.get(name, "").strip()
+    if not url:
+        raise RuntimeError(f"{name} is required for ArcReel tenant edition")
+    if not url.startswith("postgresql+asyncpg://"):
+        raise RuntimeError(f"ArcReel tenant edition requires postgresql+asyncpg {name}")
+    return url
+
+
 def get_database_url() -> str:
     """Resolve the required PostgreSQL DATABASE_URL from environment."""
-    url = os.environ.get("DATABASE_URL", "").strip()
-    if not url:
-        raise RuntimeError("DATABASE_URL is required for ArcReel tenant edition")
-    if not url.startswith("postgresql+asyncpg://"):
-        raise RuntimeError("ArcReel tenant edition requires postgresql+asyncpg DATABASE_URL")
-    return url
+    return _postgres_url_from_env("DATABASE_URL")
+
+
+def get_migration_database_url() -> str:
+    url = (
+        os.environ.get("ARCREEL_DATABASE_ADMIN_URL", "").strip()
+        or os.environ.get("ARCREEL_TEST_DATABASE_ADMIN_URL", "").strip()
+    )
+    if url:
+        if not url.startswith("postgresql+asyncpg://"):
+            raise RuntimeError("ArcReel tenant edition requires postgresql+asyncpg migration database URL")
+        return url
+    return get_database_url()
 
 
 def is_sqlite_backend() -> bool:

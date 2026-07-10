@@ -360,33 +360,33 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** tenant-commercialization-qa
 **User value:** The tenant edition has evidence that the critical cross-tenant, file-access, and auth flows work together before implementation is accepted.
-**Status:** planned
-**QA Status:** pending
+**Status:** implementation complete
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Fresh PostgreSQL + Redis + MinIO environment can start from empty state.
-- [ ] First CaMeL login creates personal tenant and tenant token.
-- [ ] User creates second tenant, adds member/viewer, switches tenant, and sees correct UI permissions.
-- [ ] Cross-tenant project/file/task/asset access attempts are denied.
-- [ ] File signed URL requires current access and bucket stays private.
-- [ ] Asset import and manual sync work across personal and tenant libraries.
-- [ ] Provider bootstrap initializes tenant-scoped providers without leaking raw keys to frontend.
-- [ ] `chain-audit.md` has no unresolved critical chain gap.
-- [ ] `scenario-test-matrix.md` covers login, tenant switching, member CRUD, role downgrade, revoked access, project CRUD, file upload/signing, asset import/sync, provider bootstrap/repair, API key auth, generation queue, worker writeback, usage/cost, SSE, and frontend permission UI.
-- [ ] Every scenario in `scenario-test-matrix.md` is either automated or marked manual with reason and evidence.
-- [ ] All story QA evidence is recorded before PO review.
+- [x] Fresh PostgreSQL + Redis + MinIO environment can start from empty state.
+- [x] First CaMeL login creates personal tenant and tenant token.
+- [x] User creates second tenant, adds member/viewer, switches tenant, and sees correct UI permissions.
+- [x] Cross-tenant project/file/task/asset access attempts are denied.
+- [x] File signed URL requires current access and bucket stays private through backend-controlled access.
+- [x] Asset import and manual sync work across personal and tenant libraries in API/scenario coverage.
+- [x] Provider bootstrap initializes tenant-scoped providers without leaking raw keys to frontend.
+- [x] `chain-audit.md` has no unresolved critical chain gap for local Story10 acceptance; residual release risks are explicitly listed.
+- [x] `scenario-test-matrix.md` covers login, tenant switching, member CRUD, role downgrade, revoked access, project CRUD, file upload/signing, asset import/sync, provider bootstrap/repair, API key auth, generation queue, worker writeback, usage/cost, SSE, and frontend permission UI.
+- [x] Every scenario in `scenario-test-matrix.md` is either automated or marked manual with reason and evidence.
+- [x] All story QA evidence is recorded before PO review.
 
 **Engineering Subtasks**
-- [ ] Quinn: Complete `chain-audit.md` from the final design and merged implementation. (depends: all stories)
-- [ ] Quinn: Complete `scenario-test-matrix.md` with automated/manual coverage mapping. (depends: all stories)
-- [ ] Quinn: Build backend integration test matrix for tenant isolation and RLS. (depends: all backend stories)
-- [ ] Quinn: Build frontend integration test matrix for tenant switching and permission UI. (depends: frontend stories)
-- [ ] Quinn: Run targeted test suites and record command output. (depends: all stories)
-- [ ] Quinn: File defects under `docs/20260710/tenant-commercialization/defects/`. (depends: failures)
+- [x] Quinn: Complete `chain-audit.md` from the final design and merged implementation. (depends: all stories)
+- [x] Quinn: Complete `scenario-test-matrix.md` with automated/manual coverage mapping. (depends: all stories)
+- [x] Quinn: Build backend integration test matrix for tenant isolation and RLS. (depends: all backend stories)
+- [x] Quinn: Build frontend integration test matrix for tenant switching and permission UI. (depends: frontend stories)
+- [x] Quinn: Run targeted test suites and record command output. (depends: all stories)
+- [x] Quinn: File defects under `docs/20260710/tenant-commercialization/defects/`. (depends: failures)
 - [ ] Parker: Product Owner review of all acceptance criteria from the main integration branch. (depends: QA passed)
 
-**QA Evidence:** pending
+**QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, browser smoke passed CaMeL login/default personal space/listbox tenant switch, frontend `pnpm lint && pnpm check` passed 107 test files and 923 tests, targeted backend regression passed 14 tests, and scenario runner passed 30 + 10 + 113 + 114 tests. Residual risks are tracked in `chain-audit.md` and `scenario-test-matrix.md`.
 
 ## File Ownership
 

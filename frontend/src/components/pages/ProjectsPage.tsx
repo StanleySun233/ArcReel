@@ -32,6 +32,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { GlassModal } from "@/components/ui/GlassModal";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { SecondaryButton } from "@/components/ui/SecondaryButton";
+import { TenantSwitcher } from "@/components/tenant/TenantSwitcher";
 import { Typewriter, type TypewriterSegment } from "@/components/ui/Typewriter";
 import { WARM_TONE } from "@/utils/severity-tone";
 import { getProjectDisplayName } from "@/utils/project-display";
@@ -848,6 +849,8 @@ function TopBar({
         </label>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <TenantSwitcher />
+          <span aria-hidden className="mx-1 h-5 w-px bg-hairline-soft" />
           <button
             type="button"
             onClick={onAssets}

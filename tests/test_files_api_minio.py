@@ -79,13 +79,16 @@ async def test_files_upload_route_returns_file_id_without_object_key(async_sessi
 
 
 @pytest.mark.asyncio
-async def test_project_media_upload_route_returns_file_id_without_local_path(async_session, tmp_path) -> None:
+async def test_project_media_upload_route_returns_file_id_without_local_path(
+    async_session, tmp_path, monkeypatch
+) -> None:
     await _seed_member(async_session)
-    pm = ProjectManager(tmp_path / "projects")
+    root = tmp_path / "projects"
+    pm = ProjectManager(root, tenant_id="ten_1")
     pm.create_project("demo")
     pm.create_project_metadata("demo", "Demo", "Anime", "narration")
     pm.add_character("demo", "Alice", "desc")
-    files.get_project_manager = lambda: pm
+    monkeypatch.setattr(files, "app_data_dir", lambda: root)
     storage = FakeStorage()
     user = CurrentUserInfo(id="usr_1", sub="alice", tenant_id="ten_1", tenant_role="member")
     app = _app(async_session, user, storage)

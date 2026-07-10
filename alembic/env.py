@@ -13,7 +13,7 @@ import lib.agent_session_store.models  # noqa: F401  ensure tables registered
 import lib.db.models  # noqa: F401
 from alembic import context
 from lib.db.base import Base
-from lib.db.engine import get_database_url
+from lib.db.engine import get_migration_database_url
 
 # Alembic Config object
 config = context.config
@@ -29,7 +29,7 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode (no DB connection required)."""
-    url = get_database_url()
+    url = get_migration_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -57,7 +57,7 @@ def do_run_migrations(connection) -> None:
 
 async def run_async_migrations() -> None:
     """Run migrations using an async engine."""
-    url = get_database_url()
+    url = get_migration_database_url()
     schema = os.environ.get("ARCREEL_TEST_DB_SCHEMA", "").strip()
     connect_args = {"server_settings": {"search_path": schema}} if schema else {}
     connectable = create_async_engine(url, poolclass=pool.NullPool, connect_args=connect_args)

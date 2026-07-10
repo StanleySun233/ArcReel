@@ -6,11 +6,13 @@ from typing import cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib.asset_types import GLOBAL_LIBRARY_ASSET_TYPES, validate_asset_name
 from lib.db import async_session_factory
 from lib.db.repositories.asset_repo import AssetLibraryItem, AssetRepository, LibraryScope
 from lib.db.repositories.file_repo import FileRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from server.auth import CurrentUser, CurrentUserInfo
 from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
@@ -142,6 +144,20 @@ async def _check_file_read(repo: AssetRepository, *, file_id: str | None, curren
         raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
 
 
+async def _prepare_asset_context(
+    session: AsyncSession,
+    current_user: CurrentUserInfo,
+    tenant_id: str | None = None,
+) -> None:
+    resolved_tenant_id = tenant_id or current_user.tenant_id
+    if resolved_tenant_id is None:
+        raise HTTPException(status_code=403, detail="TENANT_ACCESS_REQUIRED")
+    session.info["user_id"] = current_user.id
+    session.info["tenant_id"] = resolved_tenant_id
+    if session.get_bind().dialect.name == "postgresql":
+        await set_tenant_context(session, user_id=current_user.id, tenant_id=resolved_tenant_id)
+
+
 @router.get("")
 async def list_assets(
     current_user: CurrentUser,
@@ -155,6 +171,7 @@ async def list_assets(
     if type is not None and type not in GLOBAL_LIBRARY_ASSET_TYPES:
         raise HTTPException(status_code=400, detail=_t("asset_invalid_type"))
     async with async_session_factory() as session:
+        await _prepare_asset_context(session, current_user)
         repo = AssetRepository(session)
         can_write = library == "personal"
         tenant_id = None
@@ -177,6 +194,7 @@ async def list_assets(
 @router.get("/{binding_id}")
 async def get_asset(binding_id: str, current_user: CurrentUser, _t: Translator):
     async with async_session_factory() as session:
+        await _prepare_asset_context(session, current_user)
         repo = AssetRepository(session)
         item = await _require_library_read(repo, binding_id, current_user)
         can_write = _can_write_personal(item, current_user)
@@ -192,8 +210,10 @@ async def create_asset(req: AssetCreateRequest, current_user: CurrentUser, _t: T
         raise HTTPException(status_code=400, detail=_t("asset_invalid_type"))
     name = _validate_name(req.name, _t)
     async with async_session_factory() as session:
+        await _prepare_asset_context(session, current_user)
         repo = AssetRepository(session)
         tenant_id = await _require_target_write(repo, req.library, current_user)
+        await _prepare_asset_context(session, current_user, tenant_id)
         await _check_file_read(repo, file_id=req.image_file_id, current_user=current_user)
         existing = await repo.find_library_name(
             library_scope=req.library,
@@ -231,8 +251,10 @@ async def update_asset(binding_id: str, req: AssetUpdateRequest, current_user: C
     if "name" in patch:
         patch["name"] = _validate_name(patch["name"], _t)
     async with async_session_factory() as session:
+        await _prepare_asset_context(session, current_user)
         repo = AssetRepository(session)
         item = await _require_library_write(repo, binding_id, current_user, _t)
+        await _prepare_asset_context(session, current_user, item.binding.tenant_id)
         if "image_file_id" in patch:
             await _check_file_read(repo, file_id=patch["image_file_id"], current_user=current_user)
         updated = await repo.update_binding_asset(item.binding.id, **patch)
@@ -250,8 +272,10 @@ async def update_asset(binding_id: str, req: AssetUpdateRequest, current_user: C
 @router.delete("/{binding_id}", status_code=204)
 async def delete_asset(binding_id: str, current_user: CurrentUser, _t: Translator):
     async with async_session_factory() as session:
+        await _prepare_asset_context(session, current_user)
         repo = AssetRepository(session)
         item = await _require_library_write(repo, binding_id, current_user, _t)
+        await _prepare_asset_context(session, current_user, item.binding.tenant_id)
         await repo.delete_binding(item.binding.id)
         await session.commit()
     return None
@@ -260,9 +284,13 @@ async def delete_asset(binding_id: str, current_user: CurrentUser, _t: Translato
 @router.post("/import")
 async def import_asset(req: AssetImportRequest, current_user: CurrentUser, _t: Translator):
     async with async_session_factory() as session:
+        await _prepare_asset_context(session, current_user)
         repo = AssetRepository(session)
         source = await _require_library_read(repo, req.source_binding_id, current_user)
+        if source.binding.library_scope == "tenant" and req.target_library == "personal":
+            await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
         target_tenant_id = await _require_target_write(repo, req.target_library, current_user)
+        await _prepare_asset_context(session, current_user, target_tenant_id)
         existing = await repo.find_library_name(
             library_scope=req.target_library,
             tenant_id=target_tenant_id,
@@ -294,8 +322,10 @@ async def sync_asset(binding_id: str, req: AssetSyncRequest, current_user: Curre
     if not req.confirm_overwrite:
         raise HTTPException(status_code=409, detail="ASSET_SYNC_REQUIRES_CONFIRMATION")
     async with async_session_factory() as session:
+        await _prepare_asset_context(session, current_user)
         repo = AssetRepository(session)
         target = await _require_library_write(repo, binding_id, current_user, _t)
+        await _prepare_asset_context(session, current_user, target.binding.tenant_id)
         if target.binding.parent_id is None:
             raise HTTPException(status_code=400, detail="ASSET_BINDING_HAS_NO_PARENT")
         await _require_library_read(repo, _binding_public_id(target.binding.parent_id), current_user)

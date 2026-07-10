@@ -1,7 +1,7 @@
 # Chain Audit: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** implementation-audited
+**Status:** Story10 live acceptance passed with documented residual risks
 
 This audit checks whether every critical chain has an entry path, authority source, data write path, permission check, failure mode, cache invalidation path, and test owner.
 
@@ -9,21 +9,21 @@ This audit checks whether every critical chain has an entry path, authority sour
 
 | Chain | Coverage | Blocking Gap | Owning Story |
 |-------|----------|--------------|--------------|
-| CaMeL login to personal tenant token | automated backend | live CaMeL-api smoke still external | Story 3 |
-| CaMeL provider/API key bootstrap | automated local + external planned | live CaMeL-api create/conflict/repair smoke still required | Story 0 / Story 7 |
+| CaMeL login to personal tenant token | automated backend + live local CaMeL + browser | localhost/127.0.0.1 OAuth cookie host mismatch documented | Story 3 / Story 10 |
+| CaMeL provider/API key bootstrap | automated backend + live local CaMeL create flow | external conflict/repair/wrong-client/missing-scope contract cases remain risk-tracked | Story 0 / Story 7 |
 | Tenant switch | automated backend/frontend | none | Story 3 / Story 4 |
 | Member CRUD and role matrix | automated backend | none | Story 3 |
 | Redis permission cache | automated backend + smoke | none | Story 3 |
 | PostgreSQL RLS context | automated backend | none for request path; local dev superuser bypass noted in Story 2 evidence | Story 2 |
 | API key auth under tenant | automated backend | none | Story 3 / Story 7 |
-| File upload to MinIO | automated backend | live MinIO private bucket smoke still required | Story 5 |
-| Signed URL access | automated backend | signed URL TTL expiry remains manual/live-smoke only | Story 5 |
-| Project CRUD and file-id JSON | automated backend | full removal of every legacy path consumer remains follow-up | Story 6 / Story 10 |
+| File upload to MinIO | automated backend + live MinIO | signed URL expiry remains not time-waited in live smoke | Story 5 |
+| Signed URL access | automated backend + live MinIO | expiry not time-waited; cross-tenant and tamper denial verified | Story 5 |
+| Project CRUD and file-id JSON | automated backend + live smoke | media artifacts and project route tenant roots verified; remaining legacy non-media consumers risk-tracked | Story 6 / Story 10 |
 | Asset library import/sync | automated backend/frontend | none | Story 8 |
-| Tenant provider/config/agent settings | automated backend | legacy provider API unit fixtures are not tenant-aware and are excluded from scenario runner | Story 7 / Story 10 |
+| Tenant provider/config/agent settings | automated backend + live CaMeL bootstrap | legacy provider API unit fixtures are not tenant-aware and are excluded from scenario runner | Story 7 / Story 10 |
 | Generation enqueue and worker writeback | automated backend | grid split cell file-id migration remains follow-up | Story 9 / Story 10 |
 | Usage/cost attribution | automated backend | aggregate report smoke remains Story10/live | Story 9 |
-| Frontend permission UX | automated frontend | browser click-through still required | Story 4 / Story 8 / Story 10 |
+| Frontend permission UX | automated frontend + browser smoke | view-only deep UI spot checks remain unit/integration evidence, not full browser coverage | Story 4 / Story 8 / Story 10 |
 
 ## Scenario Runner Evidence
 
@@ -41,6 +41,18 @@ Integration branch regression after Story6/8/9 merge also passed:
 - Backend tenant/projects/assets/generation targeted suite: 218 passed, 1 warning.
 - Frontend `pnpm check`: 107 test files passed, 922 tests passed.
 - Python targeted `ruff check`: passed.
+
+Story10 fresh-stack live acceptance after fixes:
+
+- Fresh DB/container: `arcreel_acceptance_20260710214815` with container `arcreel-acceptance-current-20260710214815`.
+- Alembic head: `8d7e6f5a4b3c`.
+- Live API smoke: `deploy/test/arcreel_api_smoke.py` passed 23 checks, including CaMeL OAuth login, provider bootstrap, default personal tenant, tenant role matrix, project/file isolation, MinIO signed URL denial/tamper cases, and asset `image_file_id` write.
+- Live tenant/MinIO smoke: `deploy/test/arcreel_tenant_role_minio_smoke.py` passed role boundary, member/view project access, signed URL cross-tenant denial, and tenant asset file-id checks.
+- Browser smoke: `agent-browser` verified login via CaMeL on `http://localhost:11242`, default `{user_name}的个人空间`, visible `Switch space` listbox, backend-created second tenant refresh, and click switch to `UI Team Switch Smoke`.
+- Frontend regression: `pnpm lint && pnpm check` passed with 107 test files and 923 tests.
+- Targeted backend regression: `tests/test_assets_router.py tests/test_db_engine.py tests/test_files_api_minio.py -q` passed with 14 tests.
+- Scenario runner: `auth_roles` 30 passed, `rls_config` 10 passed, `files_projects_assets` 113 passed, `generation_tasks_usage` 114 passed.
+- Scoped smoke-script type check: `basedpyright deploy/test/arcreel_api_smoke.py deploy/test/arcreel_tenant_role_minio_smoke.py` reported `0 errors, 0 warnings, 0 notes`; command exit remains 3 because this worktree has no `.venv` subdirectory for basedpyright.
 
 ## Chain Details
 
@@ -176,11 +188,11 @@ Integration branch regression after Story6/8/9 merge also passed:
 | Failure modes | stale role shows wrong button, revoked tenant token loops, signed URL expires |
 | Tests | listbox switch, stale role refresh, revoked fallback, view-only UI |
 
-## Open Gaps Before Final Product Acceptance
+## Residual Risks Before Product Release
 
-- Live CaMeL-api contract smoke is still required against the completed external service: create, conflict, repair, wrong client, missing scope, retry behavior.
-- Live MinIO smoke is still required for private bucket access and signed URL expiry semantics.
-- `project.json` is not yet strictly file-id-only for every downstream consumer. Story6 rejects legacy paths in validators and Story9 writes companion `*_file_id` fields, but Story9 intentionally preserved legacy path fields for compatibility during this sprint.
+- CaMeL OAuth login and bootstrap create flow are live-verified against the local completed CaMeL stack, but conflict/repair/wrong-client/missing-scope external contract cases are still not fully smoke-tested.
+- Live MinIO signed URL success, tamper denial, and cross-tenant denial are verified. Direct bucket URL denial and TTL expiry are covered by lower-level tests or risk-tracked, not time-waited in the final live smoke.
+- Commercial project media paths now use file IDs in the tested flows. Non-media legacy path consumers and grid split outputs remain tracked release risks.
 - Grid split cell outputs still write legacy storyboard paths and need a follow-up migration with GridManager, version restore, and frontend consumers.
 - Older provider/custom-provider/credential API unit tests still use single-tenant fixtures without tenant principal/session context. Story7 tenant-aware tests pass and are used by the scenario runner, but these legacy unit fixtures should be migrated before broad full-suite CI is treated as authoritative.
-- Browser click-through evidence with `agent-browser` is still required for login callback, tenant switcher, view-only UI, asset sync confirmation, and signed media preview.
+- Browser click-through now verifies login callback and tenant switching. View-only deep UI, asset sync confirmation, and signed media preview are still covered by unit/API tests rather than full browser click-through.

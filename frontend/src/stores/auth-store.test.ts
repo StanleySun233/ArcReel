@@ -80,14 +80,18 @@ describe("useAuthStore", () => {
   });
 
   it("persists token, current tenant, tenant list, role and owner snapshot after login", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/v1/auth/me") {
+        return Promise.resolve(jsonResponse({
         user: { id: "camel:1", username: "alice", provider: "camel" },
         tenant: personalTenant,
-      }))
-      .mockResolvedValueOnce(jsonResponse({ tenants: [personalTenant, teamTenant] }))
-      .mockResolvedValueOnce(jsonResponse({ enabled: true, mode: "camel", providers: [] }));
+        }));
+      }
+      if (url === "/api/v1/auth/tenants") {
+        return Promise.resolve(jsonResponse({ tenants: [personalTenant, teamTenant] }));
+      }
+      return Promise.resolve(jsonResponse({ enabled: true, mode: "camel", providers: [] }));
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     useAuthStore.getState().login("personal-token", "camel");
@@ -112,6 +116,41 @@ describe("useAuthStore", () => {
       tenantRole: "admin",
       isTenantOwner: true,
       isAuthenticated: true,
+    });
+  });
+
+  it("refreshes cached tenant session from the backend during initialization", async () => {
+    window.localStorage.setItem("arcreel_auth_token", "personal-token");
+    window.localStorage.setItem(
+      "arcreel_tenant_session",
+      JSON.stringify({
+        version: 1,
+        currentTenant: personalTenant,
+        tenants: [personalTenant],
+      }),
+    );
+    const fetchMock = vi.fn((url: string) => {
+      if (url === "/api/v1/auth/me") {
+        return Promise.resolve(jsonResponse({ tenant: personalTenant }));
+      }
+      if (url === "/api/v1/auth/tenants") {
+        return Promise.resolve(jsonResponse({ tenants: [personalTenant, teamTenant] }));
+      }
+      return Promise.resolve(jsonResponse({ enabled: true, mode: "camel", providers: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    useAuthStore.getState().initialize();
+
+    expect(useAuthStore.getState()).toMatchObject({
+      currentTenant: personalTenant,
+      tenants: [personalTenant],
+    });
+    await waitFor(() => {
+      expect(useAuthStore.getState()).toMatchObject({
+        currentTenant: personalTenant,
+        tenants: [personalTenant, teamTenant],
+      });
     });
   });
 

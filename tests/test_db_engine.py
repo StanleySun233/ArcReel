@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from lib.db.engine import get_database_url, is_sqlite_backend
+from lib.db.engine import get_database_url, get_migration_database_url, is_sqlite_backend
 
 
 class TestGetDatabaseUrl:
@@ -30,3 +30,25 @@ class TestIsSqliteBackend:
     def test_postgresql(self):
         with patch.dict(os.environ, {"DATABASE_URL": "postgresql+asyncpg://localhost/test"}):
             assert is_sqlite_backend() is False
+
+
+class TestGetMigrationDatabaseUrl:
+    def test_admin_url_is_preferred(self):
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql+asyncpg://app/test",
+                "ARCREEL_DATABASE_ADMIN_URL": "postgresql+asyncpg://admin/test",
+            },
+        ):
+            assert get_migration_database_url() == "postgresql+asyncpg://admin/test"
+
+    def test_test_admin_url_is_used(self):
+        with patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "postgresql+asyncpg://app/test",
+                "ARCREEL_TEST_DATABASE_ADMIN_URL": "postgresql+asyncpg://admin/test",
+            },
+        ):
+            assert get_migration_database_url() == "postgresql+asyncpg://admin/test"
