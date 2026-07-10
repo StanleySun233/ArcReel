@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from lib.db.base import Base
+from lib.user_scope import set_current_tenant_id
 from server.agent_runtime.service import AssistantService
 from server.agent_runtime.session_store import SessionMetaStore
 from tests.factories import make_session_meta
@@ -605,7 +606,8 @@ class TestAssistantServiceMore:
 
     def test_skill_listing_and_metadata_parsing(self, tmp_path, monkeypatch):
         service = AssistantService(project_root=tmp_path)
-        service.pm = _FakePM(valid_project="demo")
+        service.projects_root = tmp_path / "projects"
+        (service.projects_root / "demo").mkdir(parents=True)
 
         agent_skill = tmp_path / "agent_runtime_profile" / ".claude" / "skills" / "s1"
         agent_skill.mkdir(parents=True)
@@ -633,3 +635,15 @@ class TestAssistantServiceMore:
         fallback = service._load_skill_metadata(fallback_skill_dir / "SKILL.md", "fallback")
         assert fallback["name"] == "fallback"
         assert fallback["description"] == "first non heading line"
+
+    def test_project_manager_uses_current_tenant_scope(self, tmp_path):
+        service = AssistantService(project_root=tmp_path)
+        service.projects_root = tmp_path / "projects"
+        project_dir = service.projects_root / "_tenants" / "ten_123" / "projects" / "demo"
+        project_dir.mkdir(parents=True)
+        set_current_tenant_id("ten_123")
+
+        try:
+            assert service._project_manager().get_project_path("demo") == project_dir.resolve()
+        finally:
+            set_current_tenant_id(None)

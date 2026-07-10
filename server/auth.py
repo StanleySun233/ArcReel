@@ -23,7 +23,7 @@ from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict
 
 from lib import PROJECT_ROOT
-from lib.user_scope import set_current_user_id
+from lib.user_scope import set_current_tenant_id, set_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +79,7 @@ def _anonymous_user() -> "CurrentUserInfo":
 
     user = CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, provider="local", role="admin")
     set_current_user_id(user.id)
+    set_current_tenant_id(None)
     return user
 
 
@@ -208,6 +209,9 @@ def verify_download_token(token: str, project_name: str) -> dict:
     if payload.get("project") != project_name:
         raise ValueError("token project 不匹配")
     set_current_user_id(str(payload.get("user_id") or "default"))
+    project_claim = str(payload.get("project") or "")
+    tenant_id, sep, _name = project_claim.partition(":")
+    set_current_tenant_id(tenant_id if sep and tenant_id.startswith("ten_") else None)
     return payload
 
 
@@ -508,6 +512,7 @@ def _payload_to_user(payload: dict) -> CurrentUserInfo:
         tenant_role=str(tenant_role) if tenant_role is not None else None,
     )
     set_current_user_id(user.id)
+    set_current_tenant_id(user.tenant_id)
     return user
 
 

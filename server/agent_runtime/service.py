@@ -35,6 +35,7 @@ from lib.app_data_dir import app_data_dir
 from lib.i18n import DEFAULT_LOCALE, get_locale
 from lib.profile_manifest import VALID_CONTENT_MODES
 from lib.project_manager import ProjectManager
+from lib.user_scope import get_current_tenant_id
 from server.agent_runtime.event_log import EventLogService, EventLogStore, build_user_entry
 from server.agent_runtime.keyed_locks import KeyedLocks
 from server.agent_runtime.models import Heartbeat, LiveMessage, SessionMeta, SessionStatus, SubscriptionReady
@@ -122,7 +123,10 @@ class AssistantService:
         if not sessions or not project_name:
             return sessions
 
-        project_cwd = str(self.projects_root / project_name)
+        project_cwd_path = self._resolve_project_cwd_safe(project_name)
+        if project_cwd_path is None:
+            return sessions
+        project_cwd = str(project_cwd_path)
         sdk_sessions: list[Any] = []
 
         if self._session_store is not None and list_sessions_from_store is not None:
@@ -170,7 +174,8 @@ class AssistantService:
             # computed from server cwd and never matches inserted rows, so the
             # delete becomes a silent no-op. Resolve project cwd from meta.
             meta = await self.meta_store.get(session_id)
-            project_cwd = str(self.projects_root / meta.project_name) if meta else None
+            resolved = self._resolve_project_cwd_safe(meta.project_name) if meta else None
+            project_cwd = str(resolved) if resolved is not None else None
             try:
                 await delete_session_via_store(self._session_store, session_id, directory=project_cwd)  # type: ignore[arg-type]
             except Exception:
@@ -234,7 +239,7 @@ class AssistantService:
         直接以该条目回显，不渲染任何本地合成消息；``client_key`` 为请求侧
         幂等键，重试不产生重复条目。
         """
-        self.pm.get_project_path(project_name)  # Validate project
+        self._project_manager().get_project_path(project_name)  # Validate project
 
         if session_id:
             # Existing session
@@ -620,9 +625,12 @@ class AssistantService:
         we fall back to None — the store helper / SDK defaults handle that.
         """
         try:
-            return self.pm.get_project_path(project_name)
+            return self._project_manager().get_project_path(project_name)
         except (FileNotFoundError, ValueError):
             return None
+
+    def _project_manager(self) -> ProjectManager:
+        return ProjectManager(self.projects_root, tenant_id=get_current_tenant_id())
 
     @staticmethod
     def _resolve_result_status(result_message: dict[str, Any]) -> SessionStatus:
@@ -704,7 +712,7 @@ class AssistantService:
     def list_available_skills(self, project_name: str | None = None) -> list[dict[str, str]]:
         """List available skills."""
         if project_name:
-            self.pm.get_project_path(project_name)
+            self._project_manager().get_project_path(project_name)
 
         source_roots = {
             "agent": agent_profile_dir() / ".claude" / "skills",

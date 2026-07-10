@@ -7,6 +7,7 @@ from urllib.parse import quote
 from lib.db.base import DEFAULT_USER_ID
 
 _current_user_id: ContextVar[str | None] = ContextVar("arcreel_current_user_id", default=None)
+_current_tenant_id: ContextVar[str | None] = ContextVar("arcreel_current_tenant_id", default=None)
 
 
 def set_current_user_id(user_id: str | None) -> None:
@@ -17,7 +18,18 @@ def get_current_user_id() -> str:
     return _current_user_id.get() or DEFAULT_USER_ID
 
 
+def set_current_tenant_id(tenant_id: str | None) -> None:
+    _current_tenant_id.set(tenant_id)
+
+
+def get_current_tenant_id() -> str | None:
+    return _current_tenant_id.get()
+
+
 def scoped_projects_root(base_root: Path) -> Path:
+    tenant_id = get_current_tenant_id()
+    if tenant_id:
+        return tenant_projects_root(base_root, tenant_id)
     user_id = get_current_user_id()
     if user_id == DEFAULT_USER_ID:
         return base_root

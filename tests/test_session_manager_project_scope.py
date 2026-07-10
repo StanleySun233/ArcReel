@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from lib.db.base import Base
-from lib.user_scope import set_current_user_id
+from lib.user_scope import set_current_tenant_id, set_current_user_id
 from server.agent_runtime.session_manager import SessionManager
 from server.agent_runtime.session_store import SessionMetaStore
 
@@ -103,6 +103,34 @@ class TestSessionManagerProjectScope:
                 ):
                     options = await manager._build_options("demo")
         finally:
+            set_current_user_id("default")
+
+        assert options.kwargs["cwd"] == str(project_dir.resolve())
+        await engine.dispose()
+
+    @pytest.mark.asyncio
+    async def test_build_options_prefers_current_tenant_project_directory(self, tmp_path, monkeypatch):
+        project_dir = tmp_path / "projects" / "_tenants" / "ten_123" / "projects" / "demo"
+        project_dir.mkdir(parents=True)
+        store, engine = await _make_store()
+        manager = SessionManager(
+            project_root=tmp_path,
+            data_dir=tmp_path,
+            meta_store=store,
+        )
+        monkeypatch.setattr("server.agent_runtime.options_assembler.load_provider_env_overrides", _fake_provider_env)
+        set_current_user_id("camel:alice")
+        set_current_tenant_id("ten_123")
+
+        try:
+            with patch("server.agent_runtime.options_assembler.SDK_AVAILABLE", True):
+                with patch(
+                    "server.agent_runtime.options_assembler.ClaudeAgentOptions",
+                    _FakeOptions,
+                ):
+                    options = await manager._build_options("demo")
+        finally:
+            set_current_tenant_id(None)
             set_current_user_id("default")
 
         assert options.kwargs["cwd"] == str(project_dir.resolve())
