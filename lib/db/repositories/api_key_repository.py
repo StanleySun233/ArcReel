@@ -121,6 +121,17 @@ class ApiKeyRepository(BaseRepository):
         result = await self.session.execute(stmt)
         return rowcount(result) > 0
 
+    async def update(self, key_id: int, *, name: str, expires_at: datetime | None) -> dict[str, Any] | None:
+        stmt = update(ApiKey).where(ApiKey.id == key_id)
+        if self.user_id is not None:
+            stmt = stmt.where(ApiKey.user_id == self.user_id)
+        if self.tenant_id is not None:
+            stmt = stmt.where(ApiKey.tenant_id == self.tenant_id)
+        result = await self.session.execute(stmt.values(name=name, expires_at=expires_at))
+        if rowcount(result) == 0:
+            return None
+        return await self.get_by_id(key_id)
+
     async def touch_last_used(self, key_hash: str, tenant_id: str | None = None) -> None:
         """Update last_used_at for the given key hash."""
         stmt = update(ApiKey).where(ApiKey.key_hash == key_hash)

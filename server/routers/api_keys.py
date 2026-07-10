@@ -143,12 +143,36 @@ async def list_api_keys(
 @router.patch("/api-keys/{key_id}")
 async def update_api_key(
     key_id: int,
-    _body: CreateApiKeyRequest,
+    body: CreateApiKeyRequest,
     _user: CurrentUser,
+    _t: Translator,
 ) -> ApiKeyInfo:
-    _ = key_id
     _require_issued_tokens_enabled()
-    raise HTTPException(status_code=403, detail="feature_disabled")
+    _require_jwt_auth(_user, _t)
+    if body.expires_days == 0:
+        expires_at: datetime | None = None
+    elif body.expires_days is not None:
+        expires_at = datetime.now(UTC) + timedelta(days=body.expires_days)
+    else:
+        expires_at = _default_expires_at()
+
+    try:
+        async with async_session_factory() as session:
+            async with session.begin():
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_ADMIN)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                repo = ApiKeyRepository(session, user_id=_user.id, tenant_id=access.id)
+                row = await repo.get_by_id(key_id)
+                if row is None:
+                    raise HTTPException(status_code=404, detail=_t("api_key_not_found", key_id=key_id))
+                invalidate_api_key_cache(row["key_hash"])
+                updated = await repo.update(key_id, name=body.name, expires_at=expires_at)
+                if updated is None:
+                    raise HTTPException(status_code=404, detail=_t("api_key_not_found", key_id=key_id))
+    except IntegrityError:
+        raise HTTPException(status_code=409, detail=_t("api_key_name_exists", name=body.name))
+
+    return ApiKeyInfo(**updated)
 
 
 @router.delete("/api-keys/{key_id}", status_code=204)
