@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
+from lib.user_scope import set_current_tenant_id, set_current_user_id
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.options_assembler import (
     OptionsAssembler,
@@ -64,14 +65,24 @@ async def test_load_provider_env_overrides_injects_anthropic_and_empties() -> No
         "ANTHROPIC_BASE_URL": "https://anthropic.example.com",
     }
 
-    async def fake_build(_session):
+    captured = {}
+
+    async def fake_build(_session, **kwargs):
+        captured.update(kwargs)
         return fake_dict
 
-    with patch("lib.config.service.build_anthropic_env_dict", side_effect=fake_build):
-        env = await load_provider_env_overrides()
+    set_current_user_id("camel:alice")
+    set_current_tenant_id("ten_123")
+    try:
+        with patch("lib.config.service.build_anthropic_env_dict", side_effect=fake_build):
+            env = await load_provider_env_overrides()
+    finally:
+        set_current_tenant_id(None)
+        set_current_user_id("default")
 
     assert env["ANTHROPIC_API_KEY"] == "sk-from-db"
     assert env["ANTHROPIC_BASE_URL"] == "https://anthropic.example.com"
+    assert captured == {"user_id": "camel:alice", "tenant_id": "ten_123"}
     # 其他 provider 空值覆盖
     assert env["ARK_API_KEY"] == ""
     assert env["XAI_API_KEY"] == ""

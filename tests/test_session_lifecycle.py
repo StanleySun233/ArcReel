@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from lib.user_scope import set_current_tenant_id, set_current_user_id
 from server.agent_runtime.session_actor import SessionActor
 from server.agent_runtime.session_manager import (
     ManagedSession,
@@ -96,25 +97,39 @@ class TestCloseSession:
 class TestConfigReading:
     async def test_get_cleanup_delay_default(self, tmp_path):
         mgr = _make_manager(tmp_path)
+        set_current_user_id("camel:alice")
+        set_current_tenant_id("ten_123")
         with patch("server.agent_runtime.session_manager.async_session_factory") as mock_factory:
             mock_session = AsyncMock()
             mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
             with patch("server.agent_runtime.session_manager.ConfigService") as MockSvc:
                 MockSvc.return_value.get_setting = AsyncMock(return_value="300")
-                result = await mgr._get_cleanup_delay()
+                try:
+                    result = await mgr._get_cleanup_delay()
+                finally:
+                    set_current_tenant_id(None)
+                    set_current_user_id("default")
         assert result == 300
+        MockSvc.assert_called_once_with(mock_session, user_id="camel:alice", tenant_id="ten_123")
 
     async def test_get_max_concurrent_default(self, tmp_path):
         mgr = _make_manager(tmp_path)
+        set_current_user_id("camel:alice")
+        set_current_tenant_id("ten_123")
         with patch("server.agent_runtime.session_manager.async_session_factory") as mock_factory:
             mock_session = AsyncMock()
             mock_factory.return_value.__aenter__ = AsyncMock(return_value=mock_session)
             mock_factory.return_value.__aexit__ = AsyncMock(return_value=False)
             with patch("server.agent_runtime.session_manager.ConfigService") as MockSvc:
                 MockSvc.return_value.get_setting = AsyncMock(return_value="5")
-                result = await mgr._get_max_concurrent()
+                try:
+                    result = await mgr._get_max_concurrent()
+                finally:
+                    set_current_tenant_id(None)
+                    set_current_user_id("default")
         assert result == 5
+        MockSvc.assert_called_once_with(mock_session, user_id="camel:alice", tenant_id="ten_123")
 
 
 class TestCleanup:

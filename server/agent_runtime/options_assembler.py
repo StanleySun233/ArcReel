@@ -25,6 +25,7 @@ from lib.agent_session_store.store import DbSessionStore
 from lib.db.base import DEFAULT_USER_ID
 from lib.db.engine import async_session_factory as default_async_session_factory
 from lib.i18n import DEFAULT_LOCALE, LOCALE_LANGUAGE_MAP
+from lib.user_scope import get_current_tenant_id, get_current_user_id
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.sdk_tools import build_arcreel_mcp_server
 
@@ -50,7 +51,11 @@ async def load_provider_env_overrides() -> dict[str, str]:
     from lib.db import async_session_factory
 
     async with async_session_factory() as session:
-        anthropic_env = await build_anthropic_env_dict(session)
+        anthropic_env = await build_anthropic_env_dict(
+            session,
+            user_id=get_current_user_id(),
+            tenant_id=get_current_tenant_id(),
+        )
 
     result = dict(anthropic_env)
     for key in OTHER_PROVIDER_ENV_KEYS:

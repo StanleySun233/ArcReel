@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from lib.i18n import DEFAULT_LOCALE
 from lib.logging_config import resolve_log_dir
-from lib.user_scope import get_current_user_id, scoped_projects_root
+from lib.user_scope import get_current_tenant_id, get_current_user_id, scoped_projects_root
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.entry_pipeline import SessionEntryPipeline
 from server.agent_runtime.event_log import (
@@ -373,7 +373,7 @@ class SessionManager:
             from lib.db import async_session_factory
 
             async with async_session_factory() as session:
-                svc = ConfigService(session)
+                svc = ConfigService(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
                 raw = await svc.get_setting("assistant_max_turns", "")
                 raw = raw.strip()
                 if raw:
@@ -1171,7 +1171,7 @@ class SessionManager:
         """返回会话清理延迟秒数，默认 300（5 分钟）。"""
         try:
             async with async_session_factory() as session:
-                svc = ConfigService(session)
+                svc = ConfigService(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
                 val = await svc.get_setting("agent_session_cleanup_delay_seconds", "300")
             return max(int(val), 10)
         except Exception:
@@ -1182,7 +1182,7 @@ class SessionManager:
         """返回最大并发会话数，默认 5。"""
         try:
             async with async_session_factory() as session:
-                svc = ConfigService(session)
+                svc = ConfigService(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
                 val = await svc.get_setting("agent_max_concurrent_sessions", "5")
             return max(int(val), 1)
         except Exception:
