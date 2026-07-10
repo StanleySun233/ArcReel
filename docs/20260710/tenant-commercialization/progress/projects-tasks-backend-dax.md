@@ -16,8 +16,8 @@
 
 ## Subtasks
 
-- [ ] Add tenant project registry and project path scoping.
-  - Commit: pending
+- [x] Add tenant project registry and project path scoping.
+  - Commit: 2144fe9
 - [ ] Convert project media references to file IDs.
   - Commit: pending
 - [ ] Add tenant-aware generation enqueue and worker writeback.
@@ -32,3 +32,4 @@
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
 | 2026-07-10 | Project file IDs | Depends on Story 5 file service semantics. | planned |
+| 2026-07-10 | Story6 registry slice verification | `python -m pytest tests/test_tenant_project_registry.py` cannot import test conftest because `DATABASE_URL` is unset for tenant-edition PostgreSQL. `basedpyright` reports 0 errors but exits non-zero because configured `.venv` path is missing. | blocked on local test environment |
