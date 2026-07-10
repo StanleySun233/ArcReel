@@ -40,6 +40,7 @@ from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from lib.profile_manifest import ContentMode
 from lib.project_change_hints import project_change_source
+from lib.project_context import project_json_local_path
 from lib.project_manager import EpisodeScriptReboundError, ProjectManager, SourceKind
 from lib.status_calculator import StatusCalculator
 from lib.style_templates import is_known_template, resolve_template_prompt
@@ -521,11 +522,13 @@ async def create_project(
             project_name = manual_name or manager.generate_project_name(title)
             if await repo.get_by_name(project_name) is not None:
                 raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
+            project_id = f"proj-{uuid.uuid4().hex}"
 
             try:
                 result = await asyncio.to_thread(
                     _create_project_on_disk,
                     manager,
+                    project_id,
                     project_name,
                     title,
                     manual_name,
@@ -533,21 +536,22 @@ async def create_project(
                     _t,
                 )
                 await repo.create(
-                    project_id=f"prj_{uuid.uuid4().hex}",
+                    project_id=project_id,
                     name=project_name,
                     created_by_user_id=_user.id,
-                    local_path=_project_json_local_path(manager, project_name),
+                    local_path=project_json_local_path(tenant_id=access.id, project_id=project_id),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
             except IntegrityError:
-                manager.delete_project_directory(project_name)
+                manager.delete_project_directory(project_id)
                 raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
             return result
 
 
 def _create_project_on_disk(
     manager: ProjectManager,
+    project_id: str,
     project_name: str,
     title: str,
     manual_name: str,
@@ -591,7 +595,7 @@ def _create_project_on_disk(
             validate_backend_value(value, field_name, _t)
 
     try:
-        manager.create_project(project_name, content_mode=req.content_mode or "narration")
+        manager.create_project(project_id, content_mode=req.content_mode or "narration")
     except FileExistsError:
         raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
     extras = {
@@ -612,7 +616,7 @@ def _create_project_on_disk(
         extras["generation_mode"] = req.generation_mode
     with project_change_source("webui"):
         project = manager.create_project_metadata(
-            project_name,
+            project_id,
             title or manual_name,
             style_prompt,
             req.content_mode,
@@ -624,7 +628,7 @@ def _create_project_on_disk(
             brief=req.brief,
             source_kind=req.source_kind,
         )
-    return {"success": True, "name": project_name, "project": project}
+    return {"success": True, "id": project_id, "name": project_name, "project": project}
 
 
 @router.get("/projects/{name}/video-capabilities")

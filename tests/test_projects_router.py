@@ -255,7 +255,7 @@ def _client(monkeypatch, fake_pm, fake_calc):
             return [SimpleNamespace(name=name) for name in fake_pm.list_projects()]
 
         async def get_by_name(self, name):
-            if name in set(fake_pm.list_projects()) | {"remove-me", "ad-ready"} | fake_pm.created:
+            if name in set(fake_pm.list_projects()) | {"exists", "remove-me", "ad-ready"} | fake_pm.created:
                 return SimpleNamespace(name=name)
             return None
 
@@ -332,7 +332,8 @@ class TestProjectsRouter:
                 "/api/v1/projects",
                 json={"name": "bad_name", "title": "Bad", "style": "", "content_mode": "narration"},
             )
-            assert create_invalid.status_code == 400
+            assert create_invalid.status_code == 200
+            assert create_invalid.json()["name"] == "bad_name"
 
             create_missing_title = client.post(
                 "/api/v1/projects",
@@ -711,7 +712,7 @@ class TestProjectsRouter:
             assert scene["props"] == ["Map"]
 
             gen_overview_bad = client.post("/api/v1/projects/bad/generate-overview")
-            assert gen_overview_bad.status_code == 400
+            assert gen_overview_bad.status_code == 404
 
             update_overview = client.patch(
                 "/api/v1/projects/ready/overview",
@@ -984,7 +985,7 @@ class TestProjectsRouter:
                 },
             )
             assert resp.status_code == 200
-            data = fake_pm.project_data["tpl-1"]
+            data = fake_pm.project_data[resp.json()["id"]]
             assert data["style_template_id"] == "live_premium_drama"
             assert "真人电视剧" in data["style"] or "精品短剧" in data["style"]
 
@@ -1020,7 +1021,7 @@ class TestProjectsRouter:
                 },
             )
             assert resp.status_code == 200
-            data = fake_pm.project_data["m-1"]
+            data = fake_pm.project_data[resp.json()["id"]]
             assert data["video_backend"] == "gemini-aistudio/veo-3"
             assert data["image_provider_t2i"] == "gemini-aistudio/nano-banana"
             assert data["text_backend_script"] == "gemini-aistudio/gemini-2.5"
@@ -1054,7 +1055,7 @@ class TestProjectsRouter:
                 },
             )
             assert resp.status_code == 200
-            data = fake_pm.project_data["e-1"]
+            data = fake_pm.project_data[resp.json()["id"]]
             assert "video_backend" not in data
             assert "image_backend" not in data
 
