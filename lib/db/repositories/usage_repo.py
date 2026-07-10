@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, func, select, update
+from sqlalchemy import Select, case, func, select, update
 
 from lib.cost_calculator import cost_calculator
 from lib.custom_provider import is_custom_provider, parse_provider_id
-from lib.db.base import DEFAULT_USER_ID, dt_to_iso, utc_now
+from lib.db.base import DEFAULT_USER_ID, Base, dt_to_iso, utc_now
 from lib.db.models.api_call import ApiCall
 from lib.db.repositories.base import BaseRepository, rowcount
 from lib.db.repositories.task_repo import DEFAULT_TENANT_ID
@@ -73,6 +73,18 @@ def _row_to_dict(row: ApiCall) -> dict[str, Any]:
 
 
 class UsageRepository(BaseRepository):
+    def __init__(self, session, *, tenant_id: str | None = None):
+        super().__init__(session)
+        self.tenant_id = tenant_id or session.info.get("tenant_id")
+        if self.tenant_id is not None:
+            self.session.info["tenant_id"] = str(self.tenant_id)
+
+    def _scope_query(self, stmt: Select, model: type[Base]) -> Select:
+        tenant_column = getattr(model, "tenant_id", None)
+        if self.tenant_id is None or tenant_column is None:
+            return stmt
+        return stmt.where(tenant_column == str(self.tenant_id))
+
     async def start_call(
         self,
         *,

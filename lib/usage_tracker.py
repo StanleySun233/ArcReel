@@ -130,10 +130,11 @@ class UsageTracker:
         provider: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, tenant_id=tenant_id)
             return await repo.get_stats(
                 project_name=project_name,
                 provider=provider,
@@ -147,10 +148,11 @@ class UsageTracker:
         provider: str | None = None,
         start_date: datetime | None = None,
         end_date: datetime | None = None,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, tenant_id=tenant_id)
             return await repo.get_stats_grouped_by_provider(
                 project_name=project_name,
                 provider=provider,
@@ -167,10 +169,11 @@ class UsageTracker:
         end_date: datetime | None = None,
         page: int = 1,
         page_size: int = 20,
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, tenant_id=tenant_id)
             return await repo.get_calls(
                 project_name=project_name,
                 call_type=call_type,
@@ -191,8 +194,8 @@ class UsageTracker:
             repo = UsageRepository(session)
             return await repo.get_project_image_costs_by_asset_type(project_name)
 
-    async def get_projects_list(self) -> list[str]:
+    async def get_projects_list(self, tenant_id: str | None = None) -> list[str]:
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            repo = UsageRepository(session, tenant_id=tenant_id)
             return await repo.get_projects_list()

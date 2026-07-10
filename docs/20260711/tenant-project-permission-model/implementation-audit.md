@@ -20,7 +20,7 @@ Evidence:
 
 ### Project identity is now route-id based on the main workspace path
 
-The project list, create, detail, update, delete, video capability route, cost estimation route, manual shot upload route, script review route, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, project event stream, version routes, grid routes, reference video unit routes, project archive export, and Jianying draft export now use project id as the route key.
+The project list, create, detail, update, delete, video capability route, cost estimation route, manual shot upload route, script review route, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, project event stream, version routes, grid routes, reference video unit routes, project archive export, Jianying draft export, and usage query routes now use project id as the route key.
 
 Evidence:
 
@@ -34,6 +34,8 @@ Evidence:
 - `server/routers/reference_videos.py` resolves project rows by `id`; unit list requires viewer access and all mutating/generation/upload endpoints require member access.
 - `server/routers/projects.py` export token/archive/Jianying draft routes use `project_id`; download tokens bind `tenant_id:project_id` and export services use the token tenant's project repository.
 - `server/services/jianying_draft_service.py` supports the current pyJianYingDraft track API through `TrackSpec`.
+- `server/routers/usage.py` accepts `project_id` query filters, checks tenant membership, and passes the current tenant to usage reads.
+- `lib/db/repositories/usage_repo.py` applies tenant scoping to usage queries.
 - Project creation stores local project JSON under tenant-scoped project-id paths.
 - `frontend/src/types/project.ts` requires `ProjectSummary.id`.
 - `frontend/src/components/pages/ProjectsPage.tsx` links and deletes by `project.id`.
@@ -100,8 +102,8 @@ Evidence:
 
 Backend:
 
-- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py tests/test_projects_archive_routes.py tests/test_jianying_draft_routes.py -q`
-  - Result: 352 passed
+- `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py tests/test_projects_archive_routes.py tests/test_jianying_draft_routes.py tests/test_usage_router.py tests/test_usage_repo.py tests/test_usage_tracker.py -q`
+  - Result: 397 passed
 - `python -m ruff check <changed backend files and tests>`
   - Result: passed
 - `basedpyright <changed backend route files>`
@@ -135,11 +137,10 @@ Required scenario still pending:
 
 Some persistence models and task/session payload fields still use `project_name` as a historical column or response field name while carrying project id values. These need a separate schema-level cleanup if the final storage vocabulary must also be renamed to `project_id`.
 
-### Non-core project subroutes still need full audit
+### Remaining project-id audit gap
 
-The current pass focused on the scenario-critical path: project CRUD, scripts, segments, source import, drafts, style image upload, files/source upload, project assets, generation entry points, manual shot uploads, script review, cost estimation, tasks, assistant, and project event SSE.
+The current pass focused on the scenario-critical path: project CRUD, scripts, segments, source import, drafts, style image upload, files/source upload, project assets, generation entry points, manual shot uploads, script review, cost estimation, tasks, assistant, project event SSE, versions, grids, reference video units, exports, Jianying draft export, and usage reads.
 
-The following route families still require a dedicated project-id audit before this can be called complete:
+The following route family still requires a dedicated project-id audit before this can be called complete:
 
-- usage grouping and display
-- project export and Jianying draft export
+- `server/routers/agent_chat.py` legacy `/agent/chat` body currently carries `project_name`.

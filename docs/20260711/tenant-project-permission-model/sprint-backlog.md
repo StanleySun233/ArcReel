@@ -93,7 +93,8 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 
 **Acceptance Criteria**
 - [ ] `api_calls` 或用量事实表包含 `tenant_id/project_id/user_id/task_id/provider/model/media_type/cost/status`。
-- [ ] 后端提供租户总览、项目详情、用户维度查询。
+- [x] 后端 usage 读接口按当前 tenant 限定，并使用 `project_id` query 过滤。
+- [ ] 后端提供完整租户总览、项目详情、用户维度查询。
 - [ ] 聚合查询不按项目名 group，只 join name 作展示。
 - [ ] 前端用量页支持 tenant/project 分组显示。
 - [x] 前端设置页 Issued Tokens 按钮 disabled。
