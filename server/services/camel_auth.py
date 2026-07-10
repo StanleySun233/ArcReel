@@ -21,6 +21,7 @@ from server.auth import create_token, get_token_secret
 from server.services.tenant_auth import ensure_personal_tenant, read_tenant_access
 
 CAMEL_STATE_COOKIE_NAME = "arcreel_camel_oauth_state"
+CAMEL_STATE_COOKIE_PREFIX = f"{CAMEL_STATE_COOKIE_NAME}_"
 CAMEL_STATE_TTL_SECONDS = 600
 CAMEL_OAUTH_CALLBACK_PATH = "/api/v1/auth/camel/callback"
 CamelOAuthIntent = Literal["login", "provider_bootstrap", "provider_repair"]
@@ -160,6 +161,14 @@ def _encode_state_cookie(state: CamelOAuthState) -> str:
     return jwt.encode(payload, get_token_secret(), algorithm="HS256")
 
 
+def _state_cookie_name(state: str) -> str:
+    return f"{CAMEL_STATE_COOKIE_PREFIX}{state}"
+
+
+def _state_cookie_from_request(state: str, cookies: dict[str, str]) -> str | None:
+    return cookies.get(_state_cookie_name(state)) or cookies.get(CAMEL_STATE_COOKIE_NAME)
+
+
 def _decode_state_cookie(state: str, state_cookie: str | None) -> CamelOAuthState:
     if not state_cookie:
         raise HTTPException(status_code=400, detail="Missing OAuth state cookie")
@@ -212,14 +221,16 @@ def build_camel_authorization_redirect(
     if intent == "provider_repair" and settings.repair_max_age_seconds:
         params["max_age"] = settings.repair_max_age_seconds
     response = RedirectResponse(f"{settings.authorize_url}?{urlencode(params)}")
-    response.set_cookie(
-        CAMEL_STATE_COOKIE_NAME,
-        _encode_state_cookie(oauth_state),
-        max_age=CAMEL_STATE_TTL_SECONDS,
-        httponly=True,
-        samesite="lax",
-        secure=redirect_uri.startswith("https://"),
-    )
+    cookie_value = _encode_state_cookie(oauth_state)
+    for cookie_name in (_state_cookie_name(oauth_state.nonce), CAMEL_STATE_COOKIE_NAME):
+        response.set_cookie(
+            cookie_name,
+            cookie_value,
+            max_age=CAMEL_STATE_TTL_SECONDS,
+            httponly=True,
+            samesite="lax",
+            secure=redirect_uri.startswith("https://"),
+        )
     return response
 
 
@@ -287,9 +298,14 @@ async def upsert_camel_user(userinfo: dict) -> CamelLocalUser:
     return CamelLocalUser(id=user_id, username=username, camel_user_id=camel_user_id)
 
 
-def _frontend_callback_redirect(token: str, return_path: str) -> RedirectResponse:
-    response = RedirectResponse(f"/login/callback#{urlencode({'access_token': token, 'from': return_path})}")
+def _delete_state_cookies(response: RedirectResponse, state: str) -> None:
+    response.delete_cookie(_state_cookie_name(state))
     response.delete_cookie(CAMEL_STATE_COOKIE_NAME)
+
+
+def _frontend_callback_redirect(token: str, state: str, return_path: str) -> RedirectResponse:
+    response = RedirectResponse(f"/login/callback#{urlencode({'access_token': token, 'from': return_path})}")
+    _delete_state_cookies(response, state)
     return response
 
 
@@ -299,10 +315,10 @@ async def _handle_login_intent(userinfo: dict, state: CamelOAuthState) -> Redire
         async with session.begin():
             tenant = await ensure_personal_tenant(session, user_id=user.id, username=user.username)
     token = create_token(user.username, user_id=user.id, provider="camel", tenant_id=tenant.id, tenant_role=tenant.role)
-    return _frontend_callback_redirect(token, state.return_path)
+    return _frontend_callback_redirect(token, state.nonce, state.return_path)
 
 
-def _provider_intent_redirect(return_path: str, result: dict) -> RedirectResponse:
+def _provider_intent_redirect(return_path: str, result: dict, state: str | None = None) -> RedirectResponse:
     parts = urlsplit(return_path)
     query = dict(parse_qsl(parts.query, keep_blank_values=True))
     if result.get("completed") is True:
@@ -311,7 +327,10 @@ def _provider_intent_redirect(return_path: str, result: dict) -> RedirectRespons
         query["camel_bootstrap"] = str(result.get("error") or "failed")
     query["camel_bootstrap_result"] = json.dumps(result, separators=(",", ":"))
     response = RedirectResponse(urlunsplit(("", "", parts.path, urlencode(query), parts.fragment)))
-    response.delete_cookie(CAMEL_STATE_COOKIE_NAME)
+    if state is not None:
+        _delete_state_cookies(response, state)
+    else:
+        response.delete_cookie(CAMEL_STATE_COOKIE_NAME)
     return response
 
 
@@ -344,12 +363,12 @@ async def _handle_provider_intent_with_token(
                 )
     except CamelLocalBootstrapError as exc:
         result = exc.result
-    return _provider_intent_redirect(state.return_path, result)
+    return _provider_intent_redirect(state.return_path, result, state.nonce)
 
 
-async def complete_camel_oauth_callback(code: str, state: str, state_cookie: str | None) -> RedirectResponse:
+async def complete_camel_oauth_callback(code: str, state: str, cookies: dict[str, str]) -> RedirectResponse:
     settings = _require_settings()
-    oauth_state = _decode_state_cookie(state, state_cookie)
+    oauth_state = _decode_state_cookie(state, _state_cookie_from_request(state, cookies))
     redirect_uri = oauth_state.redirect_uri or settings.redirect_uri
     if not redirect_uri:
         raise HTTPException(status_code=400, detail="Missing OAuth redirect URI")

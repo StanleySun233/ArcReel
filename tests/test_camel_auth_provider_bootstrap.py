@@ -60,7 +60,8 @@ async def post_start_url(
 
 
 def decoded_state_cookie(response):
-    raw_cookie = response.cookies.get(camel_auth.CAMEL_STATE_COOKIE_NAME)
+    query = authorization_query(response)
+    raw_cookie = response.cookies.get(camel_auth._state_cookie_name(query["state"][0]))
     assert raw_cookie
     return jwt.decode(raw_cookie, AUTH_TOKEN_SECRET, algorithms=["HS256"])
 
@@ -116,7 +117,7 @@ async def test_login_callback_creates_personal_tenant_and_returns_tenant_token(m
     response = await camel_auth.complete_camel_oauth_callback(
         "oauth-code",
         "state-123",
-        camel_auth._encode_state_cookie(state),
+        {camel_auth._state_cookie_name("state-123"): camel_auth._encode_state_cookie(state)},
     )
 
     location = response.headers["location"]
@@ -138,6 +139,7 @@ async def test_start_url_create_returns_authorization_url_and_provider_bootstrap
     assert response.status_code == 200
     assert "authorization_url" in response.json()
     assert camel_auth.CAMEL_STATE_COOKIE_NAME in response.headers["set-cookie"]
+    assert camel_auth.CAMEL_STATE_COOKIE_PREFIX in response.headers["set-cookie"]
     assert "HttpOnly" in response.headers["set-cookie"]
     query = authorization_query(response)
     state_payload = decoded_state_cookie(response)
@@ -150,6 +152,33 @@ async def test_start_url_create_returns_authorization_url_and_provider_bootstrap
     assert state_payload["from"] == "/app/projects?camel=1"
     assert state_payload["state"] == query["state"][0]
     assert state_payload["idempotency_key"].startswith("arc-bootstrap-")
+
+
+def test_state_cookie_lookup_prefers_state_specific_cookie(monkeypatch):
+    configure_oauth_env(monkeypatch)
+    first_state = CamelOAuthState(
+        nonce="state-first",
+        intent="login",
+        return_path="/app/projects",
+        redirect_uri="https://arcreel.example.com/api/v1/auth/camel/callback",
+    )
+    second_state = CamelOAuthState(
+        nonce="state-second",
+        intent="login",
+        return_path="/app/projects",
+        redirect_uri="https://arcreel.example.com/api/v1/auth/camel/callback",
+    )
+
+    cookie = camel_auth._state_cookie_from_request(
+        "state-first",
+        {
+            camel_auth._state_cookie_name("state-first"): camel_auth._encode_state_cookie(first_state),
+            camel_auth.CAMEL_STATE_COOKIE_NAME: camel_auth._encode_state_cookie(second_state),
+        },
+    )
+    decoded = camel_auth._decode_state_cookie("state-first", cookie)
+
+    assert decoded.nonce == "state-first"
 
 
 @pytest.mark.asyncio

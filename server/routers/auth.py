@@ -7,7 +7,7 @@
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +24,6 @@ from server.auth import (
     is_camel_auth_mode,
 )
 from server.services.camel_auth import (
-    CAMEL_STATE_COOKIE_NAME,
     build_camel_authorization_redirect,
     camel_oauth_provider_available,
     complete_camel_oauth_callback,
@@ -231,8 +230,8 @@ async def camel_start(
 
 @router.get("/auth/camel/callback")
 async def camel_callback(
+    request: Request,
     code: str,
     state: str,
-    state_cookie: Annotated[str | None, Cookie(alias=CAMEL_STATE_COOKIE_NAME)] = None,
 ) -> RedirectResponse:
-    return await complete_camel_oauth_callback(code, state, state_cookie)
+    return await complete_camel_oauth_callback(code, state, request.cookies)
