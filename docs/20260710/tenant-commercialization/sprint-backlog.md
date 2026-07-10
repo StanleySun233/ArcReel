@@ -56,11 +56,11 @@ These gates happen before implementation agents start. They are not story worktr
 **Slug:** preflight-camel
 **User value:** The tenant edition can rely on CaMeL OAuth and initial provider/API key bootstrap without ArcReel-side redirect weakness or unverified external contract assumptions.
 **Status:** in-progress
-**QA Status:** pending
+**QA Status:** blocked
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] CaMeL-api is treated as a completed external dependency; this sprint does not modify CaMeL-api files, branches, tests, or worktrees.
+- [x] CaMeL-api is treated as a completed external dependency; this sprint does not modify CaMeL-api files, branches, tests, or worktrees.
 - [ ] ArcReel-owned contract verification covers create, conflict, repair, scope/client validation, and retry behavior against the completed CaMeL-api service when endpoint credentials are available.
 - [x] ArcReel dynamic OAuth redirect only accepts `http` or `https` forwarded scheme and fails closed on invalid scheme.
 - [x] ArcReel bootstrap tests cover invalid forwarded scheme.
@@ -69,10 +69,10 @@ These gates happen before implementation agents start. They are not story worktr
 **Engineering Subtasks**
 - [x] Tara: Restrict forwarded scheme in `server/services/camel_auth.py`. (depends: none)
 - [x] Tara: Extend `tests/test_camel_auth_provider_bootstrap.py` for invalid forwarded scheme. (depends: none)
-- [ ] Tara: Add or document ArcReel-owned CaMeL provisioning contract smoke that does not edit CaMeL-api. (depends: endpoint credentials)
-- [ ] Quinn: Run ArcReel targeted pytest and contract smoke against the completed CaMeL-api service when available. (depends: implementation)
+- [ ] Tara: Add or document ArcReel-owned CaMeL provisioning contract smoke that does not edit CaMeL-api. (blocked: endpoint credentials and scenario fixtures)
+- [ ] Quinn: Run ArcReel targeted pytest and contract smoke against the completed CaMeL-api service when available. (blocked: endpoint credentials and scenario fixtures)
 
-**QA Evidence:** pending
+**QA Evidence:** ArcReel redirect hardening targeted test passed with `5 passed in 0.32s`; live CaMeL contract smoke is blocked until endpoint credentials and create/conflict/repair/client/scope/retry fixtures are available.
 
 ### Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline
 
