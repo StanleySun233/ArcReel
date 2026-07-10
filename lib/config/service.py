@@ -64,7 +64,12 @@ assert set(_ANTHROPIC_ENV_MAP.values()) == set(ANTHROPIC_ENV_KEYS), (
 )
 
 
-async def build_anthropic_env_dict(session: AsyncSession) -> dict[str, str]:
+async def build_anthropic_env_dict(
+    session: AsyncSession,
+    *,
+    user_id: str | None = None,
+    tenant_id: str | None = None,
+) -> dict[str, str]:
     """从 DB 读 active credential，返回 {ENV_KEY: value} dict，**不写 os.environ**。
 
     返回值由 OptionsAssembler 的凭证注入（load_provider_env_overrides）注入到
@@ -75,11 +80,11 @@ async def build_anthropic_env_dict(session: AsyncSession) -> dict[str, str]:
     # 局部 import 避免循环依赖（agent_credential_repo → agent_credential model → base）
     from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 
-    repo = AgentCredentialRepository(session)
+    repo = AgentCredentialRepository(session, tenant_id=tenant_id)
     cred = await repo.get_active()
 
     if cred is not None:
-        settings = await SystemSettingRepository(session).get_all()
+        settings = await SystemSettingRepository(session, user_id=user_id, tenant_id=tenant_id).get_all()
         return {
             "ANTHROPIC_API_KEY": cred.api_key or "",
             "ANTHROPIC_BASE_URL": cred.base_url or "",
@@ -93,7 +98,7 @@ async def build_anthropic_env_dict(session: AsyncSession) -> dict[str, str]:
         }
 
     # 无 active credential — 回退 system_settings（双轨期兼容）
-    settings = await SystemSettingRepository(session).get_all()
+    settings = await SystemSettingRepository(session, user_id=user_id, tenant_id=tenant_id).get_all()
     return {env_key: settings.get(db_key, "").strip() for db_key, env_key in _ANTHROPIC_ENV_MAP.items()}
 
 
@@ -112,9 +117,9 @@ class ProviderStatus:
 
 
 class ConfigService:
-    def __init__(self, session: AsyncSession, user_id: str | None = None) -> None:
-        self._provider_repo = ProviderConfigRepository(session, user_id=user_id)
-        self._setting_repo = SystemSettingRepository(session, user_id=user_id)
+    def __init__(self, session: AsyncSession, user_id: str | None = None, tenant_id: str | None = None) -> None:
+        self._provider_repo = ProviderConfigRepository(session, user_id=user_id, tenant_id=tenant_id)
+        self._setting_repo = SystemSettingRepository(session, user_id=user_id, tenant_id=tenant_id)
 
     async def get_provider_config(self, provider: str) -> dict[str, str]:
         self._validate_provider(provider)
@@ -150,7 +155,11 @@ class ConfigService:
 
     async def get_all_providers_status(self) -> list[ProviderStatus]:
         all_configured = await self._provider_repo.get_all_configured_keys_bulk()
-        cred_repo = CredentialRepository(self._provider_repo.session)
+        cred_repo = CredentialRepository(
+            self._provider_repo.session,
+            user_id=self._provider_repo.user_id,
+            tenant_id=self._provider_repo.tenant_id,
+        )
         active_creds = await cred_repo.get_active_credentials_bulk()
         statuses = []
         for name, meta in PROVIDER_REGISTRY.items():

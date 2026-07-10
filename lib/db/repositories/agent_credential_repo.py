@@ -15,6 +15,14 @@ class AgentCredentialRepository(BaseRepository):
     NOTE: 调用方需在合适的边界 commit。本类只 flush，不 commit。
     """
 
+    def __init__(self, session, tenant_id: str | None = None):
+        super().__init__(session)
+        resolved_tenant_id = tenant_id or session.info.get("tenant_id")
+        if not resolved_tenant_id:
+            raise ValueError("tenant_id is required")
+        self.tenant_id = str(resolved_tenant_id)
+        session.info["tenant_id"] = self.tenant_id
+
     async def create(
         self,
         *,
@@ -31,6 +39,7 @@ class AgentCredentialRepository(BaseRepository):
     ) -> AgentAnthropicCredential:
         cred = AgentAnthropicCredential(
             user_id=user_id,
+            tenant_id=self.tenant_id,
             preset_id=preset_id,
             display_name=display_name,
             base_url=base_url,
@@ -47,24 +56,41 @@ class AgentCredentialRepository(BaseRepository):
         return cred
 
     async def get(self, cred_id: int) -> AgentAnthropicCredential | None:
-        stmt = select(AgentAnthropicCredential).where(AgentAnthropicCredential.id == cred_id)
+        stmt = select(AgentAnthropicCredential).where(
+            AgentAnthropicCredential.tenant_id == self.tenant_id,
+            AgentAnthropicCredential.id == cred_id,
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def list_for_user(self, user_id: str = DEFAULT_USER_ID) -> list[AgentAnthropicCredential]:
         stmt = (
             select(AgentAnthropicCredential)
-            .where(AgentAnthropicCredential.user_id == user_id)
+            .where(
+                AgentAnthropicCredential.tenant_id == self.tenant_id,
+                AgentAnthropicCredential.user_id == user_id,
+            )
             .order_by(AgentAnthropicCredential.id)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars())
 
-    async def get_active(self, user_id: str = DEFAULT_USER_ID) -> AgentAnthropicCredential | None:
+    async def list_for_tenant(self) -> list[AgentAnthropicCredential]:
+        stmt = (
+            select(AgentAnthropicCredential)
+            .where(AgentAnthropicCredential.tenant_id == self.tenant_id)
+            .order_by(AgentAnthropicCredential.id)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars())
+
+    async def get_active(self, user_id: str | None = None) -> AgentAnthropicCredential | None:
         stmt = select(AgentAnthropicCredential).where(
-            AgentAnthropicCredential.user_id == user_id,
+            AgentAnthropicCredential.tenant_id == self.tenant_id,
             AgentAnthropicCredential.is_active.is_(True),
         )
+        if user_id is not None:
+            stmt = stmt.where(AgentAnthropicCredential.user_id == user_id)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -77,20 +103,20 @@ class AgentCredentialRepository(BaseRepository):
         await self.session.flush()
         return cred
 
-    async def set_active(self, cred_id: int, user_id: str = DEFAULT_USER_ID) -> None:
-        """互斥切 active：先把同 user 全置 False，再把目标置 True。
+    async def set_active(self, cred_id: int, user_id: str | None = None) -> None:
+        """互斥切 active：先把同 tenant 全置 False，再把目标置 True。
 
         Raises:
-            ValueError: cred_id 不存在或不属于该 user
+            ValueError: cred_id 不存在或不属于该 tenant
         """
         cred = await self.get(cred_id)
-        if cred is None or cred.user_id != user_id:
+        if cred is None:
             raise ValueError(f"credential id={cred_id} not found")
         # SQLite 的 partial unique index 在同事务内中间态可能违反，所以先全清再设
         await self.session.execute(
             update(AgentAnthropicCredential)
             .where(
-                AgentAnthropicCredential.user_id == user_id,
+                AgentAnthropicCredential.tenant_id == self.tenant_id,
                 AgentAnthropicCredential.is_active.is_(True),
             )
             .values(is_active=False)
@@ -113,6 +139,11 @@ class AgentCredentialRepository(BaseRepository):
             return False
         if cred.is_active:
             raise ValueError("cannot delete active credential; activate another first")
-        await self.session.execute(delete(AgentAnthropicCredential).where(AgentAnthropicCredential.id == cred_id))
+        await self.session.execute(
+            delete(AgentAnthropicCredential).where(
+                AgentAnthropicCredential.tenant_id == self.tenant_id,
+                AgentAnthropicCredential.id == cred_id,
+            )
+        )
         await self.session.flush()
         return True

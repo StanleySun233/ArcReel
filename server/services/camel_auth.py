@@ -18,7 +18,7 @@ from starlette.responses import RedirectResponse
 from lib.db import async_session_factory
 from lib.db.models.user import User
 from server.auth import create_token, get_token_secret
-from server.services.tenant_auth import ensure_personal_tenant
+from server.services.tenant_auth import ensure_personal_tenant, read_tenant_access
 
 CAMEL_STATE_COOKIE_NAME = "arcreel_camel_oauth_state"
 CAMEL_STATE_TTL_SECONDS = 600
@@ -64,6 +64,7 @@ class CamelOAuthState:
     return_path: str
     redirect_uri: str
     user_id: str | None = None
+    tenant_id: str | None = None
     idempotency_key: str | None = None
 
 
@@ -152,6 +153,8 @@ def _encode_state_cookie(state: CamelOAuthState) -> str:
     }
     if state.user_id is not None:
         payload["user_id"] = state.user_id
+    if state.tenant_id is not None:
+        payload["tenant_id"] = state.tenant_id
     if state.idempotency_key is not None:
         payload["idempotency_key"] = state.idempotency_key
     return jwt.encode(payload, get_token_secret(), algorithm="HS256")
@@ -175,6 +178,7 @@ def _decode_state_cookie(state: str, state_cookie: str | None) -> CamelOAuthStat
         return_path=safe_return_path(payload.get("from")),
         redirect_uri=str(payload.get("redirect_uri") or ""),
         user_id=payload.get("user_id"),
+        tenant_id=payload.get("tenant_id"),
         idempotency_key=payload.get("idempotency_key"),
     )
 
@@ -184,6 +188,7 @@ def build_camel_authorization_redirect(
     from_path: str | None,
     intent: CamelOAuthIntent = "login",
     user_id: str | None = None,
+    tenant_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> RedirectResponse:
     settings = _require_settings()
@@ -194,6 +199,7 @@ def build_camel_authorization_redirect(
         return_path=safe_return_path(from_path),
         redirect_uri=redirect_uri,
         user_id=user_id,
+        tenant_id=tenant_id,
         idempotency_key=idempotency_key,
     )
     params = {
@@ -323,9 +329,14 @@ async def _handle_provider_intent_with_token(
     try:
         async with async_session_factory() as session:
             async with session.begin():
+                if state.tenant_id is not None:
+                    access = await read_tenant_access(session, user_id=user.id, tenant_id=state.tenant_id)
+                    if access is None:
+                        raise HTTPException(status_code=403, detail="TENANT_ACCESS_REVOKED")
                 result = await complete_camel_provider_bootstrap(
                     session,
                     user_id=user.id,
+                    tenant_id=state.tenant_id,
                     camel_user_id=user.camel_user_id,
                     access_token=access_token,
                     mode=mode,
