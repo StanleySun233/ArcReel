@@ -386,7 +386,7 @@ These gates happen before implementation agents start. They are not story worktr
 - [x] Quinn: File defects under `docs/20260710/tenant-commercialization/defects/`. (depends: failures)
 - [ ] Parker: Product Owner review of all acceptance criteria from the main integration branch. (depends: QA passed)
 
-**QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, browser smoke passed CaMeL login/default personal space/listbox tenant switch, frontend `pnpm lint && pnpm check` passed 107 test files and 923 tests, targeted backend regression passed 14 tests, and scenario runner passed 30 + 10 + 113 + 114 tests. Residual risks are tracked in `chain-audit.md` and `scenario-test-matrix.md`.
+**QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. After merging Story10, integration acceptance also passed on `arcreel-acceptance-current-20260710220207` / `arcreel_acceptance_20260710220207` at merge commit `056e8b7`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, browser smoke passed CaMeL login/default personal space/listbox tenant switch, frontend `pnpm lint && pnpm check` passed 107 test files and 923 tests, targeted backend regression passed 14 tests, and scenario runner passed 30 + 10 + 113 + 114 tests. Residual risks are tracked in `chain-audit.md` and `scenario-test-matrix.md`.
 
 ## File Ownership
 

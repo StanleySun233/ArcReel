@@ -45,3 +45,15 @@
 | Frontend | `pnpm lint && pnpm check` passed; 107 test files, 923 tests |
 | Targeted backend | `tests/test_assets_router.py tests/test_db_engine.py tests/test_files_api_minio.py -q`: 14 passed |
 | Static | ruff check/format passed for Story10 changed Python files; scoped basedpyright for smoke scripts: 0 errors, 0 warnings |
+
+## Integration Merge Evidence
+
+| Area | Evidence |
+|------|----------|
+| Merge | `integration/tenant-commercialization` at merge commit `056e8b7` |
+| Fresh stack | Container `arcreel-acceptance-current-20260710220207`, DB `arcreel_acceptance_20260710220207`, Alembic head `8d7e6f5a4b3c` |
+| Live API smoke | `deploy/test/arcreel_api_smoke.py` passed 23 checks |
+| Focused tenant/MinIO smoke | `deploy/test/arcreel_tenant_role_minio_smoke.py` passed 4 checks |
+| Scenario runner | 30 + 10 + 113 + 114 tests passed |
+| Frontend | `pnpm lint && pnpm check` passed; 107 test files, 923 tests |
+| Targeted backend | `tests/test_assets_router.py tests/test_db_engine.py tests/test_files_api_minio.py -q`: 14 passed |

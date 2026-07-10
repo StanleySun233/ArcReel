@@ -54,6 +54,17 @@ Story10 fresh-stack live acceptance after fixes:
 - Scenario runner: `auth_roles` 30 passed, `rls_config` 10 passed, `files_projects_assets` 113 passed, `generation_tasks_usage` 114 passed.
 - Scoped smoke-script type check: `basedpyright deploy/test/arcreel_api_smoke.py deploy/test/arcreel_tenant_role_minio_smoke.py` reported `0 errors, 0 warnings, 0 notes`; command exit remains 3 because this worktree has no `.venv` subdirectory for basedpyright.
 
+Integration merge acceptance:
+
+- Integration branch: `integration/tenant-commercialization`, merge commit `056e8b7`.
+- Fresh integration DB/container: `arcreel_acceptance_20260710220207` with container `arcreel-acceptance-current-20260710220207`.
+- Integration Alembic head: `8d7e6f5a4b3c`.
+- Integration live API smoke: `deploy/test/arcreel_api_smoke.py` passed 23 checks.
+- Integration live tenant/MinIO smoke: `deploy/test/arcreel_tenant_role_minio_smoke.py` passed 4 checks.
+- Integration scenario runner: `auth_roles` 30 passed, `rls_config` 10 passed, `files_projects_assets` 113 passed, `generation_tasks_usage` 114 passed.
+- Integration frontend regression: `pnpm lint && pnpm check` passed with 107 test files and 923 tests.
+- Integration targeted backend regression: 14 tests passed.
+
 ## Chain Details
 
 ### 1. CaMeL Login To Personal Tenant Token

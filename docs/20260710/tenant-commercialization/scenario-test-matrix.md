@@ -75,6 +75,17 @@ Story10 final live acceptance evidence:
 - Targeted backend regression after Story10 fixes: 14 tests passed.
 - Scoped smoke-script type check: 0 errors, 0 warnings, 0 notes; basedpyright still exits 3 because this worktree lacks configured `.venv`.
 
+Integration merge acceptance evidence:
+
+- Integration branch `integration/tenant-commercialization` at merge commit `056e8b7`.
+- Fresh integration stack: PostgreSQL DB `arcreel_acceptance_20260710220207`, ArcReel container `arcreel-acceptance-current-20260710220207`.
+- Fresh integration migration head: `8d7e6f5a4b3c`.
+- Integration live API smoke: 23 checks passed.
+- Integration focused tenant/MinIO smoke: 4 checks passed.
+- Integration scenario runner: 30 + 10 + 113 + 114 tests passed.
+- Integration frontend: `pnpm lint && pnpm check`, 107 test files and 923 tests passed.
+- Integration targeted backend: 14 tests passed.
+
 Manual/live evidence still not complete:
 
 - CaMeL conflict/repair/wrong-client/missing-scope/retry contract cases against the completed external service.
