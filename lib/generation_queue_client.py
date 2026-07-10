@@ -122,6 +122,8 @@ async def enqueue_and_wait(
     dependency_group: str | None = None,
     dependency_index: int | None = None,
     user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
+    requested_by_user_id: str | None = None,
 ) -> dict[str, Any]:
     enqueue_result = await enqueue_task_only(
         project_name=project_name,
@@ -136,6 +138,8 @@ async def enqueue_and_wait(
         dependency_group=dependency_group,
         dependency_index=dependency_index,
         user_id=user_id,
+        tenant_id=tenant_id,
+        requested_by_user_id=requested_by_user_id,
     )
 
     task = await wait_for_task(
@@ -171,6 +175,8 @@ async def enqueue_task_only(
     dependency_group: str | None = None,
     dependency_index: int | None = None,
     user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
+    requested_by_user_id: str | None = None,
 ) -> dict[str, Any]:
     queue = get_generation_queue()
 
@@ -189,6 +195,8 @@ async def enqueue_task_only(
         dependency_group=dependency_group,
         dependency_index=dependency_index,
         user_id=user_id,
+        tenant_id=tenant_id,
+        requested_by_user_id=requested_by_user_id,
     )
     return enqueue_result
 
@@ -430,6 +438,9 @@ async def batch_enqueue_and_wait(
     specs: list[TaskSpec],
     on_success: Callable[[BatchTaskResult], None] | None = None,
     on_failure: Callable[[BatchTaskResult], None] | None = None,
+    user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
+    requested_by_user_id: str | None = None,
 ) -> tuple[list[BatchTaskResult], list[BatchTaskResult]]:
     """Async: enqueue sequentially, then gather-wait all tasks.
 
@@ -458,6 +469,9 @@ async def batch_enqueue_and_wait(
             dependency_task_id=dep_task_id,
             dependency_group=spec.dependency_group,
             dependency_index=spec.dependency_index,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            requested_by_user_id=requested_by_user_id,
         )
         task_ids[spec.resource_id] = enqueue_result["task_id"]
 
@@ -498,6 +512,9 @@ def batch_enqueue_and_wait_sync(
     specs: list[TaskSpec],
     on_success: Callable[[BatchTaskResult], None] | None = None,
     on_failure: Callable[[BatchTaskResult], None] | None = None,
+    user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
+    requested_by_user_id: str | None = None,
 ) -> tuple[list[BatchTaskResult], list[BatchTaskResult]]:
     """Batch-enqueue all tasks then wait for all of them to complete.
 
@@ -518,5 +535,8 @@ def batch_enqueue_and_wait_sync(
             specs=specs,
             on_success=on_success,
             on_failure=on_failure,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            requested_by_user_id=requested_by_user_id,
         )
     )

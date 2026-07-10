@@ -27,14 +27,15 @@ from datetime import UTC
 # 不触发。lease_ttl 默认 10s → 阈值 30s。常量化便于单测注入与未来调参。
 _ORPHAN_RESCAN_LEASE_LOST_MULT = 3
 
+from lib.db.base import DEFAULT_USER_ID
 from lib.generation_queue import (
     TASK_POLL_INTERVAL_SEC,
     TASK_WORKER_HEARTBEAT_SEC,
     TASK_WORKER_LEASE_TTL_SEC,
     GenerationQueue,
     get_generation_queue,
+    task_tenant_scope,
 )
-from lib.db.base import DEFAULT_USER_ID
 from lib.task_failure import encode_failure
 
 # Default provider used when a task payload does not specify one.
@@ -66,6 +67,13 @@ def _read_int_env(name: str, default: int, minimum: int = 1) -> int:
     except (TypeError, ValueError):
         return default
     return max(minimum, value)
+
+
+def _task_tenant_scope(task: dict[str, Any]) -> dict[str, str | None]:
+    return {
+        "tenant_id": task.get("tenant_id"),
+        "requested_by_user_id": task.get("requested_by_user_id") or task.get("user_id"),
+    }
 
 
 def _parse_lane_max(config: dict[str, str], key: str, default: int, provider_id: str) -> int:
@@ -545,6 +553,7 @@ class GenerationWorker:
                             provider_id=provider_id,
                             media_type=media_type,
                         ),
+                        **_task_tenant_scope(task),
                     )
                     claimed_any = True
                     continue
@@ -625,7 +634,12 @@ class GenerationWorker:
                 # mark_cancelled——SQL 守卫 status IN (queued, cancelling, running) 保证幂等：
                 # 已落终态则 0 rows 无副作用，避免任务永久卡在 running/cancelling。
                 try:
-                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user")
+                    await self.queue.mark_task_cancelled(
+                        task_id,
+                        cancelled_by="user",
+                        tenant_id=None,
+                        requested_by_user_id=None,
+                    )
                 except Exception:
                     logger.warning("drain 兜底 mark_cancelled 失败 task_id=%s", task_id, exc_info=True)
                 continue
@@ -658,31 +672,33 @@ class GenerationWorker:
         """
         task_id = task["task_id"]
         task_type = task.get("task_type", "unknown")
+        scope = _task_tenant_scope(task)
         provider_id = await _extract_provider(task)
         logger.info("开始处理任务 %s (type=%s, provider=%s)", task_id, task_type, provider_id)
 
         from server.services.generation_tasks import execute_generation_task
 
         try:
-            result = await execute_generation_task(task)
+            with task_tenant_scope(tenant_id=scope["tenant_id"], user_id=scope["requested_by_user_id"]):
+                result = await execute_generation_task(task)
         except asyncio.CancelledError:
             # 用户/级联取消：worker.request_cancel 触发 asyncio.Task.cancel()
-            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             raise
         except Exception as exc:
             logger.exception("任务失败 %s (type=%s, provider=%s)", task_id, task_type, provider_id)
-            rows = await asyncio.shield(self.queue.mark_task_failed(task_id, str(exc)))
+            rows = await asyncio.shield(self.queue.mark_task_failed(task_id, str(exc), **scope))
             if rows == 0:
                 # 外部已抢先翻 cancelling → 落地 cancelled 终态
-                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             return
 
         try:
-            rows = await asyncio.shield(self.queue.mark_task_succeeded(task_id, result))
+            rows = await asyncio.shield(self.queue.mark_task_succeeded(task_id, result, **scope))
         except asyncio.CancelledError:
             # mark_succeeded 期间被取消：shield 让 inner 跑完了；inner 完成情况由
             # rowcount 决定——拿不到了，按"被外部取消"语义兜底。
-            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             raise
         except Exception:
             # mark_succeeded 自身抛错（DB 超时 / OperationalError）：上层 _drain_finished_tasks
@@ -691,7 +707,7 @@ class GenerationWorker:
             raise
         if rows == 0:
             # 0-rows-cancelled 协议：execute 跑赢但 DB 已被外部翻 cancelling
-            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
         else:
             logger.info("任务完成 %s (type=%s, provider=%s)", task_id, task_type, provider_id)
 
@@ -705,15 +721,16 @@ class GenerationWorker:
         """
         task_id = task["task_id"]
         task_type = task.get("task_type", "unknown")
+        scope = _task_tenant_scope(task)
 
         job_id = task.get("provider_job_id") or ""
         if not job_id:
             # 防御：本不该被派发到这里（_handle_orphan_tasks_on_start 已 mark_failed [restart_lost]）
             rows = await asyncio.shield(
-                self.queue.mark_task_failed(task_id, encode_failure("restart_lost_resume_no_job_id"))
+                self.queue.mark_task_failed(task_id, encode_failure("restart_lost_resume_no_job_id"), **scope)
             )
             if rows == 0:
-                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             return
 
         # 锁定持久化 provider 到 payload（resolver 优先级：payload > project > 默认）。
@@ -742,40 +759,49 @@ class GenerationWorker:
         from server.services.resume_executor import execute_resume_video_task
 
         try:
-            result = await execute_resume_video_task(task, job_id=job_id)
+            with task_tenant_scope(tenant_id=scope["tenant_id"], user_id=scope["requested_by_user_id"]):
+                result = await execute_resume_video_task(task, job_id=job_id)
         except asyncio.CancelledError:
-            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             raise
         except NotImplementedError as exc:
             logger.warning("resume 不支持 task %s: %s", task_id, exc)
             rows = await asyncio.shield(
-                self.queue.mark_task_failed(task_id, encode_failure("resume_unsupported_detail", detail=str(exc)))
+                self.queue.mark_task_failed(
+                    task_id,
+                    encode_failure("resume_unsupported_detail", detail=str(exc)),
+                    **scope,
+                )
             )
             if rows == 0:
-                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             return
         except ResumeExpiredError as exc:
             logger.warning("resume 已过期 task %s: %s", task_id, exc)
             rows = await asyncio.shield(
-                self.queue.mark_task_failed(task_id, encode_failure("resume_expired_detail", detail=str(exc)))
+                self.queue.mark_task_failed(
+                    task_id,
+                    encode_failure("resume_expired_detail", detail=str(exc)),
+                    **scope,
+                )
             )
             if rows == 0:
-                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             return
         except Exception as exc:
             logger.exception("resume 失败 %s (type=%s, provider=%s)", task_id, task_type, provider_id)
-            rows = await asyncio.shield(self.queue.mark_task_failed(task_id, str(exc)))
+            rows = await asyncio.shield(self.queue.mark_task_failed(task_id, str(exc), **scope))
             if rows == 0:
-                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+                await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             return
 
         try:
-            rows = await asyncio.shield(self.queue.mark_task_succeeded(task_id, result))
+            rows = await asyncio.shield(self.queue.mark_task_succeeded(task_id, result, **scope))
         except asyncio.CancelledError:
-            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
             raise
         if rows == 0:
-            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+            await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user", **scope))
         else:
             logger.info("重启自愈完成 %s", task_id)
 
@@ -846,7 +872,7 @@ class GenerationWorker:
                 continue
             status = task.get("status")
             if status == "cancelling":
-                await self.queue.mark_task_cancelled(task_id, cancelled_by="user")
+                await self.queue.mark_task_cancelled(task_id, cancelled_by="user", **_task_tenant_scope(task))
                 logger.info("孤儿 cancelling → cancelled: %s", task_id)
                 continue
 
@@ -868,9 +894,10 @@ class GenerationWorker:
                 rows = await self.queue.mark_task_failed(
                     task_id,
                     encode_failure("restart_lost_image"),
+                    **_task_tenant_scope(task),
                 )
                 if rows == 0:
-                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user")
+                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user", **_task_tenant_scope(task))
                 continue
 
             # audio（TTS）同步、不持久化 job_id、无 resume 入口——与 image 同样降级为
@@ -880,9 +907,10 @@ class GenerationWorker:
                 rows = await self.queue.mark_task_failed(
                     task_id,
                     encode_failure("restart_lost_audio"),
+                    **_task_tenant_scope(task),
                 )
                 if rows == 0:
-                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user")
+                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user", **_task_tenant_scope(task))
                 continue
 
             # video 路径：判断 provider 是否支持 resume。优先用持久化的 provider_id：
@@ -901,17 +929,22 @@ class GenerationWorker:
                 rows = await self.queue.mark_task_failed(
                     task_id,
                     encode_failure("resume_unsupported_provider", provider_id=provider_id),
+                    **_task_tenant_scope(task),
                 )
                 if rows == 0:
-                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user")
+                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user", **_task_tenant_scope(task))
                 continue
 
             job_id = task.get("provider_job_id")
             if not job_id:
                 logger.warning("孤儿 running 无 job_id → [restart_lost]: %s", task_id)
-                rows = await self.queue.mark_task_failed(task_id, encode_failure("restart_lost_no_job_id"))
+                rows = await self.queue.mark_task_failed(
+                    task_id,
+                    encode_failure("restart_lost_no_job_id"),
+                    **_task_tenant_scope(task),
+                )
                 if rows == 0:
-                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user")
+                    await self.queue.mark_task_cancelled(task_id, cancelled_by="user", **_task_tenant_scope(task))
                 continue
 
             # 收集到 provider 桶，交给后台 dispatcher 受 pool 容量约束分批处理。
@@ -1000,9 +1033,10 @@ class GenerationWorker:
                 rows = await self.queue.mark_task_failed(
                     t["task_id"],
                     encode_failure("resume_unsupported_capacity_zero", provider_id=provider_id),
+                    **_task_tenant_scope(t),
                 )
                 if rows == 0:
-                    await self.queue.mark_task_cancelled(t["task_id"], cancelled_by="user")
+                    await self.queue.mark_task_cancelled(t["task_id"], cancelled_by="user", **_task_tenant_scope(t))
             return
 
         sem = asyncio.Semaphore(cap)
@@ -1028,7 +1062,9 @@ class GenerationWorker:
                 # 3) _process_resume_task 内部 cancel → 内部已 mark，此处再调 SQL 命中
                 #    cancelled 行返回 0 rows，无副作用
                 try:
-                    await asyncio.shield(self.queue.mark_task_cancelled(task_id, cancelled_by="user"))
+                    await asyncio.shield(
+                        self.queue.mark_task_cancelled(task_id, cancelled_by="user", **_task_tenant_scope(t))
+                    )
                 except Exception:
                     logger.exception("sem dispatch cancel 落终态失败 task_id=%s", task_id)
                 raise

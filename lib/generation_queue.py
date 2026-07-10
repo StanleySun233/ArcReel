@@ -7,9 +7,11 @@ Wraps TaskRepository with a module-level singleton pattern.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import threading
 from collections.abc import Callable
+from contextvars import ContextVar
 from typing import Any
 
 from lib.db import safe_session_factory
@@ -64,6 +66,8 @@ TASK_POLL_INTERVAL_SEC = 1.0
 
 _QUEUE_LOCK = threading.Lock()
 _QUEUE_INSTANCE: GenerationQueue | None = None
+_CURRENT_TASK_TENANT_ID: ContextVar[str | None] = ContextVar("arcreel_task_tenant_id", default=None)
+_CURRENT_TASK_USER_ID: ContextVar[str | None] = ContextVar("arcreel_task_user_id", default=None)
 
 
 WorkerCancelCallback = Callable[[str], bool]
@@ -77,12 +81,23 @@ def _is_postgresql_session(session: Any) -> bool:
 
 
 async def _prepare_task_session(session: Any, *, tenant_id: str | None, user_id: str | None) -> None:
-    resolved_tenant_id = tenant_id or DEFAULT_TENANT_ID
-    resolved_user_id = user_id or DEFAULT_USER_ID
+    resolved_tenant_id = tenant_id or _CURRENT_TASK_TENANT_ID.get() or DEFAULT_TENANT_ID
+    resolved_user_id = user_id or _CURRENT_TASK_USER_ID.get() or DEFAULT_USER_ID
     session.info["tenant_id"] = resolved_tenant_id
     session.info["user_id"] = resolved_user_id
     if _is_postgresql_session(session):
         await set_tenant_context(session, user_id=resolved_user_id, tenant_id=resolved_tenant_id)
+
+
+@contextlib.contextmanager
+def task_tenant_scope(*, tenant_id: str | None, user_id: str | None):
+    tenant_token = _CURRENT_TASK_TENANT_ID.set(tenant_id)
+    user_token = _CURRENT_TASK_USER_ID.set(user_id)
+    try:
+        yield
+    finally:
+        _CURRENT_TASK_USER_ID.reset(user_token)
+        _CURRENT_TASK_TENANT_ID.reset(tenant_token)
 
 
 class GenerationQueue:
@@ -185,11 +200,13 @@ class GenerationQueue:
 
     async def persist_provider_job_id(self, task_id: str, job_id: str) -> None:
         async with self._session_factory() as session:
+            await _prepare_task_session(session, tenant_id=None, user_id=None)
             repo = TaskRepository(session)
             await repo.persist_provider_job_id(task_id, job_id)
 
     async def persist_api_call_id(self, task_id: str, call_id: int) -> None:
         async with self._session_factory() as session:
+            await _prepare_task_session(session, tenant_id=None, user_id=None)
             repo = TaskRepository(session)
             await repo.persist_api_call_id(task_id, call_id)
 
