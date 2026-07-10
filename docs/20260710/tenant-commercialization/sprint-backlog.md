@@ -332,29 +332,29 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** tenant-generation
 **User value:** Generation requests enforce permission at submission time, run later under the captured tenant context, and write all outputs as file IDs.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Task rows include `tenant_id` and `requested_by_user_id`.
-- [ ] Enqueue checks current permission and stores tenant/user snapshot.
-- [ ] Worker sets DB tenant context from task row.
-- [ ] User role changes after enqueue do not cancel submitted tasks.
-- [ ] Task queries/SSE are tenant-scoped.
-- [ ] Generated image/video/text/audio outputs are written through FileService and referenced as file_id.
-- [ ] Dedupe indexes include tenant_id.
+- [x] Task rows include `tenant_id` and `requested_by_user_id`.
+- [x] Enqueue checks current permission and stores tenant/user snapshot.
+- [x] Worker sets DB tenant context from task row.
+- [x] User role changes after enqueue do not cancel submitted tasks.
+- [x] Task queries/SSE are tenant-scoped.
+- [x] Generated image/video/text/audio outputs are written through FileService and referenced as file_id.
+- [x] Dedupe indexes include tenant_id.
 
 **Engineering Subtasks**
-- [ ] Dax: Update `lib/db/models/task.py`, `lib/db/repositories/task_repo.py`, and task migration pieces owned by Story 2. (depends: Story 2)
-- [ ] Dax: Update `lib/generation_queue.py` and `lib/generation_queue_client.py` to persist tenant/user. (depends: auth context)
-- [ ] Dax: Update `lib/generation_worker.py` to set tenant DB context from task. (depends: DB context)
-- [ ] Dax: Update `server/services/generation_tasks.py` and `server/services/reference_video_tasks.py` to use FileService outputs. (depends: Story 5)
-- [ ] Dax: Update `server/routers/generate.py`, `server/routers/tasks.py`, and task SSE behavior. (depends: queue)
-- [ ] Dax: Update usage/cost tracking to include tenant_id. (depends: Story 2)
-- [ ] Quinn: Verify enqueue permission, post-enqueue role change, worker writeback, and tenant-scoped task queries. (depends: implementation)
+- [x] Dax: Update `lib/db/models/task.py`, `lib/db/repositories/task_repo.py`, and task migration pieces owned by Story 2. (depends: Story 2)
+- [x] Dax: Update `lib/generation_queue.py` and `lib/generation_queue_client.py` to persist tenant/user. (depends: auth context)
+- [x] Dax: Update `lib/generation_worker.py` to set tenant DB context from task. (depends: DB context)
+- [x] Dax: Update `server/services/generation_tasks.py` and `server/services/reference_video_tasks.py` to use FileService outputs. (depends: Story 5)
+- [x] Dax: Update `server/routers/generate.py`, `server/routers/tasks.py`, and task SSE behavior. (depends: queue)
+- [x] Dax: Update usage/cost tracking to include tenant_id. (depends: Story 2)
+- [x] Quinn: Verify enqueue permission, post-enqueue role change, worker writeback, and tenant-scoped task queries. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Story worktree generation/task regression suite passed with `114 passed, 1 warning`; `ruff check`, `ruff format --check`, and `basedpyright` passed with `0 errors`; merged into integration with merge commit `67b7f53`. Scope note: generation outputs now create FileService records and companion `*_file_id` fields while preserving legacy path fields; grid split cell outputs still require Story10 audit/follow-up.
 
 ### Story 10 - Cross-Story QA, Security Review, Product Acceptance
 
@@ -475,7 +475,7 @@ These gates happen before implementation agents start. They are not story worktr
 | Story 6 - Tenant Project System And File-Id Project JSON | `story/tenant-commercialization/tenant-projects` | `../ArcReel-worktrees/tenant-commercialization/tenant-projects` | `integration/tenant-commercialization` | merged | removed |
 | Story 7 - Tenant-Scoped Provider Config, Credentials, Agent Config, API Keys | `story/tenant-commercialization/tenant-config` | `../ArcReel-worktrees/tenant-commercialization/tenant-config` | `integration/tenant-commercialization` | merged | removed |
 | Story 8 - Asset Libraries, Snapshot Import, Manual Sync | `story/tenant-commercialization/asset-libraries` | `../ArcReel-worktrees/tenant-commercialization/asset-libraries` | `integration/tenant-commercialization` | merged | removed |
-| Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `integration/tenant-commercialization` | pending | pending |
+| Story 9 - Generation Tasks, Worker Tenant Context, File Outputs | `story/tenant-commercialization/tenant-generation` | `../ArcReel-worktrees/tenant-commercialization/tenant-generation` | `integration/tenant-commercialization` | merged | removed |
 | Story 10 - Cross-Story QA, Security Review, Product Acceptance | `story/tenant-commercialization/tenant-commercialization-qa` | `../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa` | `integration/tenant-commercialization` | pending | pending |
 
 ## Blockers
