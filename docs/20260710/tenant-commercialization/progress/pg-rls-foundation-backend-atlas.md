@@ -17,23 +17,56 @@
 ## Subtasks
 
 - [x] Finalize middleware and environment documentation.
-  - Commit: pending
+  - Commit: 30caa98, ce1efa7
 - [x] Convert runtime engine to PostgreSQL-only.
-  - Commit: pending
+  - Commit: edbb97b
 - [x] Convert DB fixtures to PostgreSQL-only.
-  - Commit: pending
+  - Commit: 265f9b2
 - [ ] Add tenant, membership, tenant-owned model columns, migrations, indexes, and RLS policies.
   - Commit: pending
 - [ ] Add deny-by-default and cross-tenant RLS tests.
   - Commit: pending
 - [x] Convert SQLite-only Alembic tests to PostgreSQL.
-  - Commit: pending
+  - Commit: 93423e0
 
-**Ready for QA:** no
+## Verification Evidence
+
+```text
+docker ps --format '{{.Names}}\t{{.Status}}\t{{.Ports}}' | rg 'arcreel-dev-(postgres|redis|minio)'
+
+arcreel-dev-postgres-1 Up 32 minutes (healthy)
+arcreel-dev-redis-1 Up 32 minutes (healthy)
+arcreel-dev-minio-1 Up 32 minutes (healthy)
+```
+
+```text
+DATABASE_URL=postgresql+asyncpg://arcreel:arcreel_dev_password@127.0.0.1:15432/arcreel \
+  /data/data1/HOME_DIR/sijin/miniconda3/bin/conda run -n arcreel python -m alembic upgrade head
+
+passed
+```
+
+```text
+DATABASE_URL=postgresql+asyncpg://arcreel:arcreel_dev_password@127.0.0.1:15432/arcreel \
+  /data/data1/HOME_DIR/sijin/miniconda3/bin/conda run -n arcreel python -m pytest \
+  tests/test_db_engine.py \
+  tests/test_pg_runtime_baseline.py \
+  tests/agent_session_store/test_store_concurrency.py \
+  tests/test_auth_api_key.py::TestApiKeyOwnerResolution::test_bearer_api_key_resolves_persisted_owner_user_id \
+  tests/test_generation_queue_client.py::TestGenerationQueueClient::test_enqueue_task_only_requires_online_worker \
+  tests/test_alembic_custom_provider_endpoint.py \
+  tests/test_alembic_custom_provider_max_workers.py \
+  tests/test_alembic_split_default_image_backend.py \
+  tests/test_alembic_supported_durations_backfill.py -q
+
+23 passed in 6.49s
+```
+
+**Ready for QA:** Story 1 yes; Story 2 no
 
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
-| 2026-07-10 | PostgreSQL baseline | Existing tests still include SQLite assumptions. | planned |
-| 2026-07-10 | Runtime engine verification | `ruff` is not available in the recorded conda environment; no dependency install was performed. | active |
+| 2026-07-10 | PostgreSQL baseline | Existing canonical fixtures and Alembic tests still included SQLite assumptions. | resolved |
+| 2026-07-10 | Runtime engine verification | `ruff` is not available in the recorded conda environment; no dependency install was performed. | tracked |
