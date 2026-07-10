@@ -1,20 +1,25 @@
-name: Private Docker Deploy
+name: Private Docker Base
 
 on:
   push:
     branches:
       - main
+    paths:
+      - Dockerfile.base
+      - pyproject.toml
+      - uv.lock
+      - README.md
+      - .github/workflows/private-docker-base.yml
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: private-docker-deploy
+  group: private-docker-base
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: arcreel
   BASE_IMAGE_NAME: arcreel-base
 
 jobs:
@@ -23,19 +28,14 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Resolve tag
         id: version
         run: |
           DATE_PART=$(TZ=Asia/Shanghai date +'%m%d')
           SHORT_SHA=$(git rev-parse --short=4 HEAD)
-          RELEASE_TAG="2.6.${DATE_PART}"
-          IMAGE_TAG="${RELEASE_TAG}-${SHORT_SHA}"
-          echo "$IMAGE_TAG" > VERSION
+          IMAGE_TAG="2.6.${DATE_PART}-base-${SHORT_SHA}"
           echo "tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
-          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Resolve registry host
         id: registry
@@ -61,19 +61,18 @@ jobs:
           username: ${{ secrets.CAMEL_ACCOUNT }}
           password: ${{ secrets.CAMEL_PASSWORD }}
 
-      - name: Build and push image
+      - name: Build and push base image
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Dockerfile.base
           platforms: linux/amd64
           push: true
-          build-args: |
-            ARCREEL_BASE_IMAGE=${{ steps.registry.outputs.host }}/${{ env.BASE_IMAGE_NAME }}:private-dev
           tags: |
-            ${{ steps.registry.outputs.host }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.tag }}
-            ${{ steps.registry.outputs.host }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.release_tag }}
-            ${{ steps.registry.outputs.host }}/${{ env.IMAGE_NAME }}:latest
-          cache-from: type=gha,scope=arcreel
-          cache-to: type=gha,mode=max,scope=arcreel
+            ${{ steps.registry.outputs.host }}/${{ env.BASE_IMAGE_NAME }}:${{ steps.version.outputs.tag }}
+            ${{ steps.registry.outputs.host }}/${{ env.BASE_IMAGE_NAME }}:private-dev
+            ${{ steps.registry.outputs.host }}/${{ env.BASE_IMAGE_NAME }}:latest
+          cache-from: type=gha,scope=arcreel-base
+          cache-to: type=gha,mode=max,scope=arcreel-base
           provenance: false
           sbom: false

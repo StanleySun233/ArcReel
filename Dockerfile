@@ -19,38 +19,12 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
 
-# ============================================================
-# Stage 2: 生产镜像
-# ============================================================
-FROM python:3.12-slim AS production
+ARG ARCREEL_BASE_IMAGE=registry.kr777.top/arcreel-base:private-dev
 
-# 安装系统依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    curl \
-    bubblewrap \
-    socat \
-    tzdata \
-    && rm -rf /var/lib/apt/lists/*
+FROM ${ARCREEL_BASE_IMAGE} AS production
 
-# 升级基础镜像预装的 pip：依赖全部由 uv 安装、运行时不调用 pip，
-# 但 python:3.12-slim 自带的旧 pip 会被镜像扫描器报 CVE，升级以清除这些告警
-RUN python -m pip install --no-cache-dir --upgrade pip
-
-# 安装 uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-WORKDIR /app
-
-# 禁用 Python 输出缓冲，确保日志实时输出到 Docker logs
-ENV PYTHONUNBUFFERED=1
-
-# 默认时区，可由 docker-compose / 运行时 -e TZ=... 覆盖
-ENV TZ=Asia/Shanghai
-
-# 先复制依赖和包元数据文件，利用缓存
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --no-dev --no-install-project
+RUN uv sync --no-dev --no-install-project --frozen
 
 # 复制应用代码
 COPY lib/ lib/
