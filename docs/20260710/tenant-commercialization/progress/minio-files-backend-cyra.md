@@ -16,8 +16,8 @@
 
 ## Subtasks
 
-- [ ] Add FileService and MinIO storage adapter.
-  - Commit: pending
+- [x] Add FileService and MinIO storage adapter.
+  - Commit: 30ff915
 - [ ] Add `files` repository and signed URL endpoints.
   - Commit: pending
 - [ ] Convert upload/media output routes to file IDs.
