@@ -7,6 +7,7 @@
 **Story branch:** story/tenant-commercialization/tenant-commercialization-qa
 **Story worktree:** ../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa
 **Severity:** major
+**Status:** open; blocks a strict 100% claim for file-id-only project media semantics
 
 ## Description
 

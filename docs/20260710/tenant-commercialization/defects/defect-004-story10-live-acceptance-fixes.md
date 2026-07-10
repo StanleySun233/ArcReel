@@ -20,9 +20,15 @@
 | Project file upload/read routes used the global ProjectManager | Tenant project source/media routes could read or write outside tenant project roots | File router now builds a tenant-scoped ProjectManager from backend-validated tenant access | Scenario runner `files_projects_assets` passed with 113 tests |
 | Tenant switcher component existed but was not rendered in the projects lobby | Real browser session had tenant state but no visible tenant switch listbox | Projects top bar now renders `TenantSwitcher` | agent-browser verified visible `Switch space` listbox and switching |
 | Frontend auth initialization trusted cached tenant list after refresh | Creating a new tenant then reloading still showed only the cached personal tenant | `auth-store.initialize()` now refreshes `/auth/me` and `/auth/tenants` when a token exists | agent-browser verified fresh backend tenant list after reload and UI switch to the new tenant |
+| Acceptance Docker runtime failed bwrap sandbox startup without extra container privileges | Fresh rebuilt acceptance container exited with `SANDBOX_BWRAP_BROKEN on Linux` | Run the local acceptance container with `--privileged` for this Docker validation environment | Container `arcreel-acceptance-current-20260710220207` started healthy and reported `Sandbox runtime: enabled=True docker=True` |
+| Tenant viewer could still see project and asset write affordances | Browser showed project create/import/new-project/actions and tenant asset create controls for `view` role | Projects and asset library pages now derive write affordances from current tenant role and hide tenant write actions for `view` | `agent-browser` verified view tenant project lobby and tenant asset library; `pnpm check` passed with 925 tests |
 
 ## Local Hostname Corner Case
 
 Opening ArcReel on `127.0.0.1:11242` while `CAMEL_OAUTH_REDIRECT_URI` is configured as `http://localhost:11242/...` causes the OAuth state cookie to be scoped to a different host and the callback returns `Missing OAuth state cookie`. The final browser acceptance used `http://localhost:11242`, matching the configured redirect URI.
 
 The production rule is: OAuth callback host must match the user-facing ArcReel origin used to start login, or the deployment must enforce a canonical host before starting OAuth.
+
+## File Size Note
+
+The final viewer-permission fix touched existing large frontend page files (`ProjectsPage.tsx` and `AssetLibraryPage.tsx`). They already exceed the current 400-line coding preference. The acceptance fix was kept minimal because splitting these pages during final QA would expand the change surface beyond the defect. A follow-up refactor should split the page shell, toolbar, and card/list sections before further feature work in those files.

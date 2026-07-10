@@ -20,9 +20,9 @@
   - Commit: 0a80f9c
 - [x] Extend `tests/test_camel_auth_provider_bootstrap.py` for invalid forwarded scheme.
   - Commit: 0a80f9c
-- [ ] Add or document ArcReel-owned CaMeL provisioning contract smoke that does not edit CaMeL-api.
-  - Commit: blocked
-  - Blocked because this worktree has no live CaMeL endpoint credentials or external fixture contract for create/conflict/repair/client/scope/retry scenarios.
+- [x] Add or document ArcReel-owned CaMeL provisioning contract smoke that does not edit CaMeL-api.
+  - Commit: pending integration acceptance commit
+  - Evidence: `deploy/test/camel_provisioning_contract_smoke.py` passed live checks against the completed local CaMeL stack without editing CaMeL-api source.
 
 ## Verification Evidence
 
@@ -32,10 +32,10 @@
 5 passed in 0.32s
 ```
 
-**Ready for QA:** no
+**Ready for QA:** yes
 
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
-| 2026-07-10 | Contract smoke | Completed CaMeL-api endpoint credentials and scenario fixtures are required for live contract verification. | active |
+| 2026-07-10 | Contract smoke | Completed CaMeL-api endpoint credentials and scenario fixtures were required for live contract verification. | cleared by local completed CaMeL stack smoke |

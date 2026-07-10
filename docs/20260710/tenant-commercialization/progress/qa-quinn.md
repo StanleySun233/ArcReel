@@ -21,7 +21,7 @@
 - [x] Run backend API scenario tests on a fresh initialized stack.
   - Evidence: fresh DB `arcreel_acceptance_20260710214815`, live `deploy/test/arcreel_api_smoke.py`, live `deploy/test/arcreel_tenant_role_minio_smoke.py`, and scenario runner passed.
 - [x] Run frontend browser click tests with agent-browser.
-  - Evidence: `agent-browser` verified CaMeL login, default personal space, `Switch space` listbox, backend tenant refresh, and team tenant switch on `http://localhost:11242`.
+  - Evidence: `agent-browser` verified CaMeL login, default personal space, `Switch space` listbox, backend tenant refresh, team tenant switch, view-only project lobby, view-only tenant asset library, signed media preview through backend file endpoints, and personal asset sync confirmation on `http://localhost:11242`.
 - [x] Record defects and verify fixes after full reinitialization.
   - Evidence: `defects/defect-004-story10-live-acceptance-fixes.md` records fresh PG, migration, RLS context, ProjectManager tenant context, and frontend switcher/cache fixes; final fresh stack passed after fixes.
 
@@ -57,3 +57,15 @@
 | Scenario runner | 30 + 10 + 113 + 114 tests passed |
 | Frontend | `pnpm lint && pnpm check` passed; 107 test files, 923 tests |
 | Targeted backend | `tests/test_assets_router.py tests/test_db_engine.py tests/test_files_api_minio.py -q`: 14 passed |
+
+## Residual Acceptance Extension
+
+| Area | Evidence |
+|------|----------|
+| Rebuilt runtime | Image `arcreel-acceptance-current:integration`, container `arcreel-acceptance-current-20260710220207` running with `--privileged` for bwrap sandbox support |
+| CaMeL contract | `deploy/test/camel_provisioning_contract_smoke.py` passed 6 checks: missing bearer, missing token-provision scope, wrong client, repeated create conflict, new-key conflict, repair |
+| MinIO security | `deploy/test/arcreel_minio_security_smoke.py` passed private bucket direct-deny, backend signed read, 300 second TTL, tampered URL denial, expired token denial |
+| MinIO persistence | `deploy/test/arcreel_minio_persistence_smoke.py --phase seed`, ArcReel app restart, then `--phase verify` passed |
+| Browser deep checks | View tenant cannot see project/asset write actions; signed media loads via backend file endpoints; owner personal asset sync confirmation and result verified |
+| Frontend final | `pnpm lint` passed; `pnpm check` passed with 107 test files and 925 tests |
+| Smoke script static | `ruff check` and `ruff format --check` passed for the four live acceptance helper scripts |

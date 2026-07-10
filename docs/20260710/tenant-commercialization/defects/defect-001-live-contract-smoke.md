@@ -7,21 +7,20 @@
 **Story branch:** story/tenant-commercialization/tenant-commercialization-qa
 **Story worktree:** ../ArcReel-worktrees/tenant-commercialization/tenant-commercialization-qa
 **Severity:** major
-**Status:** partially fixed; residual external-contract cases remain tracked
+**Status:** fixed and reverified
 
 ## Description
 
-Backend scenario runner covers ArcReel-owned ASGI/API behavior, but final commercial acceptance still lacks live evidence against the completed CaMeL-api service and live MinIO private bucket behavior.
+Backend scenario runner covers ArcReel-owned ASGI/API behavior, but final commercial acceptance originally lacked live evidence against the completed CaMeL-api service and live MinIO private bucket behavior.
 
-Story10 later added live local-stack evidence for CaMeL OAuth login, provider bootstrap create flow, MinIO upload, signed URL success, signed URL tamper denial, and cross-tenant signed URL denial. The remaining uncovered cases are the deeper CaMeL external provisioning contract cases and time-based/direct-bucket MinIO checks.
+Story10 later added live local-stack evidence for CaMeL OAuth login, provider bootstrap create flow, CaMeL provisioning contract denial/conflict/repair behavior, MinIO upload, signed URL success, direct private bucket denial, signed URL tamper/expiry denial, cross-tenant signed URL denial, and restart persistence.
 
 ## Reproduction
 
 - Run `scripts/tenant_commercialization_scenarios.py -- -q`; it passes local API/service scenarios.
 - Recorded run proves ArcReel CaMeL OAuth login and bootstrap create flow against local completed CaMeL stack.
-- Recorded run proves MinIO file upload, signed URL success, tamper denial, and cross-tenant signed URL denial.
-- No recorded run currently proves CaMeL conflict/repair/client/scope/retry against the live CaMeL-api tool.
-- No recorded run currently proves private bucket direct-deny and signed URL expiry against live MinIO.
+- Recorded run proves MinIO file upload, signed URL success, tamper denial, cross-tenant signed URL denial, direct private bucket denial, expired signed token denial, and persistence after ArcReel app restart.
+- Recorded run proves CaMeL missing bearer, missing token-provision scope, wrong client, repeated create conflict, new-key conflict, and repair behavior against the completed local CaMeL stack.
 
 ## Affected Files
 
@@ -33,5 +32,9 @@ Story10 later added live local-stack evidence for CaMeL OAuth login, provider bo
 - [x] Start local PostgreSQL, Redis, MinIO, ArcReel, and the completed CaMeL-api tool.
 - [x] Run live CaMeL OAuth login and provider bootstrap create smoke.
 - [x] Run live MinIO upload, signed URL success, tamper denial, and cross-tenant denial smoke.
-- [ ] Run CaMeL conflict/repair/wrong-client/missing-scope/retry contract smoke.
-- [ ] Run MinIO direct private bucket URL denial and signed URL expiry smoke.
+- [x] Run CaMeL conflict/repair/wrong-client/missing-scope/retry contract smoke.
+  - Evidence: `deploy/test/camel_provisioning_contract_smoke.py` passed 6 checks against local completed CaMeL.
+- [x] Run MinIO direct private bucket URL denial and signed URL expiry smoke.
+  - Evidence: `deploy/test/arcreel_minio_security_smoke.py` passed direct private bucket, 300s signed URL, tampered token, and expired token checks.
+- [x] Run restart persistence smoke.
+  - Evidence: `deploy/test/arcreel_minio_persistence_smoke.py --phase seed`, `docker restart arcreel-acceptance-current-20260710220207`, then `--phase verify` passed.

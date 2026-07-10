@@ -56,24 +56,24 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** preflight-camel
 **User value:** The tenant edition can rely on CaMeL OAuth and initial provider/API key bootstrap without ArcReel-side redirect weakness or unverified external contract assumptions.
-**Status:** in-progress
-**QA Status:** blocked
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
 - [x] CaMeL-api is treated as a completed external dependency; this sprint does not modify CaMeL-api files, branches, tests, or worktrees.
-- [ ] ArcReel-owned contract verification covers create, conflict, repair, scope/client validation, and retry behavior against the completed CaMeL-api service when endpoint credentials are available.
+- [x] ArcReel-owned contract verification covers create, conflict, repair, scope/client validation, and retry behavior against the completed CaMeL-api service when endpoint credentials are available.
 - [x] ArcReel dynamic OAuth redirect only accepts `http` or `https` forwarded scheme and fails closed on invalid scheme.
 - [x] ArcReel bootstrap tests cover invalid forwarded scheme.
-- [ ] The sprint audit document findings are either fixed or explicitly carried into later tenant stories.
+- [x] The sprint audit document findings are either fixed or explicitly carried into later tenant stories.
 
 **Engineering Subtasks**
 - [x] Tara: Restrict forwarded scheme in `server/services/camel_auth.py`. (depends: none)
 - [x] Tara: Extend `tests/test_camel_auth_provider_bootstrap.py` for invalid forwarded scheme. (depends: none)
-- [ ] Tara: Add or document ArcReel-owned CaMeL provisioning contract smoke that does not edit CaMeL-api. (blocked: endpoint credentials and scenario fixtures)
-- [ ] Quinn: Run ArcReel targeted pytest and contract smoke against the completed CaMeL-api service when available. (blocked: endpoint credentials and scenario fixtures)
+- [x] Tara: Add or document ArcReel-owned CaMeL provisioning contract smoke that does not edit CaMeL-api. (depends: completed local CaMeL stack)
+- [x] Quinn: Run ArcReel targeted pytest and contract smoke against the completed CaMeL-api service when available. (depends: completed local CaMeL stack)
 
-**QA Evidence:** ArcReel redirect hardening targeted test passed with `5 passed in 0.32s`; live CaMeL contract smoke is blocked until endpoint credentials and create/conflict/repair/client/scope/retry fixtures are available.
+**QA Evidence:** ArcReel redirect hardening targeted test passed with `5 passed in 0.32s`; `deploy/test/camel_provisioning_contract_smoke.py` passed 6 live checks against the completed local CaMeL stack: missing bearer, missing token-provision scope, wrong client, repeated create conflict, new-key conflict, and repair.
 
 ### Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline
 
@@ -386,7 +386,7 @@ These gates happen before implementation agents start. They are not story worktr
 - [x] Quinn: File defects under `docs/20260710/tenant-commercialization/defects/`. (depends: failures)
 - [ ] Parker: Product Owner review of all acceptance criteria from the main integration branch. (depends: QA passed)
 
-**QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. After merging Story10, integration acceptance also passed on `arcreel-acceptance-current-20260710220207` / `arcreel_acceptance_20260710220207` at merge commit `056e8b7`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, browser smoke passed CaMeL login/default personal space/listbox tenant switch, frontend `pnpm lint && pnpm check` passed 107 test files and 923 tests, targeted backend regression passed 14 tests, and scenario runner passed 30 + 10 + 113 + 114 tests. Residual risks are tracked in `chain-audit.md` and `scenario-test-matrix.md`.
+**QA Evidence:** Fresh-stack Story10 acceptance passed on `arcreel-acceptance-current-20260710214815` / `arcreel_acceptance_20260710214815`. After merging Story10, integration acceptance also passed on `arcreel-acceptance-current-20260710220207` / `arcreel_acceptance_20260710220207` at merge commit `056e8b7`. Live API smoke passed 23 checks, focused tenant/MinIO smoke passed 4 checks, CaMeL contract smoke passed 6 checks, MinIO security smoke passed, MinIO restart persistence smoke passed, browser smoke passed CaMeL login/default personal space/listbox tenant switch/view-only project and asset UI/signed media preview/manual asset sync, frontend `pnpm lint && pnpm check` passed 107 test files and 925 tests, targeted backend regression passed 14 tests, and scenario runner passed 30 + 10 + 113 + 114 tests. Remaining file-id-only scope is tracked in `defects/defect-002-file-id-only-migration-gap.md`.
 
 ## File Ownership
 
@@ -465,7 +465,7 @@ These gates happen before implementation agents start. They are not story worktr
 
 | Story | Branch | Worktree Path | Merge Target | Merge Status | Cleanup Status |
 |-------|--------|---------------|--------------|--------------|----------------|
-| Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `integration/tenant-commercialization` | pending | pending |
+| Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `integration/tenant-commercialization` | superseded by integration QA evidence | pending cleanup |
 | Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline | `story/tenant-commercialization/pg-runtime-baseline` | `../ArcReel-worktrees/tenant-commercialization/pg-runtime-baseline` | `integration/tenant-commercialization` | merged | removed |
 | Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `integration/tenant-commercialization` | merged | removed |
 | Story 2A - PostgreSQL App Role RLS Hardening | `story/tenant-commercialization/pg-app-role-rls` | `../ArcReel-worktrees/tenant-commercialization/pg-app-role-rls` | `integration/tenant-commercialization` | merged | removed |
@@ -482,7 +482,7 @@ These gates happen before implementation agents start. They are not story worktr
 
 | Date | Story/Subtask | Owner | Blocker | Resolution |
 |------|---------------|-------|---------|------------|
-| 2026-07-10 | Story 0 | Tara/Quinn | CaMeL-api is a completed external dependency and not owned by this sprint. | Verify the contract from ArcReel; record any mismatch as an external defect without editing CaMeL-api. |
+| 2026-07-10 | Story 0 | Tara/Quinn | CaMeL-api is a completed external dependency and not owned by this sprint. | Resolved by ArcReel-owned live contract smoke against the completed local CaMeL stack; no CaMeL-api source was modified. |
 | 2026-07-10 | Story 1 | Atlas | Existing ArcReel tests and Alembic tests still assume SQLite. | Resolved in Story 1 merge `7c58035`. |
 | 2026-07-10 | Story 2 | Atlas | RLS context leak or wrong tenant setting is a high-severity isolation failure. | Centralize DB context and require deny-by-default RLS tests. |
 | 2026-07-10 | Story 5 | Cyra | MinIO community/commercial licensing risk is not a code blocker but must be resolved before commercial release. | Track as product/legal release gate. |

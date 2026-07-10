@@ -1,7 +1,7 @@
 # Scenario Test Matrix: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** backend-scenario-runner-passed; live-api-smoke-passed; browser-login-tenant-switch-passed
+**Status:** local backend/browser acceptance passed; file-id/grid residual remains tracked in Defect 002
 
 Coverage labels:
 
@@ -86,11 +86,19 @@ Integration merge acceptance evidence:
 - Integration frontend: `pnpm lint && pnpm check`, 107 test files and 923 tests passed.
 - Integration targeted backend: 14 tests passed.
 
-Manual/live evidence still not complete:
+Residual live acceptance extension after integration merge:
 
-- CaMeL conflict/repair/wrong-client/missing-scope/retry contract cases against the completed external service.
-- Signed URL expiry by waiting past TTL and direct private bucket URL denial.
-- Full browser coverage for view-only deep UI, asset sync confirmation, signed media preview, and restart persistence.
+- Acceptance container `arcreel-acceptance-current-20260710220207` was rebuilt from `integration/tenant-commercialization` and run with `--privileged` so the bwrap sandbox starts inside Docker.
+- `deploy/test/camel_provisioning_contract_smoke.py`: passed 6 live CaMeL provisioning contract checks: missing bearer, missing token-provision scope, wrong client, repeated create conflict, new-key conflict, and repair.
+- `deploy/test/arcreel_minio_security_smoke.py`: passed direct private bucket denial, backend signed URL content read, 300 second TTL contract, tampered URL denial, and expired token denial.
+- `deploy/test/arcreel_minio_persistence_smoke.py`: seed passed, ArcReel app restart completed, verify passed for project registry and file readability through backend signed URLs.
+- `agent-browser`: passed view-only project lobby spot check with no create/import/new-project/action-menu controls.
+- `agent-browser`: passed view-only tenant asset library spot check with no `New asset`, disabled `Edit`/`Delete`, and media loaded through `/api/v1/files/{file_id}/signed-url` plus `/content?token=...`.
+- `agent-browser`: passed owner personal asset manual sync flow, including confirmation dialog and synced asset display.
+- Final frontend regression after view-only UI fix: `pnpm lint` passed; `pnpm check` passed with 107 test files and 925 tests.
+- Final smoke-script static checks: `ruff check` and `ruff format --check` passed for `deploy/test/camel_provisioning_contract_smoke.py`, `deploy/test/arcreel_minio_security_smoke.py`, `deploy/test/arcreel_minio_persistence_smoke.py`, and `deploy/test/arcreel_ui_acceptance_setup.py`.
+
+Remaining non-closed scope is not a CaMeL/MinIO/browser evidence gap: `defects/defect-002-file-id-only-migration-gap.md` still tracks grid split and companion legacy media path behavior against the strict "project media references are file_id-only" design.
 
 ## Auth And Tenant Selection
 
