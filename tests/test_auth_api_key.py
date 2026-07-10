@@ -14,10 +14,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
+import server.auth as auth_module
 from lib.db.models.api_key import ApiKey
 from lib.db.models.tenant import Tenant, TenantMembership
 from lib.db.models.user import User
-import server.auth as auth_module
 
 
 @pytest.fixture(autouse=True)
@@ -60,6 +60,10 @@ class TestHashApiKey:
         expected = hashlib.sha256(key.encode()).hexdigest()
         assert auth_module._hash_api_key(key) == expected
 
+    def test_api_key_tenant_id(self):
+        assert auth_module._api_key_tenant_id("arc-ten_owner-secret") == "ten_owner"
+        assert auth_module._api_key_tenant_id("arc-oldsecret") is None
+
 
 class TestApiKeyCache:
     def test_cache_miss(self):
@@ -98,6 +102,7 @@ class TestApiKeyCache:
         # 若命中缓存则返回缓存值；True means hit
         hit, payload = auth_module._get_cached_api_key_payload(key_hash)
         assert hit
+        assert payload is not None
         assert payload["sub"] == "apikey:cached"
 
 
@@ -156,7 +161,7 @@ class TestVerifyAndGetPayloadAsync:
 class TestApiKeyOwnerResolution:
     @pytest.mark.asyncio
     async def test_bearer_api_key_resolves_persisted_owner_user_id(self, async_session):
-        key = "arc-owner-key"
+        key = "arc-ten_owner-owner-key"
         key_hash = auth_module._hash_api_key(key)
         async with async_session.begin():
             async_session.add(
@@ -212,3 +217,5 @@ class TestApiKeyOwnerResolution:
         assert user.id == "camel:owner"
         assert user.sub == "apikey:owner-key"
         assert user.provider == "apikey"
+        assert user.tenant_id == "ten_owner"
+        assert user.tenant_role == "admin"

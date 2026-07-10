@@ -5,11 +5,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select
+from sqlalchemy import Select, select, update
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select, update
 
-from lib.db.base import Base, DEFAULT_USER_ID, utc_now
+from lib.db.base import DEFAULT_USER_ID, Base, utc_now
 from lib.db.models.api_key import ApiKey
 from lib.db.repositories.base import BaseRepository, rowcount
 
@@ -26,6 +25,7 @@ def _row_to_dict(row: ApiKey) -> dict[str, Any]:
         "name": row.name,
         "key_prefix": row.key_prefix,
         "user_id": row.user_id,
+        "tenant_id": row.tenant_id,
         "created_at": _to_iso(row.created_at),
         "expires_at": _to_iso(row.expires_at),
         "last_used_at": _to_iso(row.last_used_at),
@@ -33,14 +33,19 @@ def _row_to_dict(row: ApiKey) -> dict[str, Any]:
 
 
 class ApiKeyRepository(BaseRepository):
-    def __init__(self, session, user_id: str | None = None):
+    def __init__(self, session, user_id: str | None = None, tenant_id: str | None = None):
         super().__init__(session)
         self.user_id = user_id
+        self.tenant_id = tenant_id
 
     def _scope_query(self, stmt: Select, model: type[Base]) -> Select:
         if self.user_id is None:
-            return stmt
-        return stmt.where(ApiKey.user_id == self.user_id)
+            scoped = stmt
+        else:
+            scoped = stmt.where(ApiKey.user_id == self.user_id)
+        if self.tenant_id is not None:
+            scoped = scoped.where(ApiKey.tenant_id == self.tenant_id)
+        return scoped
 
     async def create(
         self,
@@ -50,6 +55,7 @@ class ApiKeyRepository(BaseRepository):
         key_prefix: str,
         expires_at: datetime | None = None,
         user_id: str = DEFAULT_USER_ID,
+        tenant_id: str,
     ) -> dict[str, Any]:
         """Create a new API key record."""
         row = ApiKey(
@@ -59,6 +65,7 @@ class ApiKeyRepository(BaseRepository):
             created_at=utc_now(),
             expires_at=expires_at,
             user_id=user_id,
+            tenant_id=tenant_id,
         )
         self.session.add(row)
         await self.session.flush()
@@ -86,6 +93,7 @@ class ApiKeyRepository(BaseRepository):
             "key_hash": row.key_hash,
             "key_prefix": row.key_prefix,
             "user_id": row.user_id,
+            "tenant_id": row.tenant_id,
             "created_at": row.created_at,
             "expires_at": row.expires_at,
             "last_used_at": row.last_used_at,
@@ -108,9 +116,14 @@ class ApiKeyRepository(BaseRepository):
         stmt = sa_delete(ApiKey).where(ApiKey.id == key_id)
         if self.user_id is not None:
             stmt = stmt.where(ApiKey.user_id == self.user_id)
+        if self.tenant_id is not None:
+            stmt = stmt.where(ApiKey.tenant_id == self.tenant_id)
         result = await self.session.execute(stmt)
         return rowcount(result) > 0
 
-    async def touch_last_used(self, key_hash: str) -> None:
+    async def touch_last_used(self, key_hash: str, tenant_id: str | None = None) -> None:
         """Update last_used_at for the given key hash."""
-        await self.session.execute(update(ApiKey).where(ApiKey.key_hash == key_hash).values(last_used_at=utc_now()))
+        stmt = update(ApiKey).where(ApiKey.key_hash == key_hash)
+        if tenant_id is not None:
+            stmt = stmt.where(ApiKey.tenant_id == tenant_id)
+        await self.session.execute(stmt.values(last_used_at=utc_now()))

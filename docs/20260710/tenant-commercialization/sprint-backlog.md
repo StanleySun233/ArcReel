@@ -159,31 +159,31 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** tenant-auth
 **User value:** A CaMeL-authenticated user gets a personal tenant by default, can switch into memberships manually, and every backend request uses current real tenant permission.
-**Status:** planned
-**QA Status:** pending
+**Status:** implementation complete
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] CaMeL login creates personal tenant if missing and signs token for personal tenant.
-- [ ] `CurrentUserInfo` or replacement principal includes `user_id`, `tenant_id`, `tenant_role` snapshot, and provider.
-- [ ] PermissionService checks Redis first, PostgreSQL on miss, and invalidates cache on membership changes.
-- [ ] Tenant list endpoint returns only memberships for current user.
-- [ ] Tenant token switch endpoint validates membership before signing.
-- [ ] Member CRUD enforces owner/admin/member/view rules.
-- [ ] API key auth resolves tenant-scoped key and checks current membership.
-- [ ] 403 stale role path allows frontend token refresh.
+- [x] CaMeL login creates personal tenant if missing and signs token for personal tenant.
+- [x] `CurrentUserInfo` or replacement principal includes `user_id`, `tenant_id`, `tenant_role` snapshot, and provider.
+- [x] PermissionService checks Redis first, PostgreSQL on miss, and invalidates cache on membership changes.
+- [x] Tenant list endpoint returns only memberships for current user.
+- [x] Tenant token switch endpoint validates membership before signing.
+- [x] Member CRUD enforces owner/admin/member/view rules.
+- [x] API key auth resolves tenant-scoped key and checks current membership.
+- [x] 403 stale role path allows frontend token refresh.
 
 **Engineering Subtasks**
-- [ ] Noah: Extend token creation/verification in `server/auth.py` for tenant-scoped JWT. (depends: Story 2)
-- [ ] Noah: Add `server/services/tenant_auth.py` for personal tenant creation, token signing, and tenant selection. (depends: Story 2)
-- [ ] Noah: Add `server/services/permission_cache.py` for Redis-backed permission cache. (depends: Story 2)
-- [ ] Noah: Add `server/routers/tenants.py` for tenant detail, create, member list/search/create/update/delete. (depends: services)
-- [ ] Noah: Extend `server/routers/auth.py` with `/auth/me`, `/auth/tenants`, `/auth/tenant-token`, `/auth/refresh-current-tenant`. (depends: token/service)
-- [ ] Noah: Convert `server/routers/api_keys.py` and `lib/db/repositories/api_key_repository.py` to tenant-scoped API keys. (depends: Story 2)
-- [ ] Noah: Add backend tests for login personal tenant, switch, role matrix, stale token refresh, and API key tenant auth. (depends: routes)
-- [ ] Quinn: Run auth/router/API key targeted tests under PostgreSQL. (depends: implementation)
+- [x] Noah: Extend token creation/verification in `server/auth.py` for tenant-scoped JWT. (depends: Story 2)
+- [x] Noah: Add `server/services/tenant_auth.py` for personal tenant creation, token signing, and tenant selection. (depends: Story 2)
+- [x] Noah: Add `server/services/permission_cache.py` for Redis-backed permission cache. (depends: Story 2)
+- [x] Noah: Add `server/routers/tenants.py` for tenant detail, create, member list/search/create/update/delete. (depends: services)
+- [x] Noah: Extend `server/routers/auth.py` with `/auth/me`, `/auth/tenants`, `/auth/tenant-token`, `/auth/refresh-current-tenant`. (depends: token/service)
+- [x] Noah: Convert `server/routers/api_keys.py` and `lib/db/repositories/api_key_repository.py` to tenant-scoped API keys. (depends: Story 2)
+- [x] Noah: Add backend tests for login personal tenant, switch, role matrix, stale token refresh, and API key tenant auth. (depends: routes)
+- [x] Quinn: Run auth/router/API key targeted tests under PostgreSQL. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** PostgreSQL app-role regression passed with `76 passed, 1 warning`; API key and tenant auth slice passed with `36 passed, 1 warning`; `ruff check`, `ruff format --check`, `basedpyright`, `compileall`, Redis permission cache set/get/delete smoke, and `alembic heads` passed.
 
 ### Story 4 - Frontend Tenant Switcher And Permission UX
 

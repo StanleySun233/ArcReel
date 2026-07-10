@@ -11,12 +11,14 @@ from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import api_keys
+from server.services.tenant_auth import ROLE_ADMIN, TenantAccess
 
 
 def _make_client(user: CurrentUserInfo | None = None) -> TestClient:
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: user or CurrentUserInfo(
-        id="default", sub="testuser", role="admin"
+    app.dependency_overrides[get_current_user] = lambda: (
+        user
+        or CurrentUserInfo(id="default", sub="testuser", role="admin", tenant_id="ten_default", tenant_role=ROLE_ADMIN)
     )
     app.include_router(api_keys.router, prefix="/api/v1")
     return TestClient(app)
@@ -26,12 +28,14 @@ FAKE_ROW = {
     "id": 1,
     "name": "mykey",
     "key_prefix": "arc-abcd",
+    "tenant_id": "ten_default",
     "created_at": "2026-03-10T00:00:00Z",
     "expires_at": "2026-04-10T00:00:00Z",
     "last_used_at": None,
 }
 
 FAKE_ROW_WITH_HASH = {**FAKE_ROW, "key_hash": "abc123hash"}
+FAKE_ACCESS = TenantAccess(id="ten_default", name="Default", role=ROLE_ADMIN, is_owner=True, personal=True)
 
 
 class TestCreateApiKey:
@@ -51,6 +55,8 @@ class TestCreateApiKey:
             with (
                 patch("server.routers.api_keys.async_session_factory", return_value=mock_session),
                 patch("server.routers.api_keys.ApiKeyRepository", return_value=mock_repo),
+                patch("server.routers.api_keys.require_tenant_access", AsyncMock(return_value=FAKE_ACCESS)),
+                patch("server.routers.api_keys.set_tenant_context", AsyncMock()),
             ):
                 resp = client.post("/api/v1/api-keys", json={"name": "mykey"})
 
@@ -65,7 +71,7 @@ class TestCreateApiKey:
 
         with _make_client() as client:
             mock_repo = AsyncMock()
-            mock_repo.create = AsyncMock(side_effect=IntegrityError("UNIQUE", None, None))
+            mock_repo.create = AsyncMock(side_effect=IntegrityError("UNIQUE", None, Exception("duplicate")))
 
             mock_session = AsyncMock()
             mock_begin = AsyncMock()
@@ -78,6 +84,8 @@ class TestCreateApiKey:
             with (
                 patch("server.routers.api_keys.async_session_factory", return_value=mock_session),
                 patch("server.routers.api_keys.ApiKeyRepository", return_value=mock_repo),
+                patch("server.routers.api_keys.require_tenant_access", AsyncMock(return_value=FAKE_ACCESS)),
+                patch("server.routers.api_keys.set_tenant_context", AsyncMock()),
             ):
                 resp = client.post("/api/v1/api-keys", json={"name": "mykey"})
 
@@ -114,6 +122,8 @@ class TestListApiKeys:
             with (
                 patch("server.routers.api_keys.async_session_factory", return_value=mock_session),
                 patch("server.routers.api_keys.ApiKeyRepository", return_value=mock_repo),
+                patch("server.routers.api_keys.require_tenant_access", AsyncMock(return_value=FAKE_ACCESS)),
+                patch("server.routers.api_keys.set_tenant_context", AsyncMock()),
             ):
                 resp = client.get("/api/v1/api-keys")
 
@@ -142,6 +152,8 @@ class TestDeleteApiKey:
             with (
                 patch("server.routers.api_keys.async_session_factory", return_value=mock_session),
                 patch("server.routers.api_keys.ApiKeyRepository", return_value=mock_repo),
+                patch("server.routers.api_keys.require_tenant_access", AsyncMock(return_value=FAKE_ACCESS)),
+                patch("server.routers.api_keys.set_tenant_context", AsyncMock()),
                 patch("server.routers.api_keys.invalidate_api_key_cache") as mock_invalidate,
             ):
                 resp = client.delete("/api/v1/api-keys/1")
@@ -165,6 +177,8 @@ class TestDeleteApiKey:
             with (
                 patch("server.routers.api_keys.async_session_factory", return_value=mock_session),
                 patch("server.routers.api_keys.ApiKeyRepository", return_value=mock_repo),
+                patch("server.routers.api_keys.require_tenant_access", AsyncMock(return_value=FAKE_ACCESS)),
+                patch("server.routers.api_keys.set_tenant_context", AsyncMock()),
             ):
                 resp = client.delete("/api/v1/api-keys/999")
 

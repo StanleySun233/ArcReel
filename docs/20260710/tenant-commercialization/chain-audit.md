@@ -13,9 +13,9 @@ This audit checks whether every critical chain has an entry path, authority sour
 | CaMeL provider/API key bootstrap | covered by design | external contract smoke required | Story 0 |
 | Tenant switch | covered by design | none | Story 3 / Story 4 |
 | Member CRUD and role matrix | covered by design | none | Story 3 |
-| Redis permission cache | covered by design | invalidation tests required | Story 3 |
+| Redis permission cache | covered by implementation | none | Story 3 |
 | PostgreSQL RLS context | covered by design | deny-by-default tests required | Story 2 |
-| API key auth under tenant | covered by design | current global name uniqueness must be removed | Story 3 / Story 7 |
+| API key auth under tenant | covered by implementation | provider/config tenant bootstrap remains Story 7 | Story 3 / Story 7 |
 | File upload to MinIO | covered by design | object/write rollback behavior must be implemented | Story 5 |
 | Signed URL access | covered by design | file link consistency tests required | Story 5 |
 | Project CRUD and file-id JSON | covered by design | legacy path rejection tests required | Story 6 |

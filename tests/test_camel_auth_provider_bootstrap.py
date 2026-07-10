@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import camel_bootstrap
 from server.services import camel_auth
+from server.services.camel_auth import CamelOAuthExchange, CamelOAuthState
 
 AUTH_TOKEN_SECRET = "oauth-test-secret-32-bytes-long-value"
 
@@ -63,6 +64,17 @@ def authorization_query(response):
     return parse_qs(parts.query)
 
 
+class _SessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
 def test_camel_oauth_settings_use_internal_base_for_server_side_urls(monkeypatch):
     configure_oauth_env(monkeypatch)
 
@@ -71,6 +83,40 @@ def test_camel_oauth_settings_use_internal_base_for_server_side_urls(monkeypatch
     assert settings.authorize_url == "https://camel.example.com/api/oauth/provider/authorize"
     assert settings.token_url == "http://camel-internal:3000/api/oauth/provider/token"
     assert settings.userinfo_url == "http://camel-internal:3000/api/oauth/provider/userinfo"
+
+
+@pytest.mark.asyncio
+async def test_login_callback_creates_personal_tenant_and_returns_tenant_token(monkeypatch, async_session):
+    configure_oauth_env(monkeypatch)
+    state = CamelOAuthState(
+        nonce="state-123",
+        intent="login",
+        return_path="/app/projects",
+        redirect_uri="https://arcreel.example.com/api/v1/auth/camel/callback",
+    )
+
+    async def fake_fetch(settings, code, redirect_uri):
+        assert code == "oauth-code"
+        assert redirect_uri == "https://arcreel.example.com/api/v1/auth/camel/callback"
+        return CamelOAuthExchange(access_token="camel-access", userinfo={"id": "123", "username": "alice"})
+
+    monkeypatch.setattr(camel_auth, "_fetch_camel_exchange", fake_fetch)
+    monkeypatch.setattr(camel_auth, "async_session_factory", lambda: _SessionContext(async_session))
+
+    response = await camel_auth.complete_camel_oauth_callback(
+        "oauth-code",
+        "state-123",
+        camel_auth._encode_state_cookie(state),
+    )
+
+    location = response.headers["location"]
+    fragment = parse_qs(urlsplit(location).fragment)
+    token = fragment["access_token"][0]
+    payload = jwt.decode(token, AUTH_TOKEN_SECRET, algorithms=["HS256"])
+    assert payload["user_id"] == "camel:123"
+    assert payload["provider"] == "camel"
+    assert payload["tenant_id"].startswith("ten_")
+    assert payload["tenant_role"] == "admin"
 
 
 @pytest.mark.asyncio

@@ -414,6 +414,14 @@ Affected endpoints:
 - `/api/v1/api-keys`
 - `/api/v1/agent/*`
 
+API keys are issued under the current tenant and use the first path segment after `arc-` as the tenant lookup hint:
+
+```text
+arc-{tenant_id}-{secret}
+```
+
+The lookup hint is not trusted as authority. Backend verifies the key hash in PostgreSQL and then checks the key owner's current membership in the key tenant before accepting the request.
+
 ## Tasks
 
 Task APIs remain current-tenant scoped:
