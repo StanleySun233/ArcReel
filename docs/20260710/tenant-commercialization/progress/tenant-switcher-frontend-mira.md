@@ -16,17 +16,25 @@
 
 ## Subtasks
 
-- [ ] Add tenant list and switch UI.
-  - Commit: pending
-- [ ] Update auth store token and role snapshot handling.
-  - Commit: pending
-- [ ] Add stale-role and revoked-access UI tests.
-  - Commit: pending
+- [x] Add tenant list and switch UI.
+  - Commit: 36c65c0
+- [x] Update auth store token and role snapshot handling.
+  - Commit: 4a42e1a
+- [x] Add stale-role and revoked-access UI tests.
+  - Commit: 676e191
+- [x] Fix tenant session store type safety and frontend quality gate.
+  - Commit: cc2ac72
 
-**Ready for QA:** no
+**Ready for QA:** yes
 
 ## Blockers
 
 | Date | Subtask | Blocker | Status |
 |------|---------|---------|--------|
-| 2026-07-10 | Tenant switcher | Depends on Story 3 tenant API contract or compatible mock contract. | planned |
+| 2026-07-10 | Tenant switcher | Depends on Story 3 tenant API contract or compatible mock contract. | resolved |
+
+## Verification
+
+| Date | Command | Result |
+|------|---------|--------|
+| 2026-07-10 | `pnpm check` | `107 passed`, `921 passed` |
