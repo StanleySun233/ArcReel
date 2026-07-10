@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
@@ -171,6 +171,58 @@ describe("ProjectsPage", () => {
     });
     expect(screen.queryByText("新建项目")).not.toBeInTheDocument();
     expect(screen.queryByText("导入 ZIP")).not.toBeInTheDocument();
+  });
+
+  it("reloads project list when the current tenant changes", async () => {
+    const personalTenant = {
+      id: "ten_personal",
+      name: "Owner 的个人空间",
+      role: "admin" as const,
+      is_owner: true,
+      personal: true,
+    };
+    const teamTenant = {
+      id: "ten_team",
+      name: "Team Space",
+      role: "admin" as const,
+      is_owner: true,
+      personal: false,
+    };
+    const listProjects = vi.spyOn(API, "listProjects")
+      .mockResolvedValueOnce({ projects: [] })
+      .mockResolvedValueOnce({
+        projects: [
+          {
+            name: "team-demo",
+            title: "Team Demo",
+            style: "",
+            thumbnail: null,
+            status: {
+              current_phase: "setup",
+              phase_progress: 0,
+              characters: { total: 0, completed: 0 },
+              scenes: { total: 0, completed: 0 },
+              props: { total: 0, completed: 0 },
+              episodes_summary: { total: 0, scripted: 0, in_production: 0, completed: 0 },
+            },
+          },
+        ],
+      });
+    useAuthStore.setState({
+      currentTenant: personalTenant,
+      tenantRole: "admin",
+      tenants: [personalTenant, teamTenant],
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      useAuthStore.setState({ currentTenant: teamTenant, tenantRole: "admin" });
+    });
+
+    await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2));
+    expect((await screen.findAllByText("Team Demo")).length).toBeGreaterThan(0);
   });
 
   it("imports a zip project, refreshes the list, and navigates to the workspace", async () => {

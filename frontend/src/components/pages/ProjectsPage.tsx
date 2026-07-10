@@ -1194,8 +1194,9 @@ export function ProjectsPage() {
   }, [setProjects, setProjectsLoading]);
 
   useEffect(() => {
+    setProjects([]);
     void fetchProjects();
-  }, [fetchProjects]);
+  }, [currentTenant?.id, fetchProjects, setProjects]);
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
