@@ -119,6 +119,7 @@ def generate_narration_audio_tool(ctx: ToolContext):
                 successes, failures = await batch_enqueue_and_wait(
                     project_name=ctx.project_name,
                     specs=specs,
+                    **ctx.queue_kwargs(),
                 )
 
             details: list[str] = []

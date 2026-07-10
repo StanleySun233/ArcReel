@@ -21,6 +21,7 @@ async def test_entry_can_round_trip(session_factory):
             entry_type="user",
             payload={"type": "user", "content": "hi"},
             mtime_ms=1714540000000,
+            tenant_id="ten_default",
             user_id="default",
         )
         session.add(row)
@@ -39,6 +40,7 @@ async def test_summary_pk_dedup(session_factory):
             session_id="sess-1",
             mtime_ms=1,
             data={"v": 1},
+            tenant_id="ten_default",
             user_id="default",
         )
         session.add(s1)
@@ -50,6 +52,7 @@ async def test_summary_pk_dedup(session_factory):
         session_id="sess-1",
         mtime_ms=2,
         data={"v": 2},
+        tenant_id="ten_default",
         user_id="default",
     )
     async with session_factory() as session:

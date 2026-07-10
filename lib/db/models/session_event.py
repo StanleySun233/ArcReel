@@ -5,10 +5,10 @@ from __future__ import annotations
 from sqlalchemy import JSON, BigInteger, Index, PrimaryKeyConstraint, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lib.db.base import Base, TimestampMixin, UserOwnedMixin
+from lib.db.base import Base, TenantOwnedMixin, TimestampMixin, UserOwnedMixin
 
 
-class AgentSessionEventLogEntry(TimestampMixin, UserOwnedMixin, Base):
+class AgentSessionEventLogEntry(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
     """会话事件日志条目 — 每会话单调递增 seq、append-only。
 
     与 SDK transcript 镜像表（agent_session_entries）并存是有意双写：
@@ -26,8 +26,10 @@ class AgentSessionEventLogEntry(TimestampMixin, UserOwnedMixin, Base):
 
     __table_args__ = (
         PrimaryKeyConstraint("session_id", "seq"),
+        Index("ix_agent_event_log_tenant_session", "tenant_id", "session_id"),
         Index(
             "uq_agent_event_log_client_key",
+            "tenant_id",
             "session_id",
             "client_key",
             unique=True,
@@ -38,6 +40,7 @@ class AgentSessionEventLogEntry(TimestampMixin, UserOwnedMixin, Base):
         # 唯一索引以 session_id 打头，服务不了仅按 client_key 的查找。
         Index(
             "ix_agent_event_log_client_key",
+            "tenant_id",
             "client_key",
             postgresql_where=text("client_key IS NOT NULL"),
             sqlite_where=text("client_key IS NOT NULL"),

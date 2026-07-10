@@ -195,7 +195,7 @@ class OptionsAssembler:
             if not is_known_session_store_mode(mode):
                 logger.warning("Unknown ARCREEL_SDK_SESSION_STORE=%r; defaulting to db", mode)
             factory = self._session_factory_provider() or default_async_session_factory
-            store = DbSessionStore(factory, user_id=self._user_id_provider())
+            store = DbSessionStore(factory, user_id=self._user_id_provider(), tenant_id=get_current_tenant_id())
         self._cached_session_store = store
         self._session_store_resolved = True
         return store
@@ -278,6 +278,8 @@ class OptionsAssembler:
         arcreel_server = build_arcreel_mcp_server(
             project_name=project_name,
             projects_root=self._projects_root_provider(),
+            tenant_id=get_current_tenant_id(),
+            user_id=get_current_user_id(),
         )
 
         return ClaudeAgentOptions(

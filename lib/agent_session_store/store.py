@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.agent_session_store.models import AgentSessionEntry, AgentSessionSummary
 from lib.db.base import DEFAULT_USER_ID, utc_now
+from lib.db.repositories.task_repo import DEFAULT_TENANT_ID
+from lib.user_scope import get_current_tenant_id
 
 logger = logging.getLogger("arcreel.session_store")
 
@@ -50,9 +52,14 @@ class DbSessionStore:
         session_factory: async_sessionmaker,
         *,
         user_id: str = DEFAULT_USER_ID,
+        tenant_id: str | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._user_id = user_id
+        self._tenant_id = tenant_id
+
+    def _effective_tenant_id(self) -> str:
+        return self._tenant_id or get_current_tenant_id() or DEFAULT_TENANT_ID
 
     # --- required: append + load ---------------------------------------------
 
@@ -107,9 +114,13 @@ class DbSessionStore:
         now_ms: int,
     ) -> None:
         now_dt = utc_now()
+        tenant_id = self._effective_tenant_id()
         async with self._session_factory() as session:
+            session.info["tenant_id"] = tenant_id
+            session.info["user_id"] = self._user_id
             seq_start_row = await session.execute(
                 select(func.coalesce(func.max(AgentSessionEntry.seq), -1) + 1).where(
+                    AgentSessionEntry.tenant_id == tenant_id,
                     AgentSessionEntry.project_key == project_key,
                     AgentSessionEntry.session_id == session_id,
                     AgentSessionEntry.subpath == subpath,
@@ -127,6 +138,7 @@ class DbSessionStore:
                     "entry_type": _entry_type(entry),
                     "payload": entry,
                     "mtime_ms": now_ms,
+                    "tenant_id": tenant_id,
                     "user_id": self._user_id,
                     "created_at": now_dt,
                     "updated_at": now_dt,
@@ -139,7 +151,7 @@ class DbSessionStore:
             # Maintain per-session summary for list_session_summaries fast path.
             # Per SDK protocol: skip for subagent transcripts (subpath != "").
             if subpath == "":
-                await self._fold_summary_locked(session, project_key, session_id, entries, now_ms, now_dt)
+                await self._fold_summary_locked(session, project_key, session_id, entries, now_ms, now_dt, tenant_id)
 
             await session.commit()
 
@@ -159,6 +171,7 @@ class DbSessionStore:
         entries: list[dict],
         now_ms: int,
         now_dt,
+        tenant_id: str,
     ) -> None:
         """Read-fold-write the per-session summary inside the active transaction.
 
@@ -169,6 +182,7 @@ class DbSessionStore:
         dialect = bind.dialect.name if bind is not None else "sqlite"
 
         stmt = select(AgentSessionSummary).where(
+            AgentSessionSummary.tenant_id == tenant_id,
             AgentSessionSummary.project_key == project_key,
             AgentSessionSummary.session_id == session_id,
         )
@@ -198,6 +212,7 @@ class DbSessionStore:
                     session_id=session_id,
                     mtime_ms=now_ms,
                     data=new_data,
+                    tenant_id=tenant_id,
                     user_id=self._user_id,
                     created_at=now_dt,
                     updated_at=now_dt,
@@ -217,7 +232,7 @@ class DbSessionStore:
         """
         bind = session.bind
         dialect = bind.dialect.name if bind is not None else "sqlite"
-        index_elements = ["project_key", "session_id", "subpath", "uuid"]
+        index_elements = ["tenant_id", "project_key", "session_id", "subpath", "uuid"]
         index_where = text("uuid IS NOT NULL")
 
         if dialect == "postgresql":
@@ -236,10 +251,12 @@ class DbSessionStore:
 
     async def load(self, key: dict) -> list[dict] | None:
         project_key, session_id, subpath = _normalize_key(key)
+        tenant_id = self._effective_tenant_id()
         async with self._session_factory() as session:
             result = await session.execute(
                 select(AgentSessionEntry.payload)
                 .where(
+                    AgentSessionEntry.tenant_id == tenant_id,
                     AgentSessionEntry.project_key == project_key,
                     AgentSessionEntry.session_id == session_id,
                     AgentSessionEntry.subpath == subpath,
@@ -254,6 +271,7 @@ class DbSessionStore:
     # --- optional: list_sessions / list_session_summaries -------------------
 
     async def list_sessions(self, project_key: str) -> list[dict]:
+        tenant_id = self._effective_tenant_id()
         async with self._session_factory() as session:
             stmt = (
                 select(
@@ -261,6 +279,7 @@ class DbSessionStore:
                     func.max(AgentSessionEntry.mtime_ms).label("mtime"),
                 )
                 .where(
+                    AgentSessionEntry.tenant_id == tenant_id,
                     AgentSessionEntry.project_key == project_key,
                     AgentSessionEntry.subpath == "",
                 )
@@ -270,8 +289,10 @@ class DbSessionStore:
             return [{"session_id": r.session_id, "mtime": int(r.mtime)} for r in result.all()]
 
     async def list_session_summaries(self, project_key: str) -> list[dict]:
+        tenant_id = self._effective_tenant_id()
         async with self._session_factory() as session:
             stmt = select(AgentSessionSummary).where(
+                AgentSessionSummary.tenant_id == tenant_id,
                 AgentSessionSummary.project_key == project_key,
             )
             result = await session.execute(stmt)
@@ -283,8 +304,10 @@ class DbSessionStore:
 
     async def delete(self, key: dict) -> None:
         project_key, session_id, subpath = _normalize_key(key)
+        tenant_id = self._effective_tenant_id()
         async with self._session_factory() as session:
             entry_stmt = sa_delete(AgentSessionEntry).where(
+                AgentSessionEntry.tenant_id == tenant_id,
                 AgentSessionEntry.project_key == project_key,
                 AgentSessionEntry.session_id == session_id,
             )
@@ -297,6 +320,7 @@ class DbSessionStore:
                 # main delete cascades to summary
                 sum_result = await session.execute(
                     sa_delete(AgentSessionSummary).where(
+                        AgentSessionSummary.tenant_id == tenant_id,
                         AgentSessionSummary.project_key == project_key,
                         AgentSessionSummary.session_id == session_id,
                     )
@@ -314,10 +338,12 @@ class DbSessionStore:
 
     async def list_subkeys(self, key: dict) -> list[str]:
         project_key, session_id, _subpath = _normalize_key(key)
+        tenant_id = self._effective_tenant_id()
         async with self._session_factory() as session:
             result = await session.execute(
                 select(AgentSessionEntry.subpath)
                 .where(
+                    AgentSessionEntry.tenant_id == tenant_id,
                     AgentSessionEntry.project_key == project_key,
                     AgentSessionEntry.session_id == session_id,
                     AgentSessionEntry.subpath != "",

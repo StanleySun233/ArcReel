@@ -42,6 +42,7 @@ async def execute_resume_video_task(task: dict[str, Any], *, job_id: str) -> dic
     task_id = task["task_id"]
     payload = task.get("payload") or {}
     user_id = task.get("user_id", DEFAULT_USER_ID)
+    tenant_id = task.get("tenant_id")
 
     if task_type not in ("video", "reference_video"):
         raise NotImplementedError(f"resume not supported for task_type={task_type}")
@@ -59,6 +60,7 @@ async def execute_resume_video_task(task: dict[str, Any], *, job_id: str) -> dic
         project_name,
         payload=payload,
         user_id=user_id,
+        tenant_id=tenant_id,
         require_image_backend=False,
     )
 
@@ -137,6 +139,9 @@ async def execute_resume_video_task(task: dict[str, Any], *, job_id: str) -> dic
                 version=version,
                 video_uri=video_uri,
                 generator=generator,
+                created_by_user_id=user_id,
+                tenant_id=tenant_id,
+                task_id=task_id,
             )
 
         # emit_generation_success_batch 是同步函数，async caller 同步调用（不 await）

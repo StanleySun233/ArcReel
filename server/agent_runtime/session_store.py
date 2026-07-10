@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from lib.db import safe_session_factory
 from lib.db.repositories.session_repo import SessionRepository
-from lib.user_scope import get_current_user_id
+from lib.user_scope import get_current_tenant_id, get_current_user_id
 from server.agent_runtime.models import SessionMeta, SessionStatus
 
 
@@ -16,6 +16,7 @@ def _dict_to_session(d: dict) -> SessionMeta:
     """Convert a repository dict to a SessionMeta dataclass."""
     return SessionMeta(
         id=d["sdk_session_id"],  # DB 内部 id 不暴露，对外统一用 sdk_session_id
+        tenant_id=d["tenant_id"],
         project_name=d["project_name"],
         title=d.get("title") or "",
         status=d["status"],
@@ -32,7 +33,7 @@ class SessionMetaStore:
 
     @staticmethod
     def _repo(session) -> SessionRepository:
-        return SessionRepository(session, user_id=get_current_user_id())
+        return SessionRepository(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
 
     async def create(self, project_name: str, sdk_session_id: str) -> SessionMeta:
 

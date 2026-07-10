@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from contextvars import ContextVar
 from pathlib import Path
 from urllib.parse import quote
@@ -24,6 +25,17 @@ def set_current_tenant_id(tenant_id: str | None) -> None:
 
 def get_current_tenant_id() -> str | None:
     return _current_tenant_id.get()
+
+
+@contextlib.contextmanager
+def current_identity_scope(*, user_id: str | None, tenant_id: str | None):
+    user_token = _current_user_id.set(user_id or DEFAULT_USER_ID)
+    tenant_token = _current_tenant_id.set(tenant_id)
+    try:
+        yield
+    finally:
+        _current_tenant_id.reset(tenant_token)
+        _current_user_id.reset(user_token)
 
 
 def scoped_projects_root(base_root: Path) -> Path:

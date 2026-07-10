@@ -76,13 +76,13 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [x] 参考视频单元列表/派生/增删改/重排/生成/上传按当前 tenant 和 `project_id` 解析。
 - [x] 手动镜头上传按当前 tenant 和 `project_id` 写回项目，并用 `project_id` 写 file_links。
 - [x] 项目归档导出和剪映草稿导出使用 `project_id`，下载 token 绑定 `tenant_id:project_id`。
-- [ ] `tasks` 持久化 `tenant_id/project_id/requested_by_user_id`。
-- [ ] worker 使用任务持久化上下文读取项目、租户配置、provider credential。
+- [x] `tasks` 持久化 `tenant_id/project_id/requested_by_user_id`。
+- [x] worker 使用任务持久化上下文读取项目、租户配置、provider credential。
 - [x] `assistant` routes 使用 `project_id`。
 - [x] `versions` routes 使用当前 tenant 下的 `project_id`，读取允许 viewer，还原要求 member。
-- [ ] Agent session 表和 session store 持久化 `tenant_id/project_id/user_id`。
-- [ ] Agent cwd 由 ProjectContextResolver 返回。
-- [ ] MCP 工具通过注入上下文获取 project_id，不接受项目名推断。
+- [x] Agent session 表和 session store 持久化 `tenant_id/project_id/user_id`。
+- [x] Agent cwd 由当前 tenant 的 ProjectManager 解析。
+- [x] MCP 工具通过注入上下文获取 project_id，不接受项目名推断。
 - [x] 场景关键媒体上传 `file_links` 使用 `tenant_id/project_id/entity_type/entity_id`，不使用 project name。
 - [ ] `project.json` 内媒体引用全部是 `file_id`。
 - [ ] 后端 service 直接读文件，前端只拿短签名 URL。
@@ -115,6 +115,7 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [ ] 场景矩阵覆盖创建项目、上传文件、生成图片、生成视频、Agent 输入文本、资产导入、用量查看。
 - [x] 单元/路由测试覆盖项目 id 不等于展示名时主路径不接受展示名。
 - [x] 场景矩阵覆盖 Issued Tokens disabled。
+- [x] 场景矩阵覆盖 worker/provider/session store tenant 隔离。
 - [ ] 自动测试和必须手动验证项都写入 QA evidence。
 
 ## Serial File Touch Order

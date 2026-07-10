@@ -20,6 +20,7 @@ from lib.generation_queue import (
     read_queue_poll_interval,
 )
 from lib.prompt_utils import is_structured_image_prompt, is_structured_video_prompt
+from lib.user_scope import get_current_tenant_id, get_current_user_id
 
 
 class WorkerOfflineError(RuntimeError):
@@ -125,6 +126,8 @@ async def enqueue_and_wait(
     tenant_id: str | None = None,
     requested_by_user_id: str | None = None,
 ) -> dict[str, Any]:
+    resolved_user_id = requested_by_user_id or (get_current_user_id() if user_id == DEFAULT_USER_ID else user_id)
+    resolved_tenant_id = tenant_id or get_current_tenant_id()
     enqueue_result = await enqueue_task_only(
         project_name=project_name,
         task_type=task_type,
@@ -137,9 +140,9 @@ async def enqueue_and_wait(
         dependency_task_id=dependency_task_id,
         dependency_group=dependency_group,
         dependency_index=dependency_index,
-        user_id=user_id,
-        tenant_id=tenant_id,
-        requested_by_user_id=requested_by_user_id,
+        user_id=resolved_user_id,
+        tenant_id=resolved_tenant_id,
+        requested_by_user_id=resolved_user_id,
     )
 
     task = await wait_for_task(
@@ -179,6 +182,8 @@ async def enqueue_task_only(
     requested_by_user_id: str | None = None,
 ) -> dict[str, Any]:
     queue = get_generation_queue()
+    resolved_user_id = requested_by_user_id or (get_current_user_id() if user_id == DEFAULT_USER_ID else user_id)
+    resolved_tenant_id = tenant_id or get_current_tenant_id()
 
     if not await queue.is_worker_online(name=lease_name):
         raise WorkerOfflineError("queue worker is offline")
@@ -194,9 +199,9 @@ async def enqueue_task_only(
         dependency_task_id=dependency_task_id,
         dependency_group=dependency_group,
         dependency_index=dependency_index,
-        user_id=user_id,
-        tenant_id=tenant_id,
-        requested_by_user_id=requested_by_user_id,
+        user_id=resolved_user_id,
+        tenant_id=resolved_tenant_id,
+        requested_by_user_id=resolved_user_id,
     )
     return enqueue_result
 

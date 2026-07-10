@@ -28,6 +28,7 @@ from lib.reference_video.ad_units import (
 )
 from lib.storyboard_sequence import get_storyboard_items
 from server.agent_runtime.sdk_tools._context import (
+    QueueKwargs,
     ToolContext,
     tool_error,
     validate_script_filename,
@@ -257,6 +258,7 @@ async def _submit_with_checkpoint(
     fallback_relpath: Callable[[str], str],
     save_fn: Callable[[], None],
     log: list[str],
+    queue_kwargs: QueueKwargs,
 ) -> list[BatchTaskResult]:
     """Run a batch and update checkpoint per success. Returns failures.
 
@@ -282,6 +284,7 @@ async def _submit_with_checkpoint(
         specs=specs,
         on_success=on_success,
         on_failure=on_failure,
+        **queue_kwargs,
     )
     return failures
 
@@ -379,6 +382,7 @@ async def _generate_reference_units(
             fallback_relpath=_reference_fallback_relpath,
             save_fn=lambda: _save_checkpoint_at(ckpt_path, completed, started_at, episode=episode),
             log=log,
+            queue_kwargs=ctx.queue_kwargs(),
         )
         if failures:
             raise RuntimeError(f"{len(failures)} 个 unit 生成失败")
@@ -546,6 +550,7 @@ def generate_video_episode_tool(ctx: ToolContext):
                     fallback_relpath=_scene_fallback_relpath,
                     save_fn=lambda: _save_checkpoint_at(ckpt_path, completed, started_at, episode=episode),
                     log=log,
+                    queue_kwargs=ctx.queue_kwargs(),
                 )
                 if failures:
                     raise RuntimeError(f"{len(failures)} 个视频生成失败（使用 resume=true 续传）")
@@ -639,6 +644,7 @@ def generate_video_scene_tool(ctx: ToolContext):
                 payload=spec.payload,
                 script_file=spec.script_file,
                 source="skill",
+                **ctx.queue_kwargs(),
             )
             result = queued.get("result") or {}
             rel = result.get("file_path") or f"videos/scene_{item_id}.mp4"
@@ -697,7 +703,11 @@ def generate_video_all_tool(ctx: ToolContext):
             if not specs:
                 return {"content": [{"type": "text", "text": "\n".join([*log, "⚠️  没有任何可生成的视频任务"])}]}
 
-            successes, failures = await batch_enqueue_and_wait(project_name=ctx.project_name, specs=specs)
+            successes, failures = await batch_enqueue_and_wait(
+                project_name=ctx.project_name,
+                specs=specs,
+                **ctx.queue_kwargs(),
+            )
             details: list[str] = []
             for br in successes:
                 rel = (br.result or {}).get("file_path") or f"videos/scene_{br.resource_id}.mp4"
@@ -833,6 +843,7 @@ def generate_video_selected_tool(ctx: ToolContext):
                     fallback_relpath=_scene_fallback_relpath,
                     save_fn=lambda: _save_checkpoint_at(ckpt_path, completed, started_at, scene_ids=scene_ids),
                     log=log,
+                    queue_kwargs=ctx.queue_kwargs(),
                 )
                 if failures:
                     raise RuntimeError(f"{len(failures)} 个视频生成失败（使用 resume=true 续传）")

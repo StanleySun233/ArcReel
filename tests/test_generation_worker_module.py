@@ -1,9 +1,12 @@
 import asyncio
+import json
 from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from lib import app_data_dir as app_data_dir_module
+from lib.app_data_dir import app_data_dir
 from lib.db import Base
 from lib.generation_worker import (
     _ORPHAN_RESCAN_LEASE_LOST_MULT,
@@ -14,6 +17,7 @@ from lib.generation_worker import (
     _extract_provider,
     _read_int_env,
 )
+from lib.project_manager import ProjectManager
 
 
 def _cap(limits: dict[str, dict[str, int]] | None = None, *, image: int = 5, video: int = 3) -> CapacityTable:
@@ -60,15 +64,15 @@ class _FakeQueue:
     async def claim_next_task(self, media_type, **_kwargs):
         return None
 
-    async def mark_task_succeeded(self, task_id, result):
+    async def mark_task_succeeded(self, task_id, result, **_kwargs):
         self.succeeded.append((task_id, result))
         return self._succeeded_rows
 
-    async def mark_task_failed(self, task_id, error):
+    async def mark_task_failed(self, task_id, error, **_kwargs):
         self.failed.append((task_id, error))
         return self._failed_rows
 
-    async def mark_task_cancelled(self, task_id, *, cancelled_by="user"):
+    async def mark_task_cancelled(self, task_id, *, cancelled_by="user", **_kwargs):
         self.cancelled.append((task_id, cancelled_by))
         return 1
 
@@ -95,6 +99,10 @@ def _patch_pm(monkeypatch, project: dict | None):
     )
 
 
+def _tenant_task(**kwargs) -> dict[str, Any]:
+    return {"tenant_id": "ten_test", "requested_by_user_id": "camel:test", **kwargs}
+
+
 @pytest.fixture()
 async def _patch_empty_db(monkeypatch):
     """把全局 async_session_factory 换成空内存库，隔离掉真实数据库。
@@ -115,12 +123,12 @@ class TestExtractProvider:
 
     async def test_video_payload_provider(self):
         """payload 携带历史 video_provider → 投影直接取到（payload 层短路，无需 DB）。"""
-        task = {"payload": {"video_provider": "ark"}, "task_type": "video"}
+        task = _tenant_task(payload={"video_provider": "ark"}, task_type="video")
         assert await _extract_provider(task) == "ark"
 
     async def test_image_payload_provider(self):
         """payload 携带历史 image_provider → 投影取到。"""
-        task = {"payload": {"image_provider": "gemini-vertex"}, "task_type": "storyboard"}
+        task = _tenant_task(payload={"image_provider": "gemini-vertex"}, task_type="storyboard")
         assert await _extract_provider(task) == "gemini-vertex"
 
     async def test_default_when_unresolvable(self, _patch_empty_db):
@@ -129,19 +137,19 @@ class TestExtractProvider:
         必须隔离全局 DB（_patch_empty_db）——否则会读真实 dev 库，本机配了其它 ready 供应商时
         auto-resolve 会返回该供应商而非 DEFAULT_PROVIDER，断言被本机环境污染。
         """
-        task = {"payload": {}}
+        task = _tenant_task(payload={})
         assert await _extract_provider(task) == DEFAULT_PROVIDER
 
     async def test_project_level_video_backend(self, monkeypatch):
         """项目级 video_backend 优先于全局默认。"""
         _patch_pm(monkeypatch, {"video_backend": "ark/seedance-1-0-pro"})
-        task = {"payload": {}, "project_name": "demo", "task_type": "video"}
+        task = _tenant_task(payload={}, project_name="demo", task_type="video")
         assert await _extract_provider(task) == "ark"
 
     async def test_project_level_image_t2i(self, monkeypatch):
         """image 投影按代表性 capability=t2i 取项目级 image_provider_t2i。"""
         _patch_pm(monkeypatch, {"image_provider_t2i": "gemini-vertex/imagen-3"})
-        task = {"payload": {}, "project_name": "demo", "task_type": "storyboard"}
+        task = _tenant_task(payload={}, project_name="demo", task_type="storyboard")
         assert await _extract_provider(task) == "gemini-vertex"
 
     async def test_reference_video_routes_to_video_lane(self, monkeypatch):
@@ -159,14 +167,45 @@ class TestExtractProvider:
                 "image_provider_t2i": "gemini-vertex/imagen-3",
             },
         )
-        task = {"payload": {}, "project_name": "demo", "task_type": "reference_video"}
+        task = _tenant_task(payload={}, project_name="demo", task_type="reference_video")
         assert await _extract_provider(task) == "ark"
 
     async def test_payload_provider_takes_precedence_over_project(self, monkeypatch):
         """payload 历史 provider 优先于项目级。"""
         _patch_pm(monkeypatch, {"video_backend": "grok/grok-imagine-video"})
-        task = {"payload": {"video_provider": "ark"}, "project_name": "demo", "task_type": "video"}
+        task = _tenant_task(payload={"video_provider": "ark"}, project_name="demo", task_type="video")
         assert await _extract_provider(task) == "ark"
+
+    async def test_project_lookup_is_scoped_by_task_tenant(self, tmp_path, monkeypatch, _patch_empty_db):
+        monkeypatch.setenv("ARCREEL_DATA_DIR", str(tmp_path / "data"))
+        app_data_dir_module._reset_for_tests()
+
+        for tenant_id, backend in (
+            ("ten_alpha", "ark/seedance-1-0-pro"),
+            ("ten_beta", "grok/grok-imagine-video"),
+        ):
+            manager = ProjectManager(app_data_dir(), tenant_id=tenant_id)
+            project_dir = manager.create_project("demo", content_mode="narration")
+            with open(project_dir / "project.json", "w", encoding="utf-8") as f:
+                json.dump({"name": "demo", "video_backend": backend}, f)
+
+        alpha = {
+            "payload": {},
+            "project_name": "demo",
+            "task_type": "video",
+            "tenant_id": "ten_alpha",
+            "requested_by_user_id": "camel:alice",
+        }
+        beta = {
+            "payload": {},
+            "project_name": "demo",
+            "task_type": "video",
+            "tenant_id": "ten_beta",
+            "requested_by_user_id": "camel:bob",
+        }
+
+        assert await _extract_provider(alpha) == "ark"
+        assert await _extract_provider(beta) == "grok"
 
     async def test_deleted_project_load_failure_falls_back_not_raises(self, monkeypatch):
         """指向已删除/不可读项目的历史任务：load_project 抛错也须回退 DEFAULT_PROVIDER，
@@ -179,7 +218,7 @@ class TestExtractProvider:
             return type("PM", (), {"load_project": _load})()
 
         monkeypatch.setattr("lib.config.resolver.get_project_manager", _raising_pm)
-        task = {"payload": {}, "project_name": "deleted-proj", "task_type": "video"}
+        task = _tenant_task(payload={}, project_name="deleted-proj", task_type="video")
         assert await _extract_provider(task) == DEFAULT_PROVIDER
 
 
@@ -192,10 +231,12 @@ class TestExtractProviderAlignsWithExecution:
 
         project = {"image_provider_t2i": "openai/gen-1", "image_provider_i2i": "openai/edit-1"}
         _patch_pm(monkeypatch, project)
-        task = {"payload": {}, "project_name": "demo", "task_type": "storyboard"}
+        task = _tenant_task(payload={}, project_name="demo", task_type="storyboard")
 
         worker_provider = await _extract_provider(task)
-        resolved = await ConfigResolver(async_session_factory).resolve_image_backend(project, {}, capability="t2i")
+        resolved = await ConfigResolver(
+            async_session_factory, user_id="camel:test", tenant_id="ten_test"
+        ).resolve_image_backend(project, {}, capability="t2i")
         assert worker_provider == resolved.provider_id == "openai"
 
     async def test_video_alignment(self, monkeypatch):
@@ -204,10 +245,12 @@ class TestExtractProviderAlignsWithExecution:
 
         project = {"video_backend": "ark/seedance-1-0-pro"}
         _patch_pm(monkeypatch, project)
-        task = {"payload": {}, "project_name": "demo", "task_type": "video"}
+        task = _tenant_task(payload={}, project_name="demo", task_type="video")
 
         worker_provider = await _extract_provider(task)
-        resolved = await ConfigResolver(async_session_factory).resolve_video_backend(project, {})
+        resolved = await ConfigResolver(
+            async_session_factory, user_id="camel:test", tenant_id="ten_test"
+        ).resolve_video_backend(project, {})
         assert worker_provider == resolved.provider_id == "ark"
 
 
@@ -264,7 +307,7 @@ class TestCapacityTable:
         assert table.get("unknown", "image") == 7
         assert table.get("unknown", "video") == 2
 
-    async def test_from_db_known_providers_and_unsupported_lanes_zero(self):
+    async def test_from_db_known_providers_and_unsupported_lanes_zero(self, monkeypatch):
         """from_db：所有 registry provider 已知，不支持的 lane 强制 0。
 
         只断言与 config 数值无关的确定不变量（已知 + 不支持→0），避免本地 dev DB
@@ -272,6 +315,7 @@ class TestCapacityTable:
         """
         from lib.config.registry import PROVIDER_REGISTRY
 
+        self._stub_from_db_sources(monkeypatch, {})
         table = await CapacityTable.from_db()
         for pid, meta in PROVIDER_REGISTRY.items():
             assert pid in table._limits
@@ -904,12 +948,16 @@ class TestGenerationWorker:
                         "task_type": "gen_image",
                         "media_type": "image",
                         "payload": {"image_provider": "gemini-aistudio"},
+                        "tenant_id": "ten_test",
+                        "requested_by_user_id": "camel:test",
                     },
                     {
                         "task_id": "vid1",
                         "task_type": "gen_video",
                         "media_type": "video",
                         "payload": {"video_provider": "ark"},
+                        "tenant_id": "ten_test",
+                        "requested_by_user_id": "camel:test",
                     },
                 ]
 

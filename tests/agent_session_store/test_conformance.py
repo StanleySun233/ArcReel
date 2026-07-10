@@ -60,8 +60,17 @@ async def test_db_session_store_passes_sdk_conformance():
             async with engine.begin() as conn:
                 await conn.execute(
                     text(
-                        "INSERT INTO users (id, username, role, is_active, created_at, updated_at) "
-                        "VALUES ('conformance', 'conformance', 'user', true, NOW(), NOW()) "
+                        "INSERT INTO users "
+                        "(id, username, provider, provider_subject, role, is_active, created_at, updated_at) "
+                        "VALUES ('conformance', 'conformance', 'camel', 'conformance', 'user', true, NOW(), NOW()) "
+                        "ON CONFLICT (id) DO NOTHING"
+                    )
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO tenants "
+                        "(id, name, owner_user_id, personal_for_user_id, created_by_user_id, created_at, updated_at) "
+                        "VALUES ('ten_default', 'Default', 'conformance', 'conformance', 'conformance', NOW(), NOW()) "
                         "ON CONFLICT (id) DO NOTHING"
                     )
                 )

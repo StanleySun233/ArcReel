@@ -73,6 +73,39 @@ Evidence:
 - `server/agent_runtime/session_manager.py` provides scoped project roots to SDK options.
 - `tests/test_assistant_routes.py` covers route contract, project-id forwarding, and preservation of tenant permission errors.
 
+### Generation queue and workers now carry tenant/user execution scope
+
+Generation task enqueue, provider derivation, worker provider extraction, resume executor finalization, and SDK MCP tool enqueue calls now carry the request-time `tenant_id` and `user_id`. Worker-side project lookup and provider credential resolution run under the task's stored tenant/user context instead of the process-global default.
+
+Evidence:
+
+- `lib/generation_queue.py` derives provider id under `task_tenant_scope`.
+- `lib/generation_queue_client.py` uses the current identity context when SDK tools do not pass explicit ids.
+- `lib/generation_worker.py` resolves project config/provider capacity under the task tenant.
+- `server/services/generation_tasks.py` and `lib/config/resolver.py` return tenant-scoped `ProjectManager` instances.
+- `server/services/resume_executor.py` passes task tenant/user into media generator and video finalization.
+- `server/agent_runtime/sdk_tools/*` pass `tenant_id/user_id/requested_by_user_id` when enqueueing tasks.
+- `tests/test_generation_queue.py::test_enqueue_provider_derivation_receives_tenant_and_user`.
+- `tests/test_generation_queue.py::test_queue_client_uses_current_identity_scope_by_default`.
+- `tests/test_generation_worker_module.py::test_project_lookup_is_scoped_by_task_tenant`.
+
+### Agent session metadata, event log, and transcript store are tenant-scoped
+
+Agent session metadata, UI event log, and Claude SDK transcript mirror now include tenant scoping. A single process-level `DbSessionStore` no longer freezes the startup tenant; if no explicit tenant is passed, each store operation resolves the current request tenant.
+
+Evidence:
+
+- `lib/db/models/session.py` adds tenant ownership to `agent_sessions`.
+- `lib/db/repositories/session_repo.py` filters create/get/list/update/delete/interrupt by tenant and user.
+- `server/agent_runtime/event_log.py` writes and reads event log rows by tenant.
+- `lib/agent_session_store/models.py` adds tenant ownership to transcript entries and summaries.
+- `lib/agent_session_store/store.py` filters append/load/list/delete/list_subkeys by tenant.
+- `server/agent_runtime/options_assembler.py` injects current tenant/user into SDK MCP server construction.
+- `server/agent_runtime/session_store.py` constructs tenant-aware repositories from request context.
+- `alembic/versions/9a7c6d5e4f32_scope_agent_sessions_by_tenant.py` adds tenant columns and tenant-aware indexes.
+- `tests/test_agent_session_user_scope.py` covers user isolation, tenant isolation, and dynamic tenant resolution for a reused `DbSessionStore`.
+- `tests/agent_session_store` verifies the SDK transcript store contract against PostgreSQL.
+
 ### Project event stream is tenant-checked
 
 Project event SSE now validates current tenant membership through backend membership lookup instead of trusting the JWT tenant snapshot alone.
@@ -107,10 +140,12 @@ Backend:
 
 - `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_agent_chat_router.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py tests/test_projects_archive_routes.py tests/test_jianying_draft_routes.py tests/test_usage_router.py tests/test_usage_repo.py tests/test_usage_tracker.py -q`
   - Result: 426 passed
+- `python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_agent_session_user_scope.py tests/agent_runtime/test_event_log.py tests/agent_session_store tests/test_generation_queue.py tests/test_generation_worker_module.py tests/test_resume_executor.py -q`
+  - Result: 212 passed
 - `python -m ruff check <changed backend files and tests>`
   - Result: passed
-- `basedpyright <changed backend route files>`
-  - Result: 0 errors, 0 warnings; command exits non-zero because project config references a missing `.venv` path.
+- `basedpyright <changed backend task/session files>`
+  - Result: 0 errors; command exits non-zero because project config references a missing `.venv` path.
 
 Frontend:
 

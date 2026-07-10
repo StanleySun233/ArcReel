@@ -55,12 +55,21 @@ async def _seed_pg_users(engine) -> None:
         for uid in _PG_TEST_USER_IDS:
             await conn.execute(
                 text(
-                    "INSERT INTO users (id, username, role, is_active, created_at, updated_at) "
-                    "VALUES (:id, :username, 'user', true, NOW(), NOW()) "
+                    "INSERT INTO users "
+                    "(id, username, provider, provider_subject, role, is_active, created_at, updated_at) "
+                    "VALUES (:id, :username, 'camel', :provider_subject, 'user', true, NOW(), NOW()) "
                     "ON CONFLICT (id) DO NOTHING"
                 ),
-                {"id": uid, "username": uid},
+                {"id": uid, "username": uid, "provider_subject": uid},
             )
+        await conn.execute(
+            text(
+                "INSERT INTO tenants "
+                "(id, name, owner_user_id, personal_for_user_id, created_by_user_id, created_at, updated_at) "
+                "VALUES ('ten_default', 'Default', 'default', 'default', 'default', NOW(), NOW()) "
+                "ON CONFLICT (id) DO NOTHING"
+            )
+        )
 
 
 @pytest.fixture

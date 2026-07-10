@@ -11,12 +11,14 @@ from sqlalchemy import select, update
 from lib.db.base import DEFAULT_USER_ID, dt_to_iso, utc_now
 from lib.db.models.session import AgentSession
 from lib.db.repositories.base import BaseRepository, rowcount
+from lib.db.repositories.task_repo import DEFAULT_TENANT_ID
 
 
 def _row_to_dict(row: AgentSession) -> dict[str, Any]:
     return {
         "id": row.id,
         "sdk_session_id": row.sdk_session_id,
+        "tenant_id": row.tenant_id,
         "project_name": row.project_name,
         "title": row.title or "",
         "status": row.status,
@@ -26,10 +28,12 @@ def _row_to_dict(row: AgentSession) -> dict[str, Any]:
 
 
 class SessionRepository(BaseRepository):
-    def __init__(self, session, user_id: str | None = None):
+    def __init__(self, session, user_id: str | None = None, tenant_id: str | None = None):
         super().__init__(session)
         self.user_id = user_id or str(session.info.get("user_id") or DEFAULT_USER_ID)
+        self.tenant_id = str(tenant_id or session.info.get("tenant_id") or DEFAULT_TENANT_ID)
         session.info["user_id"] = self.user_id
+        session.info["tenant_id"] = self.tenant_id
 
     async def create(
         self, project_name: str, sdk_session_id: str, title: str = "", user_id: str | None = None
@@ -44,6 +48,7 @@ class SessionRepository(BaseRepository):
             created_at=now,
             updated_at=now,
             user_id=user_id or self.user_id,
+            tenant_id=self.tenant_id,
         )
         self.session.add(row)
         await self.session.commit()
@@ -51,7 +56,11 @@ class SessionRepository(BaseRepository):
         return _row_to_dict(row)
 
     async def get(self, session_id: str) -> dict[str, Any] | None:
-        stmt = select(AgentSession).where(AgentSession.user_id == self.user_id, AgentSession.sdk_session_id == session_id)
+        stmt = select(AgentSession).where(
+            AgentSession.tenant_id == self.tenant_id,
+            AgentSession.user_id == self.user_id,
+            AgentSession.sdk_session_id == session_id,
+        )
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
         return _row_to_dict(row) if row else None
@@ -64,7 +73,9 @@ class SessionRepository(BaseRepository):
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        stmt = select(AgentSession).where(AgentSession.user_id == self.user_id)
+        stmt = select(AgentSession).where(
+            AgentSession.tenant_id == self.tenant_id, AgentSession.user_id == self.user_id
+        )
         if project_name:
             stmt = stmt.where(AgentSession.project_name == project_name)
         if status:
@@ -78,7 +89,11 @@ class SessionRepository(BaseRepository):
         now = utc_now()
         result = await self.session.execute(
             update(AgentSession)
-            .where(AgentSession.user_id == self.user_id, AgentSession.sdk_session_id == session_id)
+            .where(
+                AgentSession.tenant_id == self.tenant_id,
+                AgentSession.user_id == self.user_id,
+                AgentSession.sdk_session_id == session_id,
+            )
             .values(status=status, updated_at=now)
         )
         await self.session.commit()
@@ -86,7 +101,11 @@ class SessionRepository(BaseRepository):
 
     async def delete(self, session_id: str) -> bool:
         result = await self.session.execute(
-            sa_delete(AgentSession).where(AgentSession.user_id == self.user_id, AgentSession.sdk_session_id == session_id)
+            sa_delete(AgentSession).where(
+                AgentSession.tenant_id == self.tenant_id,
+                AgentSession.user_id == self.user_id,
+                AgentSession.sdk_session_id == session_id,
+            )
         )
         await self.session.commit()
         return rowcount(result) > 0
@@ -95,7 +114,11 @@ class SessionRepository(BaseRepository):
         now = utc_now()
         result = await self.session.execute(
             update(AgentSession)
-            .where(AgentSession.user_id == self.user_id, AgentSession.status == "running")
+            .where(
+                AgentSession.tenant_id == self.tenant_id,
+                AgentSession.user_id == self.user_id,
+                AgentSession.status == "running",
+            )
             .values(status="interrupted", updated_at=now)
         )
         await self.session.commit()

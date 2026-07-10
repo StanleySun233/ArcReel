@@ -1,8 +1,9 @@
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from lib.db.base import Base, DEFAULT_USER_ID
-from lib.user_scope import set_current_user_id
+from lib.agent_session_store.store import DbSessionStore
+from lib.db.base import DEFAULT_USER_ID, Base
+from lib.user_scope import set_current_tenant_id, set_current_user_id
 from server.agent_runtime.event_log import EventLogStore
 from server.agent_runtime.session_store import SessionMetaStore
 
@@ -15,6 +16,7 @@ async def session_factory():
     factory = async_sessionmaker(engine, expire_on_commit=False)
     yield factory
     await engine.dispose()
+    set_current_tenant_id(None)
     set_current_user_id(DEFAULT_USER_ID)
 
 
@@ -47,3 +49,68 @@ async def test_agent_session_metadata_and_event_log_are_scoped_by_current_user(s
     assert await meta_store.get("session-b") is None
     assert await event_store.list_after("session-b") == []
     assert (await event_store.list_after("session-a"))[0]["uuid"] == "alice-message"
+
+
+@pytest.mark.asyncio
+async def test_agent_session_metadata_and_event_log_are_scoped_by_current_tenant(session_factory):
+    meta_store = SessionMetaStore(session_factory=session_factory)
+    event_store = EventLogStore(session_factory=session_factory)
+
+    set_current_user_id("camel:alice")
+    set_current_tenant_id("ten_alpha")
+    await meta_store.create("project-a", "session-alpha")
+    await event_store.append_user_entry(
+        "session-alpha",
+        {"type": "user", "uuid": "alpha-message", "content": [{"type": "text", "text": "alpha"}]},
+        client_key="same-client-key",
+    )
+
+    set_current_tenant_id("ten_beta")
+    await meta_store.create("project-b", "session-beta")
+    await event_store.append_user_entry(
+        "session-beta",
+        {"type": "user", "uuid": "beta-message", "content": [{"type": "text", "text": "beta"}]},
+        client_key="same-client-key",
+    )
+
+    assert [session.id for session in await meta_store.list()] == ["session-beta"]
+    assert await meta_store.get("session-alpha") is None
+    assert await event_store.find_new_session_by_client_key("same-client-key") == (
+        "session-beta",
+        {
+            "seq": 0,
+            "type": "user",
+            "uuid": "beta-message",
+            "content": [{"type": "text", "text": "beta"}],
+        },
+    )
+
+    set_current_tenant_id("ten_alpha")
+    assert [session.id for session in await meta_store.list()] == ["session-alpha"]
+    assert await meta_store.get("session-beta") is None
+    assert await event_store.find_new_session_by_client_key("same-client-key") == (
+        "session-alpha",
+        {
+            "seq": 0,
+            "type": "user",
+            "uuid": "alpha-message",
+            "content": [{"type": "text", "text": "alpha"}],
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_db_session_store_resolves_current_tenant_per_operation(session_factory):
+    store = DbSessionStore(session_factory, user_id="camel:alice")
+    key = {"project_key": "project-a", "session_id": "session-a"}
+
+    set_current_tenant_id("ten_alpha")
+    await store.append(key, [{"type": "user", "uuid": "alpha-message"}])
+
+    set_current_tenant_id("ten_beta")
+    assert await store.load(key) is None
+    await store.append(key, [{"type": "user", "uuid": "beta-message"}])
+    assert await store.load(key) == [{"type": "user", "uuid": "beta-message"}]
+
+    set_current_tenant_id("ten_alpha")
+    assert await store.load(key) == [{"type": "user", "uuid": "alpha-message"}]

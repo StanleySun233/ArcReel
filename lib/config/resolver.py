@@ -37,12 +37,16 @@ from lib.db.repositories.credential_repository import CredentialRepository
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 from lib.project_manager import ProjectManager
 from lib.text_backends.base import TextTaskType
+from lib.user_scope import current_identity_scope, get_current_tenant_id
 
 _project_manager: ProjectManager | None = None
 
 
 def get_project_manager() -> ProjectManager:
     """返回共享的 ProjectManager 单例（使用标准项目根目录）。"""
+    tenant_id = get_current_tenant_id()
+    if tenant_id:
+        return ProjectManager(app_data_dir(), tenant_id=tenant_id)
     global _project_manager
     if _project_manager is None:
         _project_manager = ProjectManager(app_data_dir())
@@ -196,39 +200,43 @@ class ConfigResolver:
     async def session(self) -> AsyncIterator[ConfigResolver]:
         """打开共享 session，返回绑定到该 session 的 ConfigResolver。"""
         if self._bound_session is not None:
-            yield self
+            with current_identity_scope(user_id=self._user_id, tenant_id=self._tenant_id):
+                yield self
         else:
             async with self._session_factory() as sess:
                 if self._user_id is not None:
                     sess.info["user_id"] = self._user_id
                 if self._tenant_id is not None:
                     sess.info["tenant_id"] = self._tenant_id
-                yield ConfigResolver(
-                    self._session_factory,
-                    user_id=self._user_id,
-                    tenant_id=self._tenant_id,
-                    _bound_session=sess,
-                )
+                with current_identity_scope(user_id=self._user_id, tenant_id=self._tenant_id):
+                    yield ConfigResolver(
+                        self._session_factory,
+                        user_id=self._user_id,
+                        tenant_id=self._tenant_id,
+                        _bound_session=sess,
+                    )
 
     @asynccontextmanager
     async def _open_session(self) -> AsyncIterator[tuple[AsyncSession, ConfigService]]:
         """获取 (session, ConfigService)，优先复用 bound session。"""
         if self._bound_session is not None:
-            yield (
-                self._bound_session,
-                ConfigService(
+            with current_identity_scope(user_id=self._user_id, tenant_id=self._tenant_id):
+                yield (
                     self._bound_session,
-                    user_id=self._user_id,
-                    tenant_id=self._tenant_id,
-                ),
-            )
+                    ConfigService(
+                        self._bound_session,
+                        user_id=self._user_id,
+                        tenant_id=self._tenant_id,
+                    ),
+                )
         else:
             async with self._session_factory() as session:
                 if self._user_id is not None:
                     session.info["user_id"] = self._user_id
                 if self._tenant_id is not None:
                     session.info["tenant_id"] = self._tenant_id
-                yield session, ConfigService(session, user_id=self._user_id, tenant_id=self._tenant_id)
+                with current_identity_scope(user_id=self._user_id, tenant_id=self._tenant_id):
+                    yield session, ConfigService(session, user_id=self._user_id, tenant_id=self._tenant_id)
 
     # ── 公开 API ──
 

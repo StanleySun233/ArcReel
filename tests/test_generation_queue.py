@@ -5,8 +5,11 @@ import asyncio
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+import lib.generation_queue as generation_queue_module
 from lib.db.base import Base
 from lib.generation_queue import GenerationQueue
+from lib.generation_queue_client import enqueue_task_only
+from lib.user_scope import current_identity_scope
 
 
 @pytest.fixture
@@ -135,6 +138,64 @@ class TestGenerationQueue:
         beta_list = await queue.list_tasks(tenant_id="ten_beta")
         assert alpha_list["total"] == 1
         assert beta_list["total"] == 1
+
+    async def test_enqueue_provider_derivation_receives_tenant_and_user(self, queue, monkeypatch):
+        calls = []
+
+        async def _derive(**kwargs):
+            calls.append(kwargs)
+            return "ark"
+
+        monkeypatch.setattr(generation_queue_module, "_derive_provider_id_for_enqueue", _derive)
+
+        created = await queue.enqueue_task(
+            project_name="proj-alpha",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="Alice",
+            payload={"prompt": "alpha"},
+            tenant_id="ten_alpha",
+            requested_by_user_id="camel:alice",
+        )
+        claimed = await queue.claim_next_task(media_type="image")
+
+        assert calls == [
+            {
+                "project_name": "proj-alpha",
+                "payload": {"prompt": "alpha"},
+                "task_type": "storyboard",
+                "media_type": "image",
+                "user_id": "camel:alice",
+                "tenant_id": "ten_alpha",
+            }
+        ]
+        assert claimed is not None
+        assert claimed["task_id"] == created["task_id"]
+        assert claimed["provider_id"] == "ark"
+
+    async def test_queue_client_uses_current_identity_scope_by_default(self, queue, monkeypatch):
+        monkeypatch.setattr(generation_queue_module, "get_generation_queue", lambda: queue)
+        monkeypatch.setattr("lib.generation_queue_client.get_generation_queue", lambda: queue)
+
+        async def _online(*args, **kwargs):
+            return True
+
+        monkeypatch.setattr(queue, "is_worker_online", _online)
+
+        with current_identity_scope(user_id="camel:alice", tenant_id="ten_alpha"):
+            created = await enqueue_task_only(
+                project_name="proj-alpha",
+                task_type="storyboard",
+                media_type="image",
+                resource_id="Alice",
+                payload={"prompt": "alpha"},
+            )
+
+        claimed = await queue.claim_next_task(media_type="image")
+        assert claimed is not None
+        assert claimed["task_id"] == created["task_id"]
+        assert claimed["tenant_id"] == "ten_alpha"
+        assert claimed["requested_by_user_id"] == "camel:alice"
 
     async def test_active_task_dedupe_is_scoped_by_tenant_and_project_id(self, queue):
         first = await queue.enqueue_task(

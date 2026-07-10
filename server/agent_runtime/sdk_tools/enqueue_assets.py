@@ -180,6 +180,7 @@ def generate_assets_tool(ctx: ToolContext):
                 successes_acc, failures_acc = await batch_enqueue_and_wait(
                     project_name=ctx.project_name,
                     specs=specs,
+                    **ctx.queue_kwargs(),
                 )
 
                 for br in successes_acc:

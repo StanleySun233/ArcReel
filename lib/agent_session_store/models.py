@@ -5,10 +5,10 @@ from __future__ import annotations
 from sqlalchemy import JSON, BigInteger, Index, PrimaryKeyConstraint, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lib.db.base import Base, TimestampMixin, UserOwnedMixin
+from lib.db.base import Base, TenantOwnedMixin, TimestampMixin, UserOwnedMixin
 
 
-class AgentSessionEntry(TimestampMixin, UserOwnedMixin, Base):
+class AgentSessionEntry(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
     """SDK transcript mirror — one row per SessionStoreEntry."""
 
     __tablename__ = "agent_session_entries"
@@ -23,9 +23,10 @@ class AgentSessionEntry(TimestampMixin, UserOwnedMixin, Base):
     mtime_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
     __table_args__ = (
-        PrimaryKeyConstraint("project_key", "session_id", "subpath", "seq"),
+        PrimaryKeyConstraint("tenant_id", "project_key", "session_id", "subpath", "seq"),
         Index(
             "uq_agent_entries_uuid",
+            "tenant_id",
             "project_key",
             "session_id",
             "subpath",
@@ -36,6 +37,7 @@ class AgentSessionEntry(TimestampMixin, UserOwnedMixin, Base):
         ),
         Index(
             "idx_agent_entries_listing",
+            "tenant_id",
             "project_key",
             "session_id",
             "mtime_ms",
@@ -43,12 +45,14 @@ class AgentSessionEntry(TimestampMixin, UserOwnedMixin, Base):
     )
 
 
-class AgentSessionSummary(TimestampMixin, UserOwnedMixin, Base):
+class AgentSessionSummary(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
     """Per-session summary maintained by SDK fold_session_summary()."""
 
     __tablename__ = "agent_session_summaries"
 
-    project_key: Mapped[str] = mapped_column(String, primary_key=True)
-    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    project_key: Mapped[str] = mapped_column(String, nullable=False)
+    session_id: Mapped[str] = mapped_column(String, nullable=False)
     mtime_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)
     data: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+    __table_args__ = (PrimaryKeyConstraint("tenant_id", "project_key", "session_id"),)

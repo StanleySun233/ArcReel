@@ -55,6 +55,7 @@ from lib.storyboard_sequence import (
     resolve_previous_storyboard_path,
 )
 from lib.thumbnail import extract_video_thumbnail
+from lib.user_scope import get_current_tenant_id
 from lib.video_backends.base import VideoCapabilityError
 from server.services.resolution_resolver import resolve_resolution
 
@@ -98,6 +99,9 @@ async def _record_output_file(
 
 
 def get_project_manager() -> ProjectManager:
+    tenant_id = get_current_tenant_id()
+    if tenant_id:
+        return ProjectManager(app_data_dir(), tenant_id=tenant_id)
     return pm
 
 

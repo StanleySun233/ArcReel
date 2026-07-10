@@ -160,6 +160,7 @@ def generate_grid_tool(ctx: ToolContext):
                         },
                         script_file=script_filename,
                         source="skill",
+                        **ctx.queue_kwargs(),
                     )
                 except Exception as exc:  # noqa: BLE001
                     gm.delete(grid.id)

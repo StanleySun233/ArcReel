@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from lib.config.resolver import ConfigResolver
 from lib.db import async_session_factory
+from lib.db.base import DEFAULT_USER_ID
 from lib.project_manager import ProjectManager
+from lib.user_scope import current_identity_scope
+
+
+class QueueKwargs(TypedDict):
+    user_id: str
+    tenant_id: str | None
+    requested_by_user_id: str | None
 
 
 class ToolContext:
@@ -17,12 +25,32 @@ class ToolContext:
     to ``project_name`` via ``build_arcreel_mcp_server(project_name=...)``.
     """
 
-    def __init__(self, project_name: str, projects_root: Path, pm: ProjectManager | None = None):
+    def __init__(
+        self,
+        project_name: str,
+        projects_root: Path,
+        pm: ProjectManager | None = None,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+    ):
         self.project_name = project_name
         self.projects_root = projects_root
+        self.tenant_id = tenant_id
+        self.user_id = user_id
         # Avoid ``ProjectManager.from_cwd()`` — the server main process cwd is
         # the repo root, not ``projects/<name>/``. Tests may inject a fake pm.
         self.pm: ProjectManager = pm if pm is not None else ProjectManager(str(projects_root))
+
+    def identity_scope(self):
+        return current_identity_scope(user_id=self.user_id, tenant_id=self.tenant_id)
+
+    def queue_kwargs(self) -> QueueKwargs:
+        return {
+            "user_id": self.user_id or DEFAULT_USER_ID,
+            "tenant_id": self.tenant_id,
+            "requested_by_user_id": self.user_id,
+        }
 
     @property
     def project_path(self) -> Path:

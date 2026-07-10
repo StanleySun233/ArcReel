@@ -18,6 +18,7 @@ from lib.db import safe_session_factory
 from lib.db.base import DEFAULT_USER_ID
 from lib.db.repositories.task_repo import DEFAULT_TENANT_ID, TaskRepository
 from lib.db.tenant_context import set_tenant_context
+from lib.user_scope import current_identity_scope
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,8 @@ async def _derive_provider_id_for_enqueue(
     payload: dict[str, Any] | None,
     task_type: str,
     media_type: str,
+    user_id: str | None,
+    tenant_id: str | None,
 ) -> str | None:
     """入队时按 project + payload 派生 provider_id，供 claim SQL 池过滤使用。
 
@@ -41,17 +44,18 @@ async def _derive_provider_id_for_enqueue(
         from lib.config.resolver import ConfigResolver, get_project_manager
         from lib.db import async_session_factory
 
-        project: dict | None = None
-        if project_name:
-            project = await asyncio.to_thread(get_project_manager().load_project, project_name)
+        with task_tenant_scope(tenant_id=tenant_id, user_id=user_id):
+            project: dict | None = None
+            if project_name:
+                project = await asyncio.to_thread(get_project_manager().load_project, project_name)
 
-        resolver = ConfigResolver(async_session_factory)
-        if is_video:
-            resolved = await resolver.resolve_video_backend(project, payload or {})
-        elif is_audio:
-            resolved = await resolver.resolve_audio_backend(project, payload or {})
-        else:
-            resolved = await resolver.resolve_image_backend(project, payload or {}, capability="t2i")
+            resolver = ConfigResolver(async_session_factory, user_id=user_id, tenant_id=tenant_id)
+            if is_video:
+                resolved = await resolver.resolve_video_backend(project, payload or {})
+            elif is_audio:
+                resolved = await resolver.resolve_audio_backend(project, payload or {})
+            else:
+                resolved = await resolver.resolve_image_backend(project, payload or {}, capability="t2i")
     except Exception:
         logger.debug("入队时派生 provider_id 失败，留 NULL 由 worker 兜底", exc_info=True)
         return None
@@ -94,7 +98,8 @@ def task_tenant_scope(*, tenant_id: str | None, user_id: str | None):
     tenant_token = _CURRENT_TASK_TENANT_ID.set(tenant_id)
     user_token = _CURRENT_TASK_USER_ID.set(user_id)
     try:
-        yield
+        with current_identity_scope(user_id=user_id, tenant_id=tenant_id):
+            yield
     finally:
         _CURRENT_TASK_USER_ID.reset(user_token)
         _CURRENT_TASK_TENANT_ID.reset(tenant_token)
@@ -145,6 +150,8 @@ class GenerationQueue:
                 payload=payload,
                 task_type=task_type,
                 media_type=media_type,
+                user_id=requested_by_user_id,
+                tenant_id=tenant_id,
             )
 
         async with self._session_factory() as session:

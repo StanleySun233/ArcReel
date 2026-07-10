@@ -171,6 +171,8 @@ class CapacityTable:
         from lib.custom_provider.endpoints import endpoint_to_media_type
         from lib.db import safe_session_factory
         from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+        from lib.db.repositories.task_repo import DEFAULT_TENANT_ID
+        from lib.user_scope import get_current_tenant_id
 
         default_image = _read_int_env("IMAGE_MAX_WORKERS", 5, minimum=1)
         default_video = _read_int_env("VIDEO_MAX_WORKERS", 3, minimum=1)
@@ -178,7 +180,9 @@ class CapacityTable:
 
         limits: dict[str, dict[str, int]] = {}
         async with safe_session_factory() as session:
-            svc = ConfigService(session)
+            tenant_id = get_current_tenant_id() or DEFAULT_TENANT_ID
+            session.info["tenant_id"] = tenant_id
+            svc = ConfigService(session, tenant_id=tenant_id)
             all_configs = await svc.get_all_provider_configs()
             for provider_id, meta in PROVIDER_REGISTRY.items():
                 config = all_configs.get(provider_id, {})
@@ -196,7 +200,7 @@ class CapacityTable:
                 # _lane_limits 统一负责"不支持的 lane → 0"，三个装载路径共用同一投影点
                 limits[provider_id] = cls._lane_limits(meta.media_types, image_max, video_max, audio_max)
 
-            repo = CustomProviderRepository(session)
+            repo = CustomProviderRepository(session, tenant_id=tenant_id)
             for provider, models in await repo.list_providers_with_models():
                 pid = provider.provider_id  # "custom-{id}"
                 media_types = {endpoint_to_media_type(m.endpoint) for m in models if m.is_enabled}
@@ -335,7 +339,8 @@ async def _extract_provider(task: dict[str, Any]) -> str:
     """
     project_name = task.get("project_name")
     payload = task.get("payload") or {}
-    user_id = str(task.get("user_id") or DEFAULT_USER_ID)
+    user_id = str(task.get("requested_by_user_id") or task.get("user_id") or DEFAULT_USER_ID)
+    tenant_id = task.get("tenant_id")
     # 以 media lane 区分 video / audio / image：reference_video 等 task_type 同属 video lane。
     is_video = task.get("media_type") == "video" or task.get("task_type") in ("video", "reference_video")
     is_audio = task.get("media_type") == "audio" or task.get("task_type") == "tts"
@@ -343,22 +348,27 @@ async def _extract_provider(task: dict[str, Any]) -> str:
     # 整体兜底：含项目加载（队列里可能有指向已删除/不可读项目的历史任务，load_project 会抛
     # FileNotFoundError）在内的任何失败都回退 DEFAULT_PROVIDER，绝不冒泡阻断认领循环（见 docstring）。
     try:
-        project: dict | None = None
-        if project_name:
-            from lib.config.resolver import get_project_manager
+        with task_tenant_scope(tenant_id=str(tenant_id) if tenant_id is not None else None, user_id=user_id):
+            project: dict | None = None
+            if project_name:
+                from lib.config.resolver import get_project_manager
 
-            project = await asyncio.to_thread(get_project_manager().load_project, project_name)
+                project = await asyncio.to_thread(get_project_manager().load_project, project_name)
 
-        from lib.config.resolver import ConfigResolver
-        from lib.db import async_session_factory
+            from lib.config.resolver import ConfigResolver
+            from lib.db import async_session_factory
 
-        resolver = ConfigResolver(async_session_factory, user_id=user_id)
-        if is_video:
-            resolved = await resolver.resolve_video_backend(project, payload)
-        elif is_audio:
-            resolved = await resolver.resolve_audio_backend(project, payload)
-        else:
-            resolved = await resolver.resolve_image_backend(project, payload, capability="t2i")
+            resolver = ConfigResolver(
+                async_session_factory,
+                user_id=user_id,
+                tenant_id=str(tenant_id) if tenant_id is not None else None,
+            )
+            if is_video:
+                resolved = await resolver.resolve_video_backend(project, payload)
+            elif is_audio:
+                resolved = await resolver.resolve_audio_backend(project, payload)
+            else:
+                resolved = await resolver.resolve_image_backend(project, payload, capability="t2i")
     except Exception:
         logger.debug("provider 解析失败，回退 DEFAULT_PROVIDER 仅供限流路由", exc_info=True)
         return DEFAULT_PROVIDER
