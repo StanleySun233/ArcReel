@@ -78,28 +78,28 @@ These gates happen before implementation agents start. They are not story worktr
 
 **Slug:** pg-runtime-baseline
 **User value:** Developers and CI run against the same class of infrastructure as the commercial edition: PostgreSQL, Redis, and private MinIO.
-**Status:** planned
-**QA Status:** pending
+**Status:** completed
+**QA Status:** passed
 **PO Status:** pending
 
 **Acceptance Criteria**
-- [ ] Local middleware compose provides PostgreSQL, Redis, MinIO API, and MinIO Console with fixed MinIO release tag.
-- [ ] `.env.example` documents PostgreSQL, Redis, MinIO, and CaMeL tenant-edition settings.
-- [ ] `lib/db/engine.py` requires `postgresql+asyncpg` and rejects SQLite.
-- [ ] Test fixtures no longer create SQLite runtime databases for DB integration tests.
-- [ ] Existing SQLite-only Alembic tests are deleted or converted to PostgreSQL.
-- [ ] CI/dev commands document how to run tenant-edition tests against PostgreSQL.
+- [x] Local middleware compose provides PostgreSQL, Redis, MinIO API, and MinIO Console with fixed MinIO release tag.
+- [x] `.env.example` documents PostgreSQL, Redis, MinIO, and CaMeL tenant-edition settings.
+- [x] `lib/db/engine.py` requires `postgresql+asyncpg` and rejects SQLite.
+- [x] Test fixtures no longer create SQLite runtime databases for DB integration tests.
+- [x] Existing SQLite-only Alembic tests are deleted or converted to PostgreSQL.
+- [x] CI/dev commands document how to run tenant-edition tests against PostgreSQL.
 
 **Engineering Subtasks**
-- [ ] Atlas: Finalize `deploy/dev/docker-compose.middleware.yml` and add env names aligned with runtime config. (depends: none)
-- [ ] Atlas: Update `.env.example` and `deploy/.env.example` with PG/Redis/MinIO variables. (depends: none)
-- [ ] Atlas: Change `lib/db/engine.py` to PG-only and remove SQLite helpers/default path. (depends: none)
-- [ ] Atlas: Convert `tests/conftest.py` DB fixtures to PostgreSQL. (depends: engine)
-- [ ] Atlas: Convert `tests/agent_session_store/conftest.py` DB fixtures to PostgreSQL or mark file-store-only tests separate. (depends: engine)
-- [ ] Atlas: Convert Alembic tests that set `sqlite+aiosqlite` to use the dev PostgreSQL URL. (depends: engine)
-- [ ] Quinn: Verify compose health, `alembic upgrade head`, and targeted DB tests. (depends: implementation)
+- [x] Atlas: Finalize `deploy/dev/docker-compose.middleware.yml` and add env names aligned with runtime config. (depends: none)
+- [x] Atlas: Update `.env.example` and `deploy/.env.example` with PG/Redis/MinIO variables. (depends: none)
+- [x] Atlas: Change `lib/db/engine.py` to PG-only and remove SQLite helpers/default path. (depends: none)
+- [x] Atlas: Convert `tests/conftest.py` DB fixtures to PostgreSQL. (depends: engine)
+- [x] Atlas: Convert `tests/agent_session_store/conftest.py` DB fixtures to PostgreSQL or mark file-store-only tests separate. (depends: engine)
+- [x] Atlas: Convert Alembic tests that set `sqlite+aiosqlite` to use the dev PostgreSQL URL. (depends: engine)
+- [x] Quinn: Verify compose health, `alembic upgrade head`, and targeted DB tests. (depends: implementation)
 
-**QA Evidence:** pending
+**QA Evidence:** Middleware health checked via `docker ps`; `alembic upgrade head` passed against local PostgreSQL; targeted Story 1 suite passed with `23 passed in 6.49s`.
 
 ### Story 2 - Tenant Schema, RLS, And Request DB Context
 
@@ -437,7 +437,7 @@ These gates happen before implementation agents start. They are not story worktr
 | Story | Branch | Worktree Path | Merge Target | Merge Status | Cleanup Status |
 |-------|--------|---------------|--------------|--------------|----------------|
 | Story 0 - Preflight CaMeL OAuth Contract And API Key Provisioning Hardening | `story/tenant-commercialization/preflight-camel` | `../ArcReel-worktrees/tenant-commercialization/preflight-camel` | `integration/tenant-commercialization` | pending | pending |
-| Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline | `story/tenant-commercialization/pg-runtime-baseline` | `../ArcReel-worktrees/tenant-commercialization/pg-runtime-baseline` | `integration/tenant-commercialization` | pending | pending |
+| Story 1 - Development Middleware And PostgreSQL-Only Runtime Baseline | `story/tenant-commercialization/pg-runtime-baseline` | `../ArcReel-worktrees/tenant-commercialization/pg-runtime-baseline` | `integration/tenant-commercialization` | merged | pending |
 | Story 2 - Tenant Schema, RLS, And Request DB Context | `story/tenant-commercialization/tenant-schema-rls` | `../ArcReel-worktrees/tenant-commercialization/tenant-schema-rls` | `integration/tenant-commercialization` | pending | pending |
 | Story 3 - Tenant Auth, Membership API, Redis Permission Cache | `story/tenant-commercialization/tenant-auth` | `../ArcReel-worktrees/tenant-commercialization/tenant-auth` | `integration/tenant-commercialization` | pending | pending |
 | Story 4 - Frontend Tenant Switcher And Permission UX | `story/tenant-commercialization/tenant-switcher-ui` | `../ArcReel-worktrees/tenant-commercialization/tenant-switcher-ui` | `integration/tenant-commercialization` | pending | pending |
@@ -453,7 +453,7 @@ These gates happen before implementation agents start. They are not story worktr
 | Date | Story/Subtask | Owner | Blocker | Resolution |
 |------|---------------|-------|---------|------------|
 | 2026-07-10 | Story 0 | Tara/Quinn | CaMeL-api is a completed external dependency and not owned by this sprint. | Verify the contract from ArcReel; record any mismatch as an external defect without editing CaMeL-api. |
-| 2026-07-10 | Story 1 | Atlas | Existing ArcReel tests and Alembic tests still assume SQLite. | Convert to PostgreSQL-only fixtures as part of PG baseline. |
+| 2026-07-10 | Story 1 | Atlas | Existing ArcReel tests and Alembic tests still assume SQLite. | Resolved in Story 1 merge `7c58035`. |
 | 2026-07-10 | Story 2 | Atlas | RLS context leak or wrong tenant setting is a high-severity isolation failure. | Centralize DB context and require deny-by-default RLS tests. |
 | 2026-07-10 | Story 5 | Cyra | MinIO community/commercial licensing risk is not a code blocker but must be resolved before commercial release. | Track as product/legal release gate. |
 | 2026-07-10 | Story 6 | Dax | `project.json` remains local, so horizontal deployment requires shared filesystem or later project metadata migration. | Accept for first tenant edition; document deployment topology. |
@@ -467,4 +467,4 @@ These gates happen before implementation agents start. They are not story worktr
 - All story branches merge into the integration branch.
 - All merged story worktrees are removed with `git worktree remove`.
 - Product Owner accepts every story or rejects it into a follow-up story.
-- `docs/INDEX.md` moves this sprint from `planned` to `completed` only after PO acceptance.
+- `docs/INDEX.md` moves this sprint from `in-progress` to `completed` only after PO acceptance.
