@@ -18,8 +18,8 @@
 
 - [ ] Add tenant list and switch UI.
   - Commit: pending
-- [ ] Update auth store token and role snapshot handling.
-  - Commit: pending
+- [x] Update auth store token and role snapshot handling.
+  - Commit: 4a42e1a
 - [ ] Add stale-role and revoked-access UI tests.
   - Commit: pending
 
