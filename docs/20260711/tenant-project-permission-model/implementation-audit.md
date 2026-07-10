@@ -20,12 +20,12 @@ Evidence:
 
 ### Project identity is now route-id based on the main workspace path
 
-The project list, create, detail, update, delete, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, and project event stream now use project id as the route key.
+The project list, create, detail, update, delete, video capability route, project script routes, episode metadata routes, source import route, overview routes, frontend project cards, create-project navigation, task filters, file routes, assistant routes, and project event stream now use project id as the route key.
 
 Evidence:
 
 - `server/routers/projects.py` resolves project rows by `id` for the main CRUD path.
-- `server/routers/projects.py` resolves project rows by `id` for script reads, script scene/shot edits, segment edits, episode title edits, source import, and overview update/generation.
+- `server/routers/projects.py` resolves project rows by `id` for video capabilities, script reads, script scene/shot edits, segment edits, episode title edits, source import, and overview update/generation.
 - Project creation stores local project JSON under tenant-scoped project-id paths.
 - `frontend/src/types/project.ts` requires `ProjectSummary.id`.
 - `frontend/src/components/pages/ProjectsPage.tsx` links and deletes by `project.id`.
@@ -139,3 +139,5 @@ The following route families still require a dedicated project-id audit before t
 - reference video units
 - cost estimation
 - usage grouping and display
+- manual shot uploads
+- project export and Jianying draft export

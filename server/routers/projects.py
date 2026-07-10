@@ -659,9 +659,9 @@ def _create_project_on_disk(
     return {"success": True, "id": project_id, "name": project_name, "project": project}
 
 
-@router.get("/projects/{name}/video-capabilities")
+@router.get("/projects/{project_id}/video-capabilities")
 async def get_video_capabilities(
-    name: str,
+    project_id: str,
     _user: CurrentUser,
     _t: Translator,
 ):
@@ -673,13 +673,14 @@ async def get_video_capabilities(
     """
     resolver = ConfigResolver(async_session_factory)
     try:
-        return await resolver.video_capabilities(name)
+        await _require_project_row(project_id, _user, _t, minimum_role=ROLE_VIEW)
+        return await resolver.video_capabilities(project_id)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=_t("project_not_found", name=name)) from exc
+        raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_id)) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=422,
-            detail=_t("video_capabilities_unresolved", name=name, reason=str(exc)),
+            detail=_t("video_capabilities_unresolved", name=project_id, reason=str(exc)),
         ) from exc
 
 

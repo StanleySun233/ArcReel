@@ -23,6 +23,7 @@
 | `GET /api/v1/projects/{name}` | `GET /api/v1/projects/{project_id}` | `name` 只在响应里展示 |
 | `PATCH /api/v1/projects/{name}` | `PATCH /api/v1/projects/{project_id}` | 校验当前租户内 `name` 不重复 |
 | `DELETE /api/v1/projects/{name}` | `DELETE /api/v1/projects/{project_id}` | 仅 owner/admin 允许 |
+| `GET /api/v1/projects/{name}/video-capabilities` | `GET /api/v1/projects/{project_id}/video-capabilities` | 视频模型能力解析 |
 | `POST /api/v1/projects/{name}/generate-overview` | `POST /api/v1/projects/{project_id}/generate-overview` | 使用 ProjectContext |
 | `GET /api/v1/projects/{name}/scripts/{script_file}` | `GET /api/v1/projects/{project_id}/scripts/{script_file}` | 读取剧本内容 |
 | `PATCH /api/v1/projects/{name}/script-scenes/{scene_id}` | `PATCH /api/v1/projects/{project_id}/script-scenes/{scene_id}` | drama 场景编辑 |
