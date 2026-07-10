@@ -18,8 +18,8 @@
 
 - [x] Add FileService and MinIO storage adapter.
   - Commit: 30ff915, 2a06c27
-- [ ] Add `files` repository and signed URL endpoints.
-  - Commit: pending
+- [x] Add `files` repository and signed URL endpoints.
+  - Commit: 2a06c27, 672ceac
 - [ ] Convert upload/media output routes to file IDs.
   - Commit: pending
 - [ ] Add private bucket, signed URL, and rollback tests.
