@@ -16,6 +16,7 @@ from lib.custom_provider.endpoints import ENDPOINT_REGISTRY
 from lib.db.models import Tenant
 from lib.db.models.user import User
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+from lib.db.tenant_context import set_tenant_context
 
 CamelBootstrapMode = Literal["create", "repair"]
 MEDIA_ORDER = ("image", "text", "video", "audio")
@@ -274,6 +275,9 @@ async def complete_camel_provider_bootstrap(
 
     settings = get_camel_bootstrap_settings()
     resolved_tenant_id = await _resolve_tenant_id(session, user_id, tenant_id)
+    await set_tenant_context(session, user_id=user_id, tenant_id=resolved_tenant_id)
+    session.info["user_id"] = user_id
+    session.info["tenant_id"] = resolved_tenant_id
     provisioned = await _request_camel_tokens(settings, access_token, mode, idempotency_key)
     if provisioned.get("success") is not True:
         return {

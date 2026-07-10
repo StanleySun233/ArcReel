@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from lib.app_data_dir import app_data_dir
 from lib.asset_types import GLOBAL_LIBRARY_ASSET_TYPES
 from lib.db import get_async_session
+from lib.db.tenant_context import set_tenant_context
 from lib.episode_paths import (
     REFERENCE_VIDEO_STEP1_FILENAME,
     STEP1_FILENAMES,
@@ -59,6 +60,19 @@ pm = ProjectManager(app_data_dir())
 
 def get_project_manager() -> ProjectManager:
     return pm
+
+
+async def _tenant_project_manager(
+    session: AsyncSession,
+    current_user: CurrentUser,
+    *,
+    minimum_role: str,
+) -> ProjectManager:
+    access = await require_tenant_access(session, current_user, minimum_role=minimum_role)
+    await set_tenant_context(session, user_id=current_user.id, tenant_id=access.id)
+    session.info["user_id"] = current_user.id
+    session.info["tenant_id"] = access.id
+    return ProjectManager(app_data_dir(), tenant_id=access.id)
 
 
 def _require_filename(file: UploadFile, _t: Callable[..., str]) -> str:
@@ -168,12 +182,20 @@ async def download_file_content(
 
 
 @router.get("/files/{project_name}/{path:path}")
-async def serve_project_file(project_name: str, path: str, request: Request, _user: CurrentUser, _t: Translator):
+async def serve_project_file(
+    project_name: str,
+    path: str,
+    request: Request,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """服务项目内的静态文件（图片/视频）"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             file_path = project_dir / path
 
             if not file_path.exists():
@@ -257,6 +279,8 @@ async def upload_file(
             detail=_t("unsupported_image_type", ext=ext, allowed=", ".join(ALLOWED_EXTENSIONS[upload_type])),
         )
 
+    manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
+
     # Source 分支早返 — 走 SourceLoader 规范化
     if upload_type == "source":
         return await _handle_source_upload(
@@ -264,19 +288,19 @@ async def upload_file(
             file=file,
             on_conflict=on_conflict,
             _t=_t,
+            manager=manager,
         )
 
     try:
-        await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
         content = await file.read()
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
 
             # 产品原图列表是这些文件的唯一指针：产品不存在就拒收，避免落下不可见的孤儿文件
             # （character_ref 等单图类型路径确定、可容忍资产后建，不受此约束）。
             if upload_type == "product_ref":
-                products = get_project_manager().load_project(project_name).get("products") or {}
+                products = manager.load_project(project_name).get("products") or {}
                 if not name or name not in products:
                     raise HTTPException(status_code=404, detail=_t("product_not_found", name=name or ""))
 
@@ -377,25 +401,21 @@ async def upload_file(
             if upload_type == "character" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_project_character_sheet(
-                            project_name, name, f"characters/{filename}"
-                        )
+                        manager.update_project_character_sheet(project_name, name, f"characters/{filename}")
                 except KeyError:
                     pass  # 角色不存在，忽略
 
             if upload_type == "character_ref" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_character_reference_image(
-                            project_name, name, f"characters/refs/{filename}"
-                        )
+                        manager.update_character_reference_image(project_name, name, f"characters/refs/{filename}")
                 except KeyError:
                     pass  # 角色不存在，忽略
 
             if upload_type == "scene" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_scene_sheet(
+                        manager.update_scene_sheet(
                             project_name,
                             name,
                             f"scenes/{filename}",
@@ -406,7 +426,7 @@ async def upload_file(
             if upload_type == "prop" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_prop_sheet(
+                        manager.update_prop_sheet(
                             project_name,
                             name,
                             f"props/{filename}",
@@ -417,7 +437,7 @@ async def upload_file(
             if upload_type == "product" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_product_sheet(
+                        manager.update_product_sheet(
                             project_name,
                             name,
                             f"products/{filename}",
@@ -428,7 +448,7 @@ async def upload_file(
             if upload_type == "product_ref" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().add_product_reference_image(
+                        manager.add_product_reference_image(
                             project_name,
                             name,
                             f"products/refs/{filename}",
@@ -478,12 +498,13 @@ async def _handle_source_upload(
     file: UploadFile,
     on_conflict: OnConflict,
     _t: Translator,
+    manager: ProjectManager,
 ):
     """Source 分支：通过 SourceLoader 规范化为 UTF-8 .txt，并按需备份原始字节。"""
     original_filename = _require_filename(file, _t)
 
     try:
-        project_dir = get_project_manager().get_project_path(project_name)
+        project_dir = manager.get_project_path(project_name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
 
@@ -625,12 +646,19 @@ async def list_project_files(project_name: str, _user: CurrentUser, _t: Translat
 
 
 @router.get("/projects/{project_name}/source/{filename}")
-async def get_source_file(project_name: str, filename: str, _user: CurrentUser, _t: Translator):
+async def get_source_file(
+    project_name: str,
+    filename: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """获取 source 文件的文本内容"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             source_path = project_dir / "source" / filename
 
             if not source_path.exists():
@@ -662,15 +690,17 @@ async def get_source_file(project_name: str, filename: str, _user: CurrentUser, 
 async def update_source_file(
     project_name: str,
     filename: str,
-    _user: CurrentUser,
+    current_user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     content: str = Body(..., media_type="text/plain"),
 ):
     """更新或创建 source 文件"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             source_dir = project_dir / "source"
             source_dir.mkdir(parents=True, exist_ok=True)
             source_path = source_dir / filename
@@ -696,12 +726,19 @@ async def update_source_file(
 
 
 @router.delete("/projects/{project_name}/source/{filename}")
-async def delete_source_file(project_name: str, filename: str, _user: CurrentUser, _t: Translator):
+async def delete_source_file(
+    project_name: str,
+    filename: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """删除 source 文件"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             source_path = project_dir / "source" / filename
 
             # 安全检查：确保路径在项目目录内

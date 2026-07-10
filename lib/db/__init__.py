@@ -8,6 +8,7 @@ from lib.db.engine import (
     async_session_factory,
     get_async_session,
     get_database_url,
+    get_migration_database_url,
     is_sqlite_backend,
     safe_session_factory,
 )
@@ -85,6 +86,7 @@ __all__ = [
     "close_db",
     "get_async_session",
     "get_database_url",
+    "get_migration_database_url",
     "init_db",
     "is_sqlite_backend",
     "safe_session_factory",

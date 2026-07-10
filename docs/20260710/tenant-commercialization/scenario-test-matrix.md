@@ -1,7 +1,7 @@
 # Scenario Test Matrix: Tenant Commercialization
 
 **Date:** 20260710
-**Status:** draft
+**Status:** backend-scenario-runner-passed; live-api-smoke-passed; browser-login-tenant-switch-passed
 
 Coverage labels:
 
@@ -42,6 +42,44 @@ Story 10 must convert this matrix into two executable suites:
    - Records screenshots or structured browser observations for every manual-only release smoke.
 
 No scenario is considered accepted unless its result is tied back to one ID in this matrix.
+
+## Current Execution Evidence
+
+Backend API/service scenario runner:
+
+```bash
+/data/data1/HOME_DIR/sijin/miniconda3/bin/conda run -n arcreel python scripts/tenant_commercialization_scenarios.py -- -q
+```
+
+Result:
+
+- `auth_roles`: 30 passed, 1 warning.
+- `rls_config`: 10 passed.
+- `files_projects_assets`: 113 passed, 1 warning.
+- `generation_tasks_usage`: 114 passed, 1 warning.
+
+Additional integration regression after Story6/8/9 merge:
+
+- Backend targeted suite: 218 passed, 1 warning.
+- Frontend `pnpm check`: 107 test files passed, 922 tests passed.
+- Python targeted `ruff check`: passed.
+
+Story10 final live acceptance evidence:
+
+- Fresh initialized local stack: PostgreSQL DB `arcreel_acceptance_20260710214815`, Redis, MinIO `RELEASE.2025-04-22T22-12-26Z`, completed local CaMeL stack, ArcReel container `arcreel-acceptance-current-20260710214815`.
+- Fresh migration head: `8d7e6f5a4b3c`.
+- `deploy/test/arcreel_api_smoke.py`: passed 23 checks covering CaMeL OAuth login, default personal tenant, bootstrap create, provider/config isolation, tenant roles, project/file isolation, MinIO signed URL denial/tamper, and asset file-id write.
+- `deploy/test/arcreel_tenant_role_minio_smoke.py`: passed 4 focused checks for tenant roles, member/view project access, MinIO signed URL cross-tenant denial, and asset file-id write.
+- `agent-browser`: passed real UI login via CaMeL, default personal space display, visible `Switch space` listbox, second tenant refresh, and click switch to team tenant.
+- Frontend regression after Story10 fixes: `pnpm lint && pnpm check`, 107 test files and 923 tests passed.
+- Targeted backend regression after Story10 fixes: 14 tests passed.
+- Scoped smoke-script type check: 0 errors, 0 warnings, 0 notes; basedpyright still exits 3 because this worktree lacks configured `.venv`.
+
+Manual/live evidence still not complete:
+
+- CaMeL conflict/repair/wrong-client/missing-scope/retry contract cases against the completed external service.
+- Signed URL expiry by waiting past TTL and direct private bucket URL denial.
+- Full browser coverage for view-only deep UI, asset sync confirmation, signed media preview, and restart persistence.
 
 ## Auth And Tenant Selection
 
