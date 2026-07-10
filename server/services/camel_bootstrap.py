@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -22,6 +23,10 @@ CamelBootstrapMode = Literal["create", "repair"]
 MEDIA_ORDER = ("image", "text", "video", "audio")
 _TOKEN_PROVISION_PATH = "/api/oauth/provider/arcreel-tokens"
 _TOKEN_LINK_TEMPLATE_PATH = "/token/{token_name}"
+_SECRET_VALUE_RE = re.compile(
+    r"(sk-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]+|"
+    r"(?i:(api[_-]?key|secret|token|password))\s*[:=]\s*[^,\s}]+)"
+)
 _DEFAULT_MEDIA_SPECS = {
     "image": ("CaMeL Image", "openai-images", ("camel-image",)),
     "text": ("CaMeL Text", "openai-chat", ("camel-text",)),
@@ -229,6 +234,17 @@ def _camel_conflict_links(conflicts: object) -> list[dict]:
     return links
 
 
+def _safe_camel_error_message(body: dict) -> str:
+    for key in ("message", "detail", "error_description"):
+        value = body.get(key)
+        if isinstance(value, str) and value.strip():
+            return _SECRET_VALUE_RE.sub("[redacted]", value.strip())[:300]
+    error = body.get("error")
+    if isinstance(error, str) and error.strip() and error != "token_name_conflict":
+        return error.strip()[:120]
+    return ""
+
+
 def _models_for_spec(spec: CamelMediaSpec) -> list[dict]:
     return [
         {
@@ -348,13 +364,17 @@ async def complete_camel_provider_bootstrap(
     session.info["tenant_id"] = resolved_tenant_id
     provisioned = await _request_camel_tokens(settings, access_token, mode, idempotency_key)
     if provisioned.get("success") is not True:
-        return {
+        message = _safe_camel_error_message(provisioned)
+        result = {
             "completed": False,
             "error": "camel_token_conflict"
             if provisioned.get("error") == "token_name_conflict"
             else "camel_token_error",
             "conflicts": _camel_conflict_links(provisioned.get("conflicts")),
         }
+        if message:
+            result["message"] = message
+        return result
 
     tokens = provisioned.get("tokens")
     if not isinstance(tokens, list):

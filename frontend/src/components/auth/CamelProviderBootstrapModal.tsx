@@ -126,6 +126,7 @@ export function CamelProviderBootstrapModal() {
   const isSuccess = result?.completed === true;
   const isConflict = result?.completed === false && result.error === "camel_token_conflict";
   const isPartial = result?.completed === false && result.error === "partial_bootstrap_failed";
+  const isTokenError = result?.completed === false && result.error === "camel_token_error";
   const canStart = status?.needed === true || isConflict || isPartial;
 
   if (!open) return null;
@@ -198,6 +199,12 @@ export function CamelProviderBootstrapModal() {
             {isConflict
               ? "CaMeL already has tokens with these names. Delete them in CaMeL, then retry."
               : "CaMeL tokens were created, but ArcReel provider setup did not complete. Delete these tokens, then retry."}
+          </div>
+        )}
+
+        {isTokenError && (
+          <div className="mt-5 rounded-lg border border-warm-ring bg-warm-tint px-3 py-2 text-[12.5px] leading-relaxed text-warm-bright" role="alert">
+            CaMeL token setup failed{result.message ? `: ${result.message}` : "."}
           </div>
         )}
 

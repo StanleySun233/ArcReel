@@ -264,6 +264,7 @@ export type CamelBootstrapResult =
   | {
       completed: false;
       error?: string;
+      message?: string;
     };
 
 export interface CamelBootstrapStartResponse {

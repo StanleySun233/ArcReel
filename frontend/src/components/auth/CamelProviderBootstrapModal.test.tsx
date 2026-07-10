@@ -157,6 +157,19 @@ describe("CamelProviderBootstrapModal", () => {
     );
   });
 
+  it("shows CaMeL token setup business errors", async () => {
+    setBootstrapResult({
+      completed: false,
+      error: "camel_token_error",
+      message: "repository namespace is required",
+    });
+
+    render(<CamelProviderBootstrapModal />);
+
+    expect(await screen.findByText("CaMeL token setup failed: repository namespace is required")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Later" })).toBeInTheDocument();
+  });
+
   it("refreshes config status after success and can be closed", async () => {
     const refresh = vi.fn().mockResolvedValue(undefined);
     useConfigStatusStore.setState({ refresh });
