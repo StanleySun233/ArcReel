@@ -166,13 +166,18 @@ export interface VideoPrompt {
 
 export interface GeneratedAssets {
   storyboard_image: string | null;
+  storyboard_image_file_id?: string | null;
   storyboard_last_image: string | null;  // grid mode last frame
+  storyboard_last_image_file_id?: string | null;
   grid_id: string | null;                // source grid ID
   grid_cell_index: number | null;        // cell index in source grid
   video_clip: string | null;
+  video_clip_file_id?: string | null;
   video_thumbnail: string | null;
+  video_thumbnail_file_id?: string | null;
   video_uri: string | null;
   narration_audio?: string | null;       // narration audio file path
+  narration_audio_file_id?: string | null;
   status: AssetStatus;
 }
 

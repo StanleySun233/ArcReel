@@ -45,6 +45,7 @@ from server.routers import (
     api_keys,
     assets,
     assistant,
+    camel_bootstrap,
     characters,
     cost_estimation,
     custom_providers,
@@ -63,6 +64,7 @@ from server.routers import (
     system,
     system_config,
     tasks,
+    tenants,
     usage,
     versions,
 )
@@ -538,6 +540,8 @@ async def request_logging_middleware(request: Request, call_next):
 
 # 注册 API 路由
 app.include_router(auth_router.router, prefix="/api/v1", tags=["认证"])
+app.include_router(tenants.router, prefix="/api/v1", tags=["租户"])
+app.include_router(camel_bootstrap.router, prefix="/api/v1", tags=["CaMeL Bootstrap"])
 app.include_router(projects.router, prefix="/api/v1", tags=["项目管理"])
 app.include_router(characters.router, prefix="/api/v1", tags=["角色管理"])
 app.include_router(scenes.router, prefix="/api/v1", tags=["场景管理"])

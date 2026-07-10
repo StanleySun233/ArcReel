@@ -1,5 +1,5 @@
-import { fireEvent, render, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { LoginPage } from "@/pages/LoginPage";
@@ -31,14 +31,33 @@ function submitLogin(container: HTMLElement) {
   fireEvent.submit(container.querySelector("form")!);
 }
 
+function setCamelMode() {
+  const providers = [
+    {
+      id: "camel",
+      label: "CaMeL",
+      login_url: "/api/v1/auth/camel/login",
+    },
+  ];
+  useAuthStore.setState({
+    authStatus: {
+      enabled: true,
+      mode: "camel",
+      providers,
+    },
+    authMode: "camel",
+    providers,
+    isLoading: false,
+  });
+}
+
 describe("LoginPage returnTo consumption", () => {
   beforeEach(() => {
-    useAuthStore.setState({
-      token: null,
-      username: null,
-      isAuthenticated: false,
-      isLoading: false,
-    });
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/");
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
+    useAuthStore.setState({ isLoading: false });
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -46,6 +65,11 @@ describe("LoginPage returnTo consumption", () => {
         json: vi.fn().mockResolvedValue({ access_token: "tok-123" }),
       } as unknown as Response),
     );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/");
   });
 
   // 锁住登录成功后对 ?from 的「消费」分支：读取 from → safeReturnPath 校验 → 回跳。
@@ -82,5 +106,67 @@ describe("LoginPage returnTo consumption", () => {
     await waitFor(() => {
       expect(history.at(-1)).toBe("/app/projects");
     });
+  });
+
+  it("shows only CaMeL login in camel mode", () => {
+    setCamelMode();
+    const { container } = renderLoginAt("/login");
+
+    expect(screen.getByRole("button", { name: /CaMeL/ })).toBeInTheDocument();
+    expect(container.querySelector("#login-username")).toBeNull();
+    expect(container.querySelector("#login-password")).toBeNull();
+  });
+
+  it("navigates to CaMeL login_url with a safe from path", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", {
+      origin: "http://localhost",
+      pathname: "/login",
+      search: "",
+      hash: "",
+      assign,
+    });
+    setCamelMode();
+
+    renderLoginAt("/login?from=%2Fapp%2Fprojects%2Fdemo%3Ftab%3Dscene%23shot-3");
+    fireEvent.click(screen.getByRole("button", { name: /CaMeL/ }));
+
+    expect(assign).toHaveBeenCalledWith(
+      "/api/v1/auth/camel/login?from=%2Fapp%2Fprojects%2Fdemo%3Ftab%3Dscene%23shot-3",
+    );
+  });
+
+  it("consumes access_token from callback fragment and returns to a safe path", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/login/callback#access_token=camel-token&from=%2Fapp%2Fprojects%2Fdemo%23shot-3",
+    );
+    const loginSpy = vi.spyOn(useAuthStore.getState(), "login");
+
+    const { history } = renderLoginAt("/login/callback");
+
+    await waitFor(() => {
+      expect(loginSpy).toHaveBeenCalledWith("camel-token", "camel");
+      expect(history.at(-1)).toBe("/app/projects/demo#shot-3");
+    });
+    expect(window.location.hash).toBe("");
+  });
+
+  it("shows callback failed when callback fragment has no access_token", async () => {
+    window.history.replaceState(null, "", "/login/callback#from=%2Fapp%2Fprojects%2Fdemo");
+    const loginSpy = vi.spyOn(useAuthStore.getState(), "login");
+
+    renderLoginAt("/login/callback");
+
+    expect(await screen.findByText("登录回调失败")).toBeInTheDocument();
+    expect(loginSpy).not.toHaveBeenCalled();
+  });
+
+  it("renders legal links on the login page", () => {
+    renderLoginAt("/login");
+
+    expect(screen.getByText(/Powered by ArcReel/)).toBeInTheDocument();
+    expect(screen.getByText(/free of charge with CaMeL as the API relay/)).toBeInTheDocument();
   });
 });

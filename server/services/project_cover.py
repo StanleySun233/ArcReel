@@ -52,6 +52,8 @@ def resolve_project_cover(
     """
 
     def _url(rel: str) -> str:
+        if rel.startswith("fil_"):
+            return rel
         # 统一走 files 静态路由，不直接拼盘路径；相对路径原样透传给 FileResponse。
         return f"/api/v1/files/{project_name}/{rel.lstrip('/')}"
 

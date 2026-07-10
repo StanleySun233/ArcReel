@@ -42,6 +42,7 @@ from lib.profile_manifest import (
 from lib.project_change_hints import emit_project_change_hint
 from lib.script_editor import ScriptEditError, resolve_items
 from lib.style_templates import LEGACY_STYLE_MAP, resolve_template_prompt
+from lib.user_scope import tenant_projects_root
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,7 @@ class ProjectManager:
             raise FileNotFoundError(f"当前目录不是有效的项目目录: {cwd}")
         return pm, project_name
 
-    def __init__(self, projects_root: str | Path | None = None):
+    def __init__(self, projects_root: str | Path | None = None, *, tenant_id: str | None = None):
         """
         初始化项目管理器
 
@@ -213,8 +214,28 @@ class ProjectManager:
             # 尝试从环境变量或默认路径获取
             projects_root = os.environ.get("AI_ANIME_PROJECTS", "projects")
 
-        self.projects_root = Path(projects_root)
+        self.tenant_id = tenant_id
+        self._projects_root = Path(projects_root)
+        self._projects_root.mkdir(parents=True, exist_ok=True)
         self.projects_root.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _same_path(left: Path, right: Path) -> bool:
+        return left.resolve(strict=False) == right.resolve(strict=False)
+
+    @property
+    def projects_root(self) -> Path:
+        root = (
+            tenant_projects_root(self._projects_root, self.tenant_id)
+            if self.tenant_id is not None
+            else self._projects_root
+        )
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+
+    @property
+    def project_json_root(self) -> Path:
+        return self.projects_root
 
     def list_projects(self) -> list[str]:
         """列出所有项目"""

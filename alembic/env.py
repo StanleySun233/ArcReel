@@ -1,14 +1,10 @@
-"""Alembic environment configuration.
-
-Supports async engines (aiosqlite / asyncpg) by using run_sync().
-The database URL is read from the DATABASE_URL environment variable via
-lib.db.engine.get_database_url(), falling back to SQLite in projects/.arcreel.db.
-"""
+"""Alembic environment configuration for PostgreSQL asyncpg."""
 
 import asyncio
+import os
 from logging.config import fileConfig
 
-from sqlalchemy import DateTime, String, pool
+from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import lib.agent_session_store.models  # noqa: F401  ensure tables registered
@@ -17,7 +13,7 @@ import lib.agent_session_store.models  # noqa: F401  ensure tables registered
 import lib.db.models  # noqa: F401
 from alembic import context
 from lib.db.base import Base
-from lib.db.engine import get_database_url
+from lib.db.engine import get_migration_database_url
 
 # Alembic Config object
 config = context.config
@@ -33,34 +29,18 @@ target_metadata = Base.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode (no DB connection required)."""
-    url = get_database_url()
+    url = get_migration_database_url()
     context.configure(
         url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=True,
-        compare_type=_compare_type,
+        compare_type=True,
     )
 
     with context.begin_transaction():
         context.run_migrations()
-
-
-def _compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):
-    """Suppress VARCHAR ↔ DateTime drift on SQLite.
-
-    We intentionally keep datetime columns as VARCHAR in SQLite DDL to avoid
-    Alembic batch_alter_table's CAST truncation bug (see b942e8c5d545).
-    SQLAlchemy handles str↔datetime conversion at the Python level.
-    """
-    if context.dialect.name == "sqlite":
-        if isinstance(inspected_type, String) and isinstance(metadata_type, DateTime):
-            return False
-        if isinstance(inspected_type, DateTime) and isinstance(metadata_type, String):
-            return False
-    # Return None to let Alembic use its default comparison for all other cases
-    return None
 
 
 def do_run_migrations(connection) -> None:
@@ -69,7 +49,7 @@ def do_run_migrations(connection) -> None:
         target_metadata=target_metadata,
         render_as_batch=True,
         transaction_per_migration=True,
-        compare_type=_compare_type,
+        compare_type=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -77,8 +57,10 @@ def do_run_migrations(connection) -> None:
 
 async def run_async_migrations() -> None:
     """Run migrations using an async engine."""
-    url = get_database_url()
-    connectable = create_async_engine(url, poolclass=pool.NullPool)
+    url = get_migration_database_url()
+    schema = os.environ.get("ARCREEL_TEST_DB_SCHEMA", "").strip()
+    connect_args = {"server_settings": {"search_path": schema}} if schema else {}
+    connectable = create_async_engine(url, poolclass=pool.NullPool, connect_args=connect_args)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

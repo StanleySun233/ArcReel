@@ -95,6 +95,7 @@ class ProjectEventService:
         project_root: Path | None = None,
         *,
         projects_root: Path | None = None,
+        tenant_id: str | None = None,
         poll_interval: float = PROJECT_EVENTS_POLL_SECONDS,
     ):
         self.project_root = Path(project_root or PROJECT_ROOT)
@@ -103,7 +104,9 @@ class ProjectEventService:
         projects_dir = (
             Path(projects_root).resolve(strict=False) if projects_root is not None else self.project_root / "projects"
         )
-        self.pm = ProjectManager(projects_dir)
+        self.projects_dir = projects_dir
+        self.tenant_id = tenant_id
+        self.pm = ProjectManager(projects_dir, tenant_id=tenant_id)
         self.poll_interval = max(0.1, float(poll_interval))
         self._channels: dict[str, _ProjectChannel] = {}
         self._listener_unregister = None

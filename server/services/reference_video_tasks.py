@@ -30,6 +30,7 @@ from lib.script_models import ReferenceResource, ad_script_total_duration
 from lib.thumbnail import extract_video_thumbnail
 from lib.version_manager import VersionManager
 from server.services.generation_tasks import (
+    _record_output_file,
     assert_duration_supported,
     collect_product_references_for_names,
     get_media_generator,
@@ -142,7 +143,7 @@ def _apply_provider_constraints(
     return new_refs, new_duration, warnings
 
 
-async def resolve_max_unit_duration(project: dict) -> int | None:
+async def resolve_max_unit_duration(project: dict, user_id: str = DEFAULT_USER_ID) -> int | None:
     """解析项目视频后端的单次生成时长上限（秒），供派生分组约束 unit 总长。
 
     单一真相源与 executor clamp 同口径（``video_capabilities_for_project`` 的
@@ -150,7 +151,7 @@ async def resolve_max_unit_duration(project: dict) -> int | None:
     切分，超长 unit 交由执行层 clamp + warning 兜底，不阻塞派生。
     """
     try:
-        resolver = ConfigResolver(async_session_factory)
+        resolver = ConfigResolver(async_session_factory, user_id=user_id)
         caps = await resolver.video_capabilities_for_project(project)
         max_duration = caps.get("max_duration")
         return int(max_duration) if max_duration else None
@@ -267,6 +268,7 @@ async def execute_reference_video_task(
     *,
     user_id: str = DEFAULT_USER_ID,
     task_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     """处理一个 reference_video unit 的生成。
 
@@ -308,7 +310,7 @@ async def execute_reference_video_task(
         source_refs = _resolve_unit_references(project, project_path, unit.get("references") or [])
 
     # 3. 构造 generator（拿到 video_backend 名字后才能做 provider 特判）
-    generator = await get_media_generator(project_name, payload=payload, user_id=user_id)
+    generator = await get_media_generator(project_name, payload=payload, user_id=user_id, tenant_id=tenant_id)
     backend = getattr(generator, "_video_backend", None)
     provider_name = getattr(backend, "name", "") if backend else ""
     model_name = getattr(backend, "model", "") if backend else ""
@@ -327,7 +329,7 @@ async def execute_reference_video_task(
     max_duration: int | None = None
     supported_durations: list[int] = []
     try:
-        resolver = ConfigResolver(async_session_factory)
+        resolver = ConfigResolver(async_session_factory, user_id=user_id, tenant_id=tenant_id)
         caps = await resolver.video_capabilities_for_project(project)
         caps_model = caps.get("model")
         if model_name and caps_model and caps_model != model_name:
@@ -429,10 +431,21 @@ async def execute_reference_video_task(
         video_uri=video_uri,
         versions=generator.versions,
         warnings=warnings,
+        created_by_user_id=user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
     )
 
 
-def apply_unit_video_assets(script: dict, resource_id: str, *, video_uri: str | None, thumb_rel: str | None) -> None:
+def apply_unit_video_assets(
+    script: dict,
+    resource_id: str,
+    *,
+    video_uri: str | None,
+    thumb_rel: str | None,
+    video_file_id: str | None = None,
+    thumb_file_id: str | None = None,
+) -> None:
     """在剧本 dict 上写回 unit.generated_assets（video_clip / video_uri / video_thumbnail / status）。
 
     生成 finalize 与版本还原共用，保证两条路径写出的字段口径一致。unit 在
@@ -454,15 +467,24 @@ def apply_unit_video_assets(script: dict, resource_id: str, *, video_uri: str | 
             ga = u.setdefault("generated_assets", {})
             if not isinstance(ga, dict):
                 raise ScriptEditError("generated_assets 必须是 dict")
-            ga["video_clip"] = f"reference_videos/{resource_id}.mp4"
+            if video_file_id:
+                ga["video_clip"] = video_file_id
+                ga["video_clip_file_id"] = video_file_id
+            else:
+                ga["video_clip"] = f"reference_videos/{resource_id}.mp4"
             if video_uri:
                 ga["video_uri"] = video_uri
             else:
                 ga.pop("video_uri", None)
             if thumb_rel:
-                ga["video_thumbnail"] = thumb_rel
+                if thumb_file_id:
+                    ga["video_thumbnail"] = thumb_file_id
+                    ga["video_thumbnail_file_id"] = thumb_file_id
+                else:
+                    ga["video_thumbnail"] = thumb_rel
             else:
                 ga.pop("video_thumbnail", None)
+                ga.pop("video_thumbnail_file_id", None)
             ga["status"] = "completed"
             return
     raise KeyError(resource_id)
@@ -479,6 +501,9 @@ async def _finalize_reference_video_unit(
     video_uri: str | None,
     versions: VersionManager,
     warnings: list[dict[str, Any]] | None = None,
+    created_by_user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
+    task_id: str | None = None,
 ) -> dict[str, Any]:
     """Normal + resume 共用：抽缩略图、写 unit.generated_assets、返回 result dict。"""
     warnings = warnings if warnings is not None else []
@@ -486,8 +511,25 @@ async def _finalize_reference_video_unit(
     thumb_dir = project_path / "reference_videos" / "thumbnails"
     thumb_dir.mkdir(parents=True, exist_ok=True)
     thumb_path = thumb_dir / f"{resource_id}.jpg"
+    video_file_id = await _record_output_file(
+        file_path=output_path,
+        project_name=project_name,
+        created_by_user_id=created_by_user_id,
+        tenant_id=tenant_id,
+        task_id=task_id,
+        link_type="reference_video",
+    )
+    thumb_file_id = None
     if await extract_video_thumbnail(output_path, thumb_path):
         thumb_rel: str | None = f"reference_videos/thumbnails/{resource_id}.jpg"
+        thumb_file_id = await _record_output_file(
+            file_path=thumb_path,
+            project_name=project_name,
+            created_by_user_id=created_by_user_id,
+            tenant_id=tenant_id,
+            task_id=task_id,
+            link_type="reference_video_thumbnail",
+        )
     else:
         thumb_path.unlink(missing_ok=True)
         thumb_rel = None
@@ -496,7 +538,14 @@ async def _finalize_reference_video_unit(
         pm = get_project_manager()
         # 资产回写热路径：只动 unit.generated_assets，结构不可能因此变坏，豁免结构校验。
         with pm.locked_script(project_name, script_file, validate=False) as script:
-            apply_unit_video_assets(script, resource_id, video_uri=video_uri, thumb_rel=thumb_rel)
+            apply_unit_video_assets(
+                script,
+                resource_id,
+                video_uri=video_uri,
+                thumb_rel=thumb_rel,
+                video_file_id=video_file_id,
+                thumb_file_id=thumb_file_id,
+            )
 
     await asyncio.to_thread(_update_unit_assets)
 
@@ -516,5 +565,7 @@ async def _finalize_reference_video_unit(
         "resource_type": "reference_videos",
         "resource_id": resource_id,
         "video_uri": video_uri,
+        "file_id": video_file_id,
+        "thumbnail_file_id": thumb_file_id,
         "warnings": warnings,
     }

@@ -152,6 +152,57 @@ async def test_video_capabilities_endpoint_mismatch_raises(db_session: AsyncSess
 
 
 @pytest.mark.asyncio
+async def test_config_resolver_uses_explicit_user_id_for_custom_provider_auto_resolve(db_session: AsyncSession):
+    from lib.config.resolver import ConfigResolver
+    from lib.custom_provider import make_provider_id
+    from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+
+    repo_a = CustomProviderRepository(db_session, user_id="user-a")
+    provider_a = await repo_a.create_provider(
+        display_name="User A Video",
+        discovery_format="openai",
+        base_url="https://api.a.example.com",
+        api_key="key-a",
+        models=[
+            {
+                "model_id": "a-video",
+                "display_name": "A Video",
+                "endpoint": "ark-seedance",
+                "is_default": True,
+                "is_enabled": True,
+                "supported_durations": "[5]",
+            }
+        ],
+    )
+
+    repo_b = CustomProviderRepository(db_session, user_id="user-b")
+    provider_b = await repo_b.create_provider(
+        display_name="User B Video",
+        discovery_format="openai",
+        base_url="https://api.b.example.com",
+        api_key="key-b",
+        models=[
+            {
+                "model_id": "b-video",
+                "display_name": "B Video",
+                "endpoint": "ark-seedance",
+                "is_default": True,
+                "is_enabled": True,
+                "supported_durations": "[5]",
+            }
+        ],
+    )
+    await db_session.commit()
+
+    factory = async_sessionmaker(bind=db_session.get_bind(), class_=AsyncSession, expire_on_commit=False)  # type: ignore[call-overload]
+    resolved = await ConfigResolver(factory, user_id="user-b", _bound_session=db_session).resolve_video_backend(None, None)
+
+    assert provider_a.id != provider_b.id
+    assert resolved.provider_id == make_provider_id(provider_b.id)
+    assert resolved.model_id == "b-video"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "endpoint, model_id, expected_max_refs",
     [

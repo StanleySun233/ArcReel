@@ -6,6 +6,7 @@ import { AssetGrid } from "@/components/assets/AssetGrid";
 import { AssetFormModal } from "@/components/assets/AssetFormModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useAssetsStore } from "@/stores/assets-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { API } from "@/api";
 import { useAppStore } from "@/stores/app-store";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -18,7 +19,8 @@ import {
   INPUT_CLS,
   ambientGlowStyle,
 } from "@/components/ui/darkroom-tokens";
-import type { Asset, AssetType } from "@/types/asset";
+import type { Asset, AssetLibrary, AssetType } from "@/types/asset";
+import { canWriteTenant } from "@/utils/auth";
 
 const ASSET_LIBRARY_RETURN_TO_KEY = "assetLibrary:returnTo";
 
@@ -58,7 +60,12 @@ export function AssetLibraryPage() {
     return tab === "scene" || tab === "prop" ? tab : "character";
   }, [search]);
 
-  const writeQuery = useCallback((patch: { tab?: AssetType; q?: string }) => {
+  const activeLibrary = useMemo((): AssetLibrary => {
+    const library = new URLSearchParams(search).get("library");
+    return library === "personal" ? "personal" : "tenant";
+  }, [search]);
+
+  const writeQuery = useCallback((patch: { tab?: AssetType; q?: string; library?: AssetLibrary }) => {
     const params = new URLSearchParams(window.location.search);
     if (patch.tab !== undefined) {
       if (patch.tab === "character") params.delete("tab");
@@ -68,11 +75,16 @@ export function AssetLibraryPage() {
       if (patch.q) params.set("q", patch.q);
       else params.delete("q");
     }
+    if (patch.library !== undefined) {
+      if (patch.library === "tenant") params.delete("library");
+      else params.set("library", patch.library);
+    }
     const qs = params.toString();
     navigate(qs ? `${window.location.pathname}?${qs}` : window.location.pathname, { replace: true });
   }, [navigate]);
 
   const setActiveTab = useCallback((next: AssetType) => writeQuery({ tab: next }), [writeQuery]);
+  const setActiveLibrary = useCallback((next: AssetLibrary) => writeQuery({ library: next }), [writeQuery]);
 
   // WAI-ARIA tablist 键盘导航（issue #488）：roving tabindex + 方向键 + Home/End。
   // 切换后用 requestAnimationFrame 把焦点搬到新激活 tab，避免与 React commit 抢时序。
@@ -125,17 +137,26 @@ export function AssetLibraryPage() {
   }, [debouncedQ, urlQ, writeQuery]);
   const [formModal, setFormModal] = useState<{ mode: "create" | "edit"; asset?: Asset } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Asset | null>(null);
+  const [syncTarget, setSyncTarget] = useState<Asset | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const currentTenant = useAuthStore((s) => s.currentTenant);
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const canWriteTenantLibrary = currentTenant
+    ? canWriteTenant(currentTenant.role)
+    : tenantRole === null || canWriteTenant(tenantRole);
+  const canWriteActiveLibrary = activeLibrary === "personal" || canWriteTenantLibrary;
 
   const byType = useAssetsStore((s) => s.byType);
   const loadList = useAssetsStore((s) => s.loadList);
   const addAsset = useAssetsStore((s) => s.addAsset);
   const updateAssetLocal = useAssetsStore((s) => s.updateAsset);
   const deleteAssetLocal = useAssetsStore((s) => s.deleteAsset);
+  const syncAssetLocal = useAssetsStore((s) => s.syncAsset);
 
   useEffect(() => {
-    void loadList(activeTab, debouncedQ || undefined);
-  }, [activeTab, debouncedQ, loadList]);
+    void loadList(activeLibrary, activeTab, debouncedQ || undefined);
+  }, [activeLibrary, activeTab, debouncedQ, loadList]);
 
   const assets = byType[activeTab];
   const ActiveIcon = TABS.find((tab) => tab.type === activeTab)!.icon;
@@ -144,20 +165,23 @@ export function AssetLibraryPage() {
     name: string; description: string; voice_style: string; image?: File | null;
   }) => {
     try {
+      const imageFileId = payload.image ? (await API.uploadAssetFile(payload.image)).file_id : undefined;
       if (formModal?.mode === "edit" && formModal.asset) {
         const { asset } = await API.updateAsset(formModal.asset.id, {
-          name: payload.name, description: payload.description, voice_style: payload.voice_style,
+          name: payload.name,
+          description: payload.description,
+          voice_style: payload.voice_style,
+          ...(imageFileId ? { image_file_id: imageFileId } : {}),
         });
-        if (payload.image) {
-          const { asset: after } = await API.replaceAssetImage(asset.id, payload.image);
-          updateAssetLocal(after);
-        } else {
-          updateAssetLocal(asset);
-        }
+        updateAssetLocal(asset);
       } else {
         const { asset } = await API.createAsset({
-          type: activeTab, name: payload.name, description: payload.description,
-          voice_style: payload.voice_style, image: payload.image ?? undefined,
+          library: activeLibrary,
+          type: activeTab,
+          name: payload.name,
+          description: payload.description,
+          voice_style: payload.voice_style,
+          image_file_id: imageFileId,
         });
         addAsset(asset);
       }
@@ -169,6 +193,7 @@ export function AssetLibraryPage() {
 
   const handleEditAsset = useCallback((a: Asset) => setFormModal({ mode: "edit", asset: a }), []);
   const handleDeleteAsset = useCallback((a: Asset) => setDeleteTarget(a), []);
+  const handleSyncAsset = useCallback((a: Asset) => setSyncTarget(a), []);
 
   const confirmDelete = async () => {
     if (!deleteTarget || deleting) return;
@@ -181,6 +206,20 @@ export function AssetLibraryPage() {
       useAppStore.getState().pushToast(errMsg(err), "error");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const confirmSync = async () => {
+    if (!syncTarget || syncing) return;
+    const asset = syncTarget;
+    setSyncing(true);
+    try {
+      await syncAssetLocal(asset.id, asset.type);
+      setSyncTarget(null);
+    } catch (err) {
+      useAppStore.getState().pushToast(errMsg(err), "error");
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -228,16 +267,38 @@ export function AssetLibraryPage() {
                 className={`${INPUT_CLS} w-[240px] pl-8`}
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setFormModal({ mode: "create" })}
-              className={ACCENT_BTN_CLS}
-              style={ACCENT_BUTTON_STYLE}
-            >
-              <Plus className="h-4 w-4" />
-              {t("add_asset")}
-            </button>
+            {canWriteActiveLibrary ? (
+              <button
+                type="button"
+                onClick={() => setFormModal({ mode: "create" })}
+                className={ACCENT_BTN_CLS}
+                style={ACCENT_BUTTON_STYLE}
+              >
+                <Plus className="h-4 w-4" />
+                {t("add_asset")}
+              </button>
+            ) : null}
           </div>
+        </div>
+
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-6 pb-3">
+          {(["tenant", "personal"] as const).map((library) => {
+            const active = activeLibrary === library;
+            return (
+              <button
+                key={library}
+                type="button"
+                onClick={() => setActiveLibrary(library)}
+                className={`rounded-[8px] border px-3 py-1.5 text-[12px] transition-colors ${
+                  active
+                    ? "border-accent/45 bg-accent-dim text-text"
+                    : "border-hairline-soft bg-bg-grad-a/40 text-text-3 hover:text-text"
+                }`}
+              >
+                {t(`library.${library}`)}
+              </button>
+            );
+          })}
         </div>
 
         <div
@@ -299,22 +360,25 @@ export function AssetLibraryPage() {
             </div>
             <p className="font-editorial text-[20px] leading-tight text-text">{t(EMPTY_KEY[activeTab])}</p>
             <p className="max-w-sm text-[12px] leading-5 text-text-4">{t("library_empty_hint")}</p>
-            <button
-              type="button"
-              onClick={() => setFormModal({ mode: "create" })}
-              className={`mt-2 ${ACCENT_BTN_SM_CLS}`}
-              style={ACCENT_BUTTON_STYLE}
-            >
-              <Plus className="h-4 w-4" />
-              {t("add_asset")}
-            </button>
+            {canWriteActiveLibrary ? (
+              <button
+                type="button"
+                onClick={() => setFormModal({ mode: "create" })}
+                className={`mt-2 ${ACCENT_BTN_SM_CLS}`}
+                style={ACCENT_BUTTON_STYLE}
+              >
+                <Plus className="h-4 w-4" />
+                {t("add_asset")}
+              </button>
+            ) : null}
           </div>
         ) : (
-          <AssetGrid
-            assets={assets}
-            onEdit={handleEditAsset}
-            onDelete={handleDeleteAsset}
-          />
+            <AssetGrid
+              assets={assets}
+              onEdit={handleEditAsset}
+              onDelete={handleDeleteAsset}
+              onSync={handleSyncAsset}
+            />
         )}
         </div>
       </main>
@@ -350,6 +414,20 @@ export function AssetLibraryPage() {
         onConfirm={() => void confirmDelete()}
         onCancel={() => {
           if (!deleting) setDeleteTarget(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!syncTarget}
+        title={syncTarget ? t("sync_confirm_title", { name: syncTarget.name }) : ""}
+        description={syncTarget ? t("sync_confirm_desc") : null}
+        confirmLabel={t("sync")}
+        loadingLabel={t("loading")}
+        cancelLabel={t("cancel")}
+        loading={syncing}
+        onConfirm={() => void confirmSync()}
+        onCancel={() => {
+          if (!syncing) setSyncTarget(null);
         }}
       />
     </div>

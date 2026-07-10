@@ -122,13 +122,14 @@ describe("SystemConfigPage", () => {
     expect(screen.getByText("系统配置与 API 访问管理")).toBeInTheDocument();
   });
 
-  it("renders all 6 sidebar sections", () => {
+  it("renders all 7 sidebar sections", () => {
     renderPage();
     expect(screen.getByRole("button", { name: /智能体/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /供应商/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /模型选择/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /用量统计/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /API 令牌/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /账号/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /关于/ })).toBeInTheDocument();
   });
 
@@ -163,6 +164,20 @@ describe("SystemConfigPage", () => {
     fireEvent.click(usageButton);
     await waitFor(() => {
       expect(usageButton).toHaveAttribute("aria-current", "page");
+    });
+  });
+
+  it("starts CaMeL repair from the account section", async () => {
+    const startCamelBootstrap = vi
+      .spyOn(API, "startCamelBootstrap")
+      .mockReturnValue(new Promise<never>(() => {}));
+
+    renderPage("/app/settings?section=account");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Repair keys/ }));
+
+    await waitFor(() => {
+      expect(startCamelBootstrap).toHaveBeenCalledWith("repair", "/app/settings?section=account");
     });
   });
 

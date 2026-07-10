@@ -14,7 +14,7 @@ import time
 from collections import OrderedDict
 from datetime import UTC
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import jwt
 from fastapi import Depends, HTTPException, Query
@@ -23,6 +23,7 @@ from pwdlib import PasswordHash
 from pydantic import BaseModel, ConfigDict
 
 from lib import PROJECT_ROOT
+from lib.user_scope import set_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,10 @@ class CurrentUserInfo(BaseModel):
 
     id: str
     sub: str
+    provider: str = "local"
     role: str = "admin"
+    tenant_id: str | None = None
+    tenant_role: str | None = None
 
     model_config = ConfigDict(frozen=True)
 
@@ -50,6 +54,16 @@ _ANONYMOUS_USER_SUB = "local"
 # 避免静默 fail-open。
 _AUTH_DISABLED_VALUES = frozenset({"false", "0", "no", "off"})
 
+AuthMode = Literal["local", "camel"]
+
+
+def get_auth_mode() -> AuthMode:
+    return "camel" if os.environ.get("AUTH_MODE", "local").strip().lower() == "camel" else "local"
+
+
+def is_camel_auth_mode() -> bool:
+    return get_auth_mode() == "camel"
+
 
 def is_auth_enabled() -> bool:
     """``AUTH_ENABLED`` env 解析。默认 ``true``，保持现有部署行为；空值也按默认。
@@ -63,7 +77,9 @@ def _anonymous_user() -> "CurrentUserInfo":
     """关闭认证时返回的固定匿名用户。"""
     from lib.db.base import DEFAULT_USER_ID
 
-    return CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, role="admin")
+    user = CurrentUserInfo(id=DEFAULT_USER_ID, sub=_ANONYMOUS_USER_SUB, provider="local", role="admin")
+    set_current_user_id(user.id)
+    return user
 
 
 # OAuth2 scheme
@@ -100,7 +116,13 @@ def get_token_secret() -> str:
     return _cached_token_secret
 
 
-def create_token(username: str) -> str:
+def create_token(
+    username: str,
+    user_id: str | None = None,
+    provider: str = "local",
+    tenant_id: str | None = None,
+    tenant_role: str | None = None,
+) -> str:
     """创建 JWT token
 
     Args:
@@ -109,12 +131,20 @@ def create_token(username: str) -> str:
     Returns:
         JWT token 字符串
     """
+    from lib.db.base import DEFAULT_USER_ID
+
     now = time.time()
     payload = {
         "sub": username,
+        "user_id": user_id or DEFAULT_USER_ID,
+        "provider": provider,
         "iat": now,
         "exp": now + TOKEN_EXPIRY_SECONDS,
     }
+    if tenant_id is not None:
+        payload["tenant_id"] = tenant_id
+    if tenant_role is not None:
+        payload["tenant_role"] = tenant_role
     return jwt.encode(payload, get_token_secret(), algorithm="HS256")
 
 
@@ -137,11 +167,14 @@ def verify_token(token: str) -> dict | None:
 DOWNLOAD_TOKEN_EXPIRY_SECONDS = 300  # 5 分钟
 
 
-def create_download_token(username: str, project_name: str) -> str:
+def create_download_token(username: str, project_name: str, user_id: str | None = None) -> str:
     """签发短时效下载 token，用于浏览器原生下载认证"""
+    from lib.db.base import DEFAULT_USER_ID
+
     now = time.time()
     payload = {
         "sub": username,
+        "user_id": user_id or DEFAULT_USER_ID,
         "project": project_name,
         "purpose": "download",
         "iat": now,
@@ -162,8 +195,10 @@ def verify_download_token(token: str, project_name: str) -> dict:
         ValueError: purpose 或 project 不匹配
     """
     if not is_auth_enabled():
+        user = _anonymous_user()
         return {
             "sub": _ANONYMOUS_USER_SUB,
+            "user_id": user.id,
             "project": project_name,
             "purpose": "download",
         }
@@ -172,6 +207,7 @@ def verify_download_token(token: str, project_name: str) -> dict:
         raise ValueError("token purpose 不匹配")
     if payload.get("project") != project_name:
         raise ValueError("token project 不匹配")
+    set_current_user_id(str(payload.get("user_id") or "default"))
     return payload
 
 
@@ -194,6 +230,8 @@ def check_credentials(username: str, password: str) -> bool:
     """
     if not is_auth_enabled():
         return True
+    if is_camel_auth_mode():
+        return False
     expected_username = os.environ.get("AUTH_USERNAME", "admin")
     pw_hash = _get_password_hash()
     username_ok = secrets.compare_digest(username, expected_username)
@@ -216,6 +254,8 @@ def ensure_auth_password(env_path: str | None = None) -> str:
         当前的 AUTH_PASSWORD 值；关闭认证时返回空串。
     """
     if not is_auth_enabled():
+        return ""
+    if is_camel_auth_mode():
         return ""
     password = os.environ.get("AUTH_PASSWORD")
     if password:
@@ -288,6 +328,16 @@ def _hash_api_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+def _api_key_tenant_id(key: str) -> str | None:
+    if not key.startswith(API_KEY_PREFIX):
+        return None
+    parts = key.split("-", 2)
+    if len(parts) != 3:
+        return None
+    tenant_id = parts[1]
+    return tenant_id if tenant_id.startswith("ten_") else None
+
+
 def invalidate_api_key_cache(key_hash: str) -> None:
     """立即清除指定 key_hash 的缓存条目（key 删除时调用）。"""
     _api_key_cache.pop(key_hash, None)
@@ -333,6 +383,10 @@ async def _verify_api_key(token: str) -> dict | None:
     查库成功后更新 last_used_at（后台异步，不阻塞响应）。
     """
     key_hash = _hash_api_key(token)
+    token_tenant_id = _api_key_tenant_id(token)
+    if token_tenant_id is None:
+        _set_api_key_cache(key_hash, None)
+        return None
 
     # 缓存查询
     hit, cached_payload = _get_cached_api_key_payload(key_hash)
@@ -342,13 +396,21 @@ async def _verify_api_key(token: str) -> dict | None:
     # 数据库查询
     from lib.db import async_session_factory
     from lib.db.repositories.api_key_repository import ApiKeyRepository
+    from lib.db.tenant_context import set_tenant_context
 
     async with async_session_factory() as session:
         async with session.begin():
+            await set_tenant_context(session, user_id="api-key-auth", tenant_id=token_tenant_id)
             repo = ApiKeyRepository(session)
             row = await repo.get_by_hash(key_hash)
+            if row is not None and row["tenant_id"] == token_tenant_id:
+                from server.services.tenant_auth import read_tenant_access
 
-    if row is None:
+                access = await read_tenant_access(session, user_id=row["user_id"], tenant_id=row["tenant_id"])
+            else:
+                access = None
+
+    if row is None or access is None:
         _set_api_key_cache(key_hash, None)
         return None
 
@@ -371,7 +433,14 @@ async def _verify_api_key(token: str) -> dict | None:
         except (ValueError, TypeError):
             logger.warning("API Key expires_at 值格式无法解析，忽略过期检查: %r", expires_at)
 
-    payload = {"sub": f"apikey:{row['name']}", "via": "apikey"}
+    payload = {
+        "sub": f"apikey:{row['name']}",
+        "via": "apikey",
+        "user_id": row["user_id"],
+        "provider": "apikey",
+        "tenant_id": row["tenant_id"],
+        "tenant_role": access.role,
+    }
     _set_api_key_cache(key_hash, payload, expires_at_ts=expires_at_monotonic)
 
     # 异步更新 last_used_at（不阻塞，保存引用防止 GC）
@@ -381,7 +450,10 @@ async def _verify_api_key(token: str) -> dict | None:
         try:
             async with async_session_factory() as s:
                 async with s.begin():
-                    await ApiKeyRepository(s).touch_last_used(key_hash)
+                    from lib.db.tenant_context import set_tenant_context
+
+                    await set_tenant_context(s, user_id=str(row["user_id"]), tenant_id=str(row["tenant_id"]))
+                    await ApiKeyRepository(s).touch_last_used(key_hash, tenant_id=str(row["tenant_id"]))
         except Exception:
             logger.exception("更新 API Key last_used_at 失败（非致命）")
 
@@ -423,7 +495,20 @@ def _payload_to_user(payload: dict) -> CurrentUserInfo:
     from lib.db.base import DEFAULT_USER_ID
 
     sub = payload.get("sub", "")
-    return CurrentUserInfo(id=DEFAULT_USER_ID, sub=sub, role="admin")
+    user_id = payload.get("user_id") or DEFAULT_USER_ID
+    provider = payload.get("provider") or payload.get("via") or "local"
+    tenant_id = payload.get("tenant_id")
+    tenant_role = payload.get("tenant_role")
+    user = CurrentUserInfo(
+        id=str(user_id),
+        sub=str(sub),
+        provider=str(provider),
+        role="admin",
+        tenant_id=str(tenant_id) if tenant_id is not None else None,
+        tenant_role=str(tenant_role) if tenant_role is not None else None,
+    )
+    set_current_user_id(user.id)
+    return user
 
 
 async def get_current_user(

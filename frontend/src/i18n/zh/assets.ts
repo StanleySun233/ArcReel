@@ -23,6 +23,8 @@ export default {
   "close": "关闭",
   "library_title": "资产库",
   "library_subtitle": "跨项目复用的人物、场景与道具",
+  "library.tenant": "租户库",
+  "library.personal": "个人库",
   "library_tabs_label": "资产类型",
   "back_to_projects": "返回项目",
   "add_asset": "新增资产",
@@ -50,5 +52,8 @@ export default {
   "upload_sheet_short": "上传",
   "edit": "编辑",
   "delete": "删除",
+  "sync": "同步",
+  "sync_confirm_title": "从来源同步「{{name}}」？",
+  "sync_confirm_desc": "这会用来源资产覆盖当前快照。",
   "meta_updated_at": "{{date}} 更新",
 } satisfies Record<keyof typeof enAssets, string>;

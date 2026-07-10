@@ -81,7 +81,7 @@ def build_asset_router(
     spec = ASSET_SPECS[asset_type]
     keys = _I18N_KEYS[asset_type]
     result_key = asset_type
-    update_fields: tuple[str, ...] = ("description", spec.sheet_field, *spec.extra_string_fields)
+    update_fields: tuple[str, ...] = ("description", spec.media_file_field, *spec.extra_string_fields)
     update_list_fields: tuple[str, ...] = spec.extra_list_fields
 
     router = APIRouter()
@@ -110,7 +110,10 @@ def build_asset_router(
 
             def _sync():
                 manager = pm_getter()
-                entry: dict[str, Any] = {"description": req.description, spec.sheet_field: ""}
+                entry: dict[str, Any] = {
+                    "description": req.description,
+                    spec.media_file_field: extras.get(spec.media_file_field, ""),
+                }
                 for field in spec.extra_string_fields:
                     entry[field] = extras.get(field, "")
                 for field in spec.extra_list_fields:

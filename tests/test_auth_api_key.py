@@ -4,14 +4,20 @@ API Key 认证分流单元测试
 测试 auth 模块中的 API Key 路径：哈希计算、缓存逻辑、认证分流。
 """
 
+import asyncio
 import hashlib
+import os
 import time
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 import server.auth as auth_module
+from lib.db.models.api_key import ApiKey
+from lib.db.models.tenant import Tenant, TenantMembership
+from lib.db.models.user import User
 
 
 @pytest.fixture(autouse=True)
@@ -20,6 +26,28 @@ def clear_cache():
     auth_module._api_key_cache.clear()
     yield
     auth_module._api_key_cache.clear()
+
+
+class _SessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+def _tracked_create_task(tasks):
+    original_create_task = asyncio.create_task
+
+    def create_task(coro):
+        task = original_create_task(coro)
+        tasks.append(task)
+        return task
+
+    return create_task
 
 
 class TestHashApiKey:
@@ -31,6 +59,10 @@ class TestHashApiKey:
         key = "arc-abc"
         expected = hashlib.sha256(key.encode()).hexdigest()
         assert auth_module._hash_api_key(key) == expected
+
+    def test_api_key_tenant_id(self):
+        assert auth_module._api_key_tenant_id("arc-ten_owner-secret") == "ten_owner"
+        assert auth_module._api_key_tenant_id("arc-oldsecret") is None
 
 
 class TestApiKeyCache:
@@ -70,6 +102,7 @@ class TestApiKeyCache:
         # 若命中缓存则返回缓存值；True means hit
         hit, payload = auth_module._get_cached_api_key_payload(key_hash)
         assert hit
+        assert payload is not None
         assert payload["sub"] == "apikey:cached"
 
 
@@ -123,3 +156,66 @@ class TestVerifyAndGetPayloadAsync:
         ):
             await auth_module._verify_and_get_payload_async("arc-somekey")
         mock_jwt.assert_not_called()
+
+
+class TestApiKeyOwnerResolution:
+    @pytest.mark.asyncio
+    async def test_bearer_api_key_resolves_persisted_owner_user_id(self, async_session):
+        key = "arc-ten_owner-owner-key"
+        key_hash = auth_module._hash_api_key(key)
+        async with async_session.begin():
+            async_session.add(
+                User(
+                    id="camel:owner",
+                    username="owner",
+                    provider="camel",
+                    provider_subject="owner",
+                    role="user",
+                    is_active=True,
+                )
+            )
+            await async_session.flush()
+            async_session.add(
+                Tenant(
+                    id="ten_owner",
+                    name="Owner Tenant",
+                    owner_user_id="camel:owner",
+                    created_by_user_id="camel:owner",
+                )
+            )
+            await async_session.flush()
+            async_session.add(
+                TenantMembership(
+                    tenant_id="ten_owner",
+                    user_id="camel:owner",
+                    role="admin",
+                    created_by_user_id="camel:owner",
+                )
+            )
+            async_session.add(
+                ApiKey(
+                    name="owner-key",
+                    key_hash=key_hash,
+                    key_prefix=key[:8],
+                    expires_at=datetime.now(UTC) + timedelta(days=1),
+                    user_id="camel:owner",
+                    tenant_id="ten_owner",
+                )
+            )
+
+        tasks = []
+        with (
+            patch.dict(os.environ, {"AUTH_ENABLED": "true"}),
+            patch("lib.db.async_session_factory", return_value=_SessionContext(async_session)),
+            patch("asyncio.create_task", side_effect=_tracked_create_task(tasks)),
+        ):
+            user = await auth_module.get_current_user(key)
+
+        if tasks:
+            await asyncio.gather(*tasks)
+
+        assert user.id == "camel:owner"
+        assert user.sub == "apikey:owner-key"
+        assert user.provider == "apikey"
+        assert user.tenant_id == "ten_owner"
+        assert user.tenant_role == "admin"

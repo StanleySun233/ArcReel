@@ -18,6 +18,7 @@ export interface FrameCell {
   prev_scene_id: string | null;
   next_scene_id: string | null;
   image_path: string | null;
+  image_file_id?: string | null;
 }
 
 export interface GridGeneration {
@@ -26,6 +27,7 @@ export interface GridGeneration {
   script_file: string;
   scene_ids: string[];
   grid_image_path: string | null;
+  grid_image_file_id?: string | null;
   rows: number;
   cols: number;
   cell_count: number;

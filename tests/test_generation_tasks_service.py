@@ -1,5 +1,6 @@
 import contextlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -134,6 +135,26 @@ class _FakePM:
 
     def update_scene_asset(self, **kwargs):
         self.updated_assets.append(kwargs)
+        script_filename = kwargs.get("script_filename")
+        scene_id = kwargs.get("scene_id")
+        asset_type = kwargs.get("asset_type")
+        asset_path = kwargs.get("asset_path")
+        if not script_filename or not scene_id or not asset_type:
+            return
+        for item in self.script.get("segments", []):
+            if item.get("segment_id") == scene_id:
+                item.setdefault("generated_assets", {})[asset_type] = asset_path
+                return
+
+    def batch_update_scene_assets(self, *, project_name: str, script_filename: str, updates):
+        for scene_id, asset_type, asset_path in updates:
+            self.update_scene_asset(
+                project_name=project_name,
+                script_filename=script_filename,
+                scene_id=scene_id,
+                asset_type=asset_type,
+                asset_path=asset_path,
+            )
 
     def save_project(self, project_name: str, project: dict):
         self.project = project
@@ -180,6 +201,12 @@ class _FakeGenerator:
 
     def get_versions(self, resource_type, resource_id):
         return {"versions": [{"created_at": "2026-01-01T00:00:00Z"}]}
+
+    def ensure_current_tracked(self, resource_type, resource_id, file_path, prompt):
+        return None
+
+    def add_version(self, **kwargs):
+        return {"created_at": "2026-01-01T00:00:00Z"}
 
 
 def _prepare_files(tmp_path: Path):
@@ -705,7 +732,7 @@ class TestGenerationTasks:
         fake_video_backend = object()
 
         class _FakeResolver:
-            def __init__(self, session_factory):
+            def __init__(self, session_factory, *, user_id=None, tenant_id=None, _bound_session=None):
                 self.session_factory = session_factory
 
             @contextlib.asynccontextmanager
@@ -739,6 +766,38 @@ class TestGenerationTasks:
         # 纯视频任务：video provider_id 透传到咽喉层，image provider_id 为 None（无作用域报错）
         assert generator._video_provider_id == "gemini-aistudio"
         assert generator._image_provider_id is None
+
+    async def test_get_media_generator_passes_task_user_id_to_config_resolver(self, monkeypatch, tmp_path):
+        project_path = _prepare_files(tmp_path)
+        fake_pm = _FakePM(project_path)
+        captured_user_ids = []
+
+        class _FakeResolver:
+            def __init__(self, session_factory, *, user_id=None, tenant_id=None, _bound_session=None):
+                self.session_factory = session_factory
+                captured_user_ids.append(user_id)
+
+            @contextlib.asynccontextmanager
+            async def session(self):
+                yield self
+
+        async def _fake_resolve_video_backend(project_name, resolver, payload):
+            return None, "custom-2"
+
+        monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: fake_pm)
+        monkeypatch.setattr("lib.config.resolver.ConfigResolver", _FakeResolver)
+        monkeypatch.setattr(generation_tasks, "_resolve_video_backend", _fake_resolve_video_backend)
+
+        generator = await generation_tasks.get_media_generator(
+            "demo",
+            payload=None,
+            user_id="task-owner",
+            tenant_id="ten-test",
+            require_image_backend=False,
+        )
+
+        assert captured_user_ids == ["task-owner"]
+        assert generator._video_provider_id == "custom-2"
 
     def test_emit_success_batch_includes_fingerprints(self, monkeypatch, tmp_path):
         """生成成功事件应携带 asset_fingerprints"""
@@ -834,6 +893,76 @@ class TestGenerationTasks:
         assert all("outside" not in key for key in fps)
         assert all(not key.startswith("/") for key in fps)
 
+    async def test_execute_grid_task_records_grid_and_cell_file_ids(self, monkeypatch, tmp_path):
+        from PIL import Image
+
+        from lib.grid.models import GridGeneration
+        from lib.grid_manager import GridManager
+
+        project_path = _prepare_files(tmp_path)
+        (project_path / "grids").mkdir()
+        fake_pm = _FakePM(project_path)
+        monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: fake_pm)
+
+        grid = GridGeneration.create(
+            episode=1,
+            script_file="episode_1.json",
+            scene_ids=["E1S01", "E1S02"],
+            rows=1,
+            cols=2,
+            grid_size="grid_4",
+            provider="provider",
+            model="model",
+            prompt="grid prompt",
+        )
+        grid.id = "grid_1"
+        GridManager(project_path).save(grid)
+
+        class GridGenerator(_FakeGenerator):
+            async def generate_image_async(self, **kwargs):
+                self.image_calls.append(kwargs)
+                path = project_path / "grids" / "grid_1.png"
+                Image.new("RGB", (200, 100), color=(255, 0, 0)).save(path)
+                return path, 1
+
+        async def fake_record_output_file(**kwargs):
+            return f"fil_{kwargs['link_type']}_{kwargs['file_path'].stem}"
+
+        monkeypatch.setattr(generation_tasks, "get_media_generator", _async_return(GridGenerator()))
+        monkeypatch.setattr(
+            generation_tasks,
+            "_resolve_effective_image_backend",
+            _async_return(SimpleNamespace(provider_id="provider", model_id="model")),
+        )
+        monkeypatch.setattr(generation_tasks, "resolve_resolution", _async_return("2K"))
+        monkeypatch.setattr(generation_tasks, "_record_output_file", fake_record_output_file)
+
+        result = await generation_tasks.execute_grid_task(
+            "demo",
+            "grid_1",
+            {"prompt": "grid prompt", "script_file": "episode_1.json"},
+            user_id="usr_1",
+            tenant_id="ten_1",
+            task_id="tsk_1",
+        )
+
+        stored = GridManager(project_path).get("grid_1")
+        assert result["file_id"] == "fil_grid_image_grid_1"
+        assert stored is not None
+        assert stored.grid_image_file_id == "fil_grid_image_grid_1"
+        cell_file_ids = {
+            frame.next_scene_id: frame.image_file_id for frame in stored.frame_chain if frame.next_scene_id
+        }
+        assert cell_file_ids == {
+            "E1S01": "fil_storyboard_image_scene_E1S01",
+            "E1S02": "fil_storyboard_image_scene_E1S02",
+        }
+        assets_by_id = {item["segment_id"]: item["generated_assets"] for item in fake_pm.script["segments"][:2]}
+        assert assets_by_id["E1S01"]["storyboard_image"] == "fil_storyboard_image_scene_E1S01"
+        assert assets_by_id["E1S01"]["storyboard_image_file_id"] == "fil_storyboard_image_scene_E1S01"
+        assert assets_by_id["E1S02"]["storyboard_image"] == "fil_storyboard_image_scene_E1S02"
+        assert assets_by_id["E1S02"]["storyboard_image_file_id"] == "fil_storyboard_image_scene_E1S02"
+
     async def test_execute_task_validation_errors(self, tmp_path, monkeypatch):
         project_path = _prepare_files(tmp_path)
         fake_pm = _FakePM(project_path)
@@ -869,7 +998,7 @@ async def test_resolve_picks_t2i_from_payload_when_no_refs():
         "image_provider_t2i": "openai/gen-1",
         "image_provider_i2i": "openai/edit-1",
     }
-    resolved = await _resolve_effective_image_backend({}, payload, needs_i2i=False)
+    resolved = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=False)
     assert (resolved.provider_id, resolved.model_id) == ("openai", "gen-1")
 
 
@@ -879,7 +1008,7 @@ async def test_resolve_picks_i2i_from_payload_when_refs():
         "image_provider_t2i": "openai/gen-1",
         "image_provider_i2i": "openai/edit-1",
     }
-    resolved = await _resolve_effective_image_backend({}, payload, needs_i2i=True)
+    resolved = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=True)
     assert (resolved.provider_id, resolved.model_id) == ("openai", "edit-1")
 
 
@@ -887,8 +1016,8 @@ async def test_resolve_picks_i2i_from_payload_when_refs():
 async def test_resolve_falls_back_to_legacy_payload_image_provider():
     """payload 仅有旧 image_provider/image_model（历史任务）时两槽都用此值。"""
     payload = {"image_provider": "openai", "image_model": "legacy"}
-    t2i = await _resolve_effective_image_backend({}, payload, needs_i2i=False)
-    i2i = await _resolve_effective_image_backend({}, payload, needs_i2i=True)
+    t2i = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=False)
+    i2i = await _resolve_effective_image_backend({}, payload, tenant_id="ten-test", needs_i2i=True)
     assert (t2i.provider_id, t2i.model_id) == ("openai", "legacy")
     assert (i2i.provider_id, i2i.model_id) == ("openai", "legacy")
 
@@ -899,8 +1028,8 @@ async def test_resolve_reads_project_split_fields():
         "image_provider_t2i": "openai/proj-gen",
         "image_provider_i2i": "openai/proj-edit",
     }
-    t2i = await _resolve_effective_image_backend(project, {}, needs_i2i=False)
-    i2i = await _resolve_effective_image_backend(project, {}, needs_i2i=True)
+    t2i = await _resolve_effective_image_backend(project, {}, tenant_id="ten-test", needs_i2i=False)
+    i2i = await _resolve_effective_image_backend(project, {}, tenant_id="ten-test", needs_i2i=True)
     assert (t2i.provider_id, t2i.model_id) == ("openai", "proj-gen")
     assert (i2i.provider_id, i2i.model_id) == ("openai", "proj-edit")
 

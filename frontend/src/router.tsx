@@ -13,6 +13,7 @@ import { AssetLibraryPage } from "@/components/pages/AssetLibraryPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ToastOverlay } from "@/components/layout/ToastOverlay";
+import { CamelProviderBootstrapModal } from "@/components/auth/CamelProviderBootstrapModal";
 import { API } from "@/api";
 import { useProjectsStore } from "@/stores/projects-store";
 import { useAssistantStore } from "@/stores/assistant-store";
@@ -85,7 +86,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     return <Redirect to={`~/login?from=${encodeURIComponent(from)}`} />;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <CamelProviderBootstrapModal />
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +155,7 @@ export function AppRoutes() {
       <ConfigStatusLoader />
       <Switch>
         {/* Login page */}
+        <Route path="/login/callback" component={LoginPage} />
         <Route path="/login" component={LoginPage} />
 
         {/* Root redirects to projects list */}

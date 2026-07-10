@@ -27,14 +27,17 @@ import { API } from "@/api";
 import { useProjectsStore } from "@/stores/projects-store";
 import { useAppStore } from "@/stores/app-store";
 import { useConfigStatusStore } from "@/stores/config-status-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { ArchiveDiagnosticsDialog } from "@/components/shared/ArchiveDiagnosticsDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { GlassModal } from "@/components/ui/GlassModal";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { SecondaryButton } from "@/components/ui/SecondaryButton";
+import { TenantSwitcher } from "@/components/tenant/TenantSwitcher";
 import { Typewriter, type TypewriterSegment } from "@/components/ui/Typewriter";
 import { WARM_TONE } from "@/utils/severity-tone";
 import { getProjectDisplayName } from "@/utils/project-display";
+import { canWriteTenant } from "@/utils/auth";
 import { CreateProjectModal } from "./CreateProjectModal";
 import { OpenClawModal } from "./OpenClawModal";
 import { rememberAssetLibraryReturnTo } from "./AssetLibraryPage";
@@ -330,9 +333,10 @@ interface ProjectCardProps {
   phaseLabels: Record<Phase, string>;
   t: TFunction;
   onDelete: () => void;
+  canWrite: boolean;
 }
 
-function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete }: ProjectCardProps) {
+function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete, canWrite }: ProjectCardProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -464,6 +468,7 @@ function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete }: ProjectC
         </div>
       </Link>
 
+      {canWrite ? (
       <div className="absolute right-2.5 bottom-2.5 z-[2]">
         <button
           ref={triggerRef}
@@ -506,6 +511,7 @@ function ProjectCard({ project, styleLabel, phaseLabels, t, onDelete }: ProjectC
           </div>
         ) : null}
       </div>
+      ) : null}
     </article>
   );
 }
@@ -778,6 +784,7 @@ interface TopBarProps {
   onOpenClaw: () => void;
   importing: boolean;
   configIncomplete: boolean;
+  canWrite: boolean;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
@@ -791,6 +798,7 @@ function TopBar({
   onOpenClaw,
   importing,
   configIncomplete,
+  canWrite,
   searchInputRef,
 }: TopBarProps) {
   const { t } = useTranslation(["common", "dashboard", "assets"]);
@@ -848,6 +856,8 @@ function TopBar({
         </label>
 
         <div className="ml-auto flex items-center gap-1.5">
+          <TenantSwitcher />
+          <span aria-hidden className="mx-1 h-5 w-px bg-hairline-soft" />
           <button
             type="button"
             onClick={onAssets}
@@ -857,29 +867,33 @@ function TopBar({
             <Library className="h-3.5 w-3.5" />
             {t("assets:library_title")}
           </button>
-          <span aria-hidden className="mx-1 h-5 w-px bg-hairline-soft" />
-          <button
-            type="button"
-            onClick={onImport}
-            disabled={importing}
-            className="inline-flex items-center gap-1.5 rounded-[7px] border border-hairline bg-bg-grad-a/50 px-3 py-1.5 text-[12px] text-text-2 transition-colors hover:border-hairline-strong hover:bg-bg-grad-a focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {importing ? (
-              <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
-            ) : (
-              <Upload className="h-3.5 w-3.5" />
-            )}
-            {importing ? t("dashboard:importing") : t("dashboard:import_zip")}
-          </button>
-          <button
-            type="button"
-            onClick={onCreate}
-            className="inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-1.5 text-[12px] font-semibold transition-transform motion-safe:hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-            style={ACCENT_BUTTON_STYLE}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t("dashboard:create_project")}
-          </button>
+          {canWrite ? (
+            <>
+              <span aria-hidden className="mx-1 h-5 w-px bg-hairline-soft" />
+              <button
+                type="button"
+                onClick={onImport}
+                disabled={importing}
+                className="inline-flex items-center gap-1.5 rounded-[7px] border border-hairline bg-bg-grad-a/50 px-3 py-1.5 text-[12px] text-text-2 transition-colors hover:border-hairline-strong hover:bg-bg-grad-a focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {importing ? (
+                  <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                {importing ? t("dashboard:importing") : t("dashboard:import_zip")}
+              </button>
+              <button
+                type="button"
+                onClick={onCreate}
+                className="inline-flex items-center gap-1.5 rounded-[7px] px-3.5 py-1.5 text-[12px] font-semibold transition-transform motion-safe:hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                style={ACCENT_BUTTON_STYLE}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("dashboard:create_project")}
+              </button>
+            </>
+          ) : null}
           <span aria-hidden className="mx-1 h-5 w-px bg-hairline-soft" />
           <button
             type="button"
@@ -1151,6 +1165,11 @@ export function ProjectsPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isConfigComplete = useConfigStatusStore((s) => s.isComplete);
+  const currentTenant = useAuthStore((s) => s.currentTenant);
+  const tenantRole = useAuthStore((s) => s.tenantRole);
+  const canWriteProjects = currentTenant
+    ? canWriteTenant(currentTenant.role)
+    : tenantRole === null || canWriteTenant(tenantRole);
 
   const phaseLabels = useMemo<Record<Phase, string>>(
     () => ({
@@ -1175,8 +1194,9 @@ export function ProjectsPage() {
   }, [setProjects, setProjectsLoading]);
 
   useEffect(() => {
+    setProjects([]);
     void fetchProjects();
-  }, [fetchProjects]);
+  }, [currentTenant?.id, fetchProjects, setProjects]);
 
   useEffect(() => {
     function handler(e: KeyboardEvent) {
@@ -1388,6 +1408,7 @@ export function ProjectsPage() {
         onOpenClaw={() => setShowOpenClaw(true)}
         importing={importingProject}
         configIncomplete={!isConfigComplete}
+        canWrite={canWriteProjects}
         searchInputRef={searchInputRef}
       />
       <input
@@ -1419,7 +1440,7 @@ export function ProjectsPage() {
           </div>
         ) : projects.length === 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <NewProjectTile onClick={() => setShowCreateModal(true)} t={t} />
+            {canWriteProjects ? <NewProjectTile onClick={() => setShowCreateModal(true)} t={t} /> : null}
           </div>
         ) : (
           <>
@@ -1479,9 +1500,10 @@ export function ProjectsPage() {
                       phaseLabels={phaseLabels}
                       t={t}
                       onDelete={() => setDeletingProject(project)}
+                      canWrite={canWriteProjects}
                     />
                   ))}
-                  <NewProjectTile onClick={() => setShowCreateModal(true)} t={t} />
+                  {canWriteProjects ? <NewProjectTile onClick={() => setShowCreateModal(true)} t={t} /> : null}
                 </div>
               </section>
             )}

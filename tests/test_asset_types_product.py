@@ -15,6 +15,7 @@ class TestProductSpec:
         spec = ASSET_SPECS["product"]
         assert spec.bucket_key == "products"
         assert spec.sheet_field == "product_sheet"
+        assert spec.media_file_field == "product_sheet_file_id"
         assert spec.subdir == "products"
 
     def test_product_declares_list_and_string_fields(self):

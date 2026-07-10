@@ -81,6 +81,7 @@ export default {
   'models': 'Models',
   'usage': 'Usage',
   'api_keys': 'API Keys',
+  'account': 'Account',
   'about': 'About',
   'system_config_title': 'System configuration and API access management',
   'about_loading': 'Loading version info…',

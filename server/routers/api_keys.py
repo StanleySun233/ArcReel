@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from lib.db import async_session_factory
 from lib.db.repositories.api_key_repository import ApiKeyRepository
+from lib.db.tenant_context import set_tenant_context
 from lib.i18n import Translator
 from server.auth import (
     API_KEY_PREFIX,
@@ -22,6 +23,7 @@ from server.auth import (
     _hash_api_key,
     invalidate_api_key_cache,
 )
+from server.services.tenant_auth import ROLE_ADMIN, require_tenant_access
 
 router = APIRouter()
 
@@ -35,10 +37,10 @@ def _require_jwt_auth(user: CurrentUserInfo, _t: Callable[..., str]) -> None:
 API_KEY_DEFAULT_EXPIRY_DAYS = 30
 
 
-def _generate_api_key() -> str:
-    """生成格式为 arc-<32位随机字符> 的 API Key。"""
+def _generate_api_key(tenant_id: str) -> str:
+    """生成格式为 arc-<tenant_id>-<32位随机字符> 的 API Key。"""
     random_part = secrets.token_hex(16)  # 32 hex chars
-    return f"{API_KEY_PREFIX}{random_part}"
+    return f"{API_KEY_PREFIX}{tenant_id}-{random_part}"
 
 
 def _default_expires_at() -> datetime:
@@ -76,10 +78,6 @@ async def create_api_key(
 ) -> CreateApiKeyResponse:
     """创建新 API Key。完整 key 仅在响应中出现一次，之后无法再查看。"""
     _require_jwt_auth(_user, _t)
-    key = _generate_api_key()
-    key_hash = _hash_api_key(key)
-    key_prefix = key[:8]  # e.g. "arc-abcd"
-
     if body.expires_days == 0:
         expires_at: datetime | None = None
     elif body.expires_days is not None:
@@ -90,12 +88,19 @@ async def create_api_key(
     try:
         async with async_session_factory() as session:
             async with session.begin():
-                repo = ApiKeyRepository(session)
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_ADMIN)
+                await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+                key = _generate_api_key(access.id)
+                key_hash = _hash_api_key(key)
+                key_prefix = key[:24]
+                repo = ApiKeyRepository(session, user_id=_user.id, tenant_id=access.id)
                 row = await repo.create(
                     name=body.name,
                     key_hash=key_hash,
                     key_prefix=key_prefix,
                     expires_at=expires_at,
+                    user_id=_user.id,
+                    tenant_id=access.id,
                 )
     except IntegrityError:
         raise HTTPException(status_code=409, detail=_t("api_key_name_exists", name=body.name))
@@ -119,7 +124,9 @@ async def list_api_keys(
     _require_jwt_auth(_user, _t)
     async with async_session_factory() as session:
         async with session.begin():
-            repo = ApiKeyRepository(session)
+            access = await require_tenant_access(session, _user, minimum_role=ROLE_ADMIN)
+            await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+            repo = ApiKeyRepository(session, user_id=_user.id, tenant_id=access.id)
             rows = await repo.list_all()
 
     return [ApiKeyInfo(**row) for row in rows]
@@ -135,7 +142,9 @@ async def delete_api_key(
     _require_jwt_auth(_user, _t)
     async with async_session_factory() as session:
         async with session.begin():
-            repo = ApiKeyRepository(session)
+            access = await require_tenant_access(session, _user, minimum_role=ROLE_ADMIN)
+            await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
+            repo = ApiKeyRepository(session, user_id=_user.id, tenant_id=access.id)
             row = await repo.get_by_id(key_id)
             if row is None:
                 raise HTTPException(status_code=404, detail=_t("api_key_not_found", key_id=key_id))

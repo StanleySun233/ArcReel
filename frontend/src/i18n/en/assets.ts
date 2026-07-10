@@ -21,6 +21,8 @@ export default {
   "close": "Close",
   "library_title": "Asset Library",
   "library_subtitle": "Characters, scenes and props reusable across projects",
+  "library.tenant": "Tenant library",
+  "library.personal": "Personal library",
   "library_tabs_label": "Asset type",
   "back_to_projects": "Back to projects",
   "add_asset": "New asset",
@@ -48,5 +50,8 @@ export default {
   "upload_sheet_short": "Upload",
   "edit": "Edit",
   "delete": "Delete",
+  "sync": "Sync",
+  "sync_confirm_title": "Sync \"{{name}}\" from source?",
+  "sync_confirm_desc": "This will overwrite the current snapshot with the source asset.",
   "meta_updated_at": "Updated {{date}}",
 };

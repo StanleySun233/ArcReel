@@ -7,14 +7,16 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from lib.db.base import Base, utc_now
+from lib.db.base import Base, TenantOwnedMixin, UserOwnedMixin, utc_now
 
 
-class ProviderConfig(Base):
+class ProviderConfig(TenantOwnedMixin, UserOwnedMixin, Base):
     __tablename__ = "provider_config"
     __table_args__ = (
-        UniqueConstraint("provider", "key", name="uq_provider_key"),
+        UniqueConstraint("tenant_id", "provider", "key", name="uq_provider_config_tenant_provider_key"),
         Index("ix_provider_config_provider", "provider"),
+        Index("ix_provider_config_user_provider", "user_id", "provider"),
+        Index("ix_provider_config_tenant_provider", "tenant_id", "provider"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -27,11 +29,12 @@ class ProviderConfig(Base):
     )
 
 
-class SystemSetting(Base):
+class SystemSetting(TenantOwnedMixin, UserOwnedMixin, Base):
     __tablename__ = "system_setting"
+    __table_args__ = (UniqueConstraint("tenant_id", "key", name="uq_system_setting_tenant_key"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now, onupdate=utc_now

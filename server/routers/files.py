@@ -9,22 +9,30 @@ import json
 import logging
 import shutil
 import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import Annotated
+from urllib.parse import urlencode
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Body, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+import jwt
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, PlainTextResponse, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from lib.app_data_dir import app_data_dir
 from lib.asset_types import GLOBAL_LIBRARY_ASSET_TYPES
+from lib.db import get_async_session
+from lib.db.tenant_context import set_tenant_context
 from lib.episode_paths import (
     REFERENCE_VIDEO_STEP1_FILENAME,
     STEP1_FILENAMES,
     episode_drafts_dir,
     step1_read_candidates,
 )
+from lib.files import FileLinkSpec, FileService
 from lib.i18n import Translator
 from lib.image_utils import normalize_uploaded_image, validate_image_bytes
 from lib.project_change_hints import emit_project_change_batch, project_change_source
@@ -39,9 +47,12 @@ from lib.source_loader import (
     SourceLoader,
     UnsupportedFormatError,
 )
-from server.auth import CurrentUser
+from lib.storage import get_storage_service
+from server.auth import CurrentUser, get_token_secret
+from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
+FILE_URL_EXPIRES_IN = 300
 
 # 初始化项目管理器
 pm = ProjectManager(app_data_dir())
@@ -51,10 +62,48 @@ def get_project_manager() -> ProjectManager:
     return pm
 
 
+async def _tenant_project_manager(
+    session: AsyncSession,
+    current_user: CurrentUser,
+    *,
+    minimum_role: str,
+) -> ProjectManager:
+    access = await require_tenant_access(session, current_user, minimum_role=minimum_role)
+    await set_tenant_context(session, user_id=current_user.id, tenant_id=access.id)
+    session.info["user_id"] = current_user.id
+    session.info["tenant_id"] = access.id
+    return ProjectManager(app_data_dir(), tenant_id=access.id)
+
+
 def _require_filename(file: UploadFile, _t: Callable[..., str]) -> str:
     if not file.filename:
         raise HTTPException(status_code=400, detail=_t("missing_filename"))
     return file.filename
+
+
+def _create_file_access_token(*, file_id: str, user_id: str, tenant_id: str | None) -> str:
+    now = time.time()
+    return jwt.encode(
+        {
+            "purpose": "file_access",
+            "file_id": file_id,
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "iat": now,
+            "exp": now + FILE_URL_EXPIRES_IN,
+        },
+        get_token_secret(),
+        algorithm="HS256",
+    )
+
+
+def _verify_file_access_token(*, file_id: str, token: str) -> None:
+    try:
+        payload = jwt.decode(token, get_token_secret(), algorithms=["HS256"])
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
+    if payload.get("purpose") != "file_access" or payload.get("file_id") != file_id:
+        raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
 
 
 # 允许的文件类型
@@ -69,13 +118,84 @@ ALLOWED_EXTENSIONS = {
 }
 
 
+@router.post("/files")
+async def upload_private_file(
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    file: UploadFile = File(...),
+    alias: str | None = Form(None),
+    purpose: str = Form("upload"),
+):
+    access = await require_tenant_access(session, current_user, minimum_role=ROLE_MEMBER)
+    filename = alias or _require_filename(file, _t)
+    content = await file.read()
+    record = await FileService(session, get_storage_service()).create_file(
+        content=content,
+        alias=filename,
+        content_type=file.content_type,
+        created_by_user_id=current_user.id,
+        links=[FileLinkSpec(resource_type="tenant_library", resource_id=access.id, link_type=purpose)],
+    )
+    await session.commit()
+    return {
+        "file_id": record.file_id,
+        "alias": record.alias,
+        "mime_type": record.content_type,
+        "size_bytes": record.size_bytes,
+    }
+
+
+@router.get("/files/{file_id}/signed-url")
+async def get_file_signed_url(
+    file_id: str,
+    request: Request,
+    current_user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    await require_tenant_access(session, current_user, minimum_role=ROLE_VIEW)
+    service = FileService(session, get_storage_service())
+    allowed = await service.can_user_access(
+        file_id=file_id,
+        user_id=current_user.id,
+        tenant_id=current_user.tenant_id,
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
+    token = _create_file_access_token(file_id=file_id, user_id=current_user.id, tenant_id=current_user.tenant_id)
+    url = str(request.url_for("download_file_content", file_id=file_id))
+    return {"file_id": file_id, "url": f"{url}?{urlencode({'token': token})}", "expires_in": FILE_URL_EXPIRES_IN}
+
+
+@router.get("/files/{file_id}/content", name="download_file_content")
+async def download_file_content(
+    file_id: str,
+    token: str,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    _verify_file_access_token(file_id=file_id, token=token)
+    try:
+        content = await FileService(session, get_storage_service()).read_file(file_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="FILE_NOT_FOUND")
+    return Response(content.data, media_type=content.content_type)
+
+
 @router.get("/files/{project_name}/{path:path}")
-async def serve_project_file(project_name: str, path: str, request: Request, _t: Translator):
+async def serve_project_file(
+    project_name: str,
+    path: str,
+    request: Request,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """服务项目内的静态文件（图片/视频）"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             file_path = project_dir / path
 
             if not file_path.exists():
@@ -128,8 +248,9 @@ async def serve_global_asset(asset_type: str, filename: str, _t: Translator):
 async def upload_file(
     project_name: str,
     upload_type: str,
-    _user: CurrentUser,
+    current_user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     file: UploadFile = File(...),
     name: str | None = None,
     on_conflict: OnConflict = "fail",
@@ -158,6 +279,8 @@ async def upload_file(
             detail=_t("unsupported_image_type", ext=ext, allowed=", ".join(ALLOWED_EXTENSIONS[upload_type])),
         )
 
+    manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
+
     # Source 分支早返 — 走 SourceLoader 规范化
     if upload_type == "source":
         return await _handle_source_upload(
@@ -165,18 +288,19 @@ async def upload_file(
             file=file,
             on_conflict=on_conflict,
             _t=_t,
+            manager=manager,
         )
 
     try:
         content = await file.read()
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
 
             # 产品原图列表是这些文件的唯一指针：产品不存在就拒收，避免落下不可见的孤儿文件
             # （character_ref 等单图类型路径确定、可容忍资产后建，不受此约束）。
             if upload_type == "product_ref":
-                products = get_project_manager().load_project(project_name).get("products") or {}
+                products = manager.load_project(project_name).get("products") or {}
                 if not name or name not in products:
                     raise HTTPException(status_code=404, detail=_t("product_not_found", name=name or ""))
 
@@ -277,25 +401,21 @@ async def upload_file(
             if upload_type == "character" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_project_character_sheet(
-                            project_name, name, f"characters/{filename}"
-                        )
+                        manager.update_project_character_sheet(project_name, name, f"characters/{filename}")
                 except KeyError:
                     pass  # 角色不存在，忽略
 
             if upload_type == "character_ref" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_character_reference_image(
-                            project_name, name, f"characters/refs/{filename}"
-                        )
+                        manager.update_character_reference_image(project_name, name, f"characters/refs/{filename}")
                 except KeyError:
                     pass  # 角色不存在，忽略
 
             if upload_type == "scene" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_scene_sheet(
+                        manager.update_scene_sheet(
                             project_name,
                             name,
                             f"scenes/{filename}",
@@ -306,7 +426,7 @@ async def upload_file(
             if upload_type == "prop" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_prop_sheet(
+                        manager.update_prop_sheet(
                             project_name,
                             name,
                             f"props/{filename}",
@@ -317,7 +437,7 @@ async def upload_file(
             if upload_type == "product" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().update_product_sheet(
+                        manager.update_product_sheet(
                             project_name,
                             name,
                             f"products/{filename}",
@@ -328,7 +448,7 @@ async def upload_file(
             if upload_type == "product_ref" and name:
                 try:
                     with project_change_source("webui"):
-                        get_project_manager().add_product_reference_image(
+                        manager.add_product_reference_image(
                             project_name,
                             name,
                             f"products/refs/{filename}",
@@ -339,14 +459,29 @@ async def upload_file(
                     target_path.unlink(missing_ok=True)
                     raise HTTPException(status_code=404, detail=_t("product_not_found", name=name))
 
-            return {
-                "success": True,
-                "filename": filename,
-                "path": relative_path,
-                "url": f"/api/v1/files/{project_name}/{relative_path}",
-            }
+            return filename, relative_path, content
 
-        return await asyncio.to_thread(_sync)
+        filename, _relative_path, stored_content = await asyncio.to_thread(_sync)
+        record = await FileService(session, get_storage_service()).create_file(
+            content=stored_content,
+            alias=filename,
+            content_type=file.content_type,
+            created_by_user_id=current_user.id,
+            links=[
+                FileLinkSpec(resource_type="project", resource_id=project_name, link_type=upload_type),
+                FileLinkSpec(
+                    resource_type="tenant_library",
+                    resource_id=current_user.tenant_id or "",
+                    link_type=upload_type,
+                ),
+            ],
+        )
+        await session.commit()
+        return {
+            "success": True,
+            "filename": filename,
+            "file_id": record.file_id,
+        }
 
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
@@ -363,12 +498,13 @@ async def _handle_source_upload(
     file: UploadFile,
     on_conflict: OnConflict,
     _t: Translator,
+    manager: ProjectManager,
 ):
     """Source 分支：通过 SourceLoader 规范化为 UTF-8 .txt，并按需备份原始字节。"""
     original_filename = _require_filename(file, _t)
 
     try:
-        project_dir = get_project_manager().get_project_path(project_name)
+        project_dir = manager.get_project_path(project_name)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=_t("project_not_found", name=project_name))
 
@@ -510,12 +646,19 @@ async def list_project_files(project_name: str, _user: CurrentUser, _t: Translat
 
 
 @router.get("/projects/{project_name}/source/{filename}")
-async def get_source_file(project_name: str, filename: str, _user: CurrentUser, _t: Translator):
+async def get_source_file(
+    project_name: str,
+    filename: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """获取 source 文件的文本内容"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_VIEW)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             source_path = project_dir / "source" / filename
 
             if not source_path.exists():
@@ -547,15 +690,17 @@ async def get_source_file(project_name: str, filename: str, _user: CurrentUser, 
 async def update_source_file(
     project_name: str,
     filename: str,
-    _user: CurrentUser,
+    current_user: CurrentUser,
     _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
     content: str = Body(..., media_type="text/plain"),
 ):
     """更新或创建 source 文件"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             source_dir = project_dir / "source"
             source_dir.mkdir(parents=True, exist_ok=True)
             source_path = source_dir / filename
@@ -581,12 +726,19 @@ async def update_source_file(
 
 
 @router.delete("/projects/{project_name}/source/{filename}")
-async def delete_source_file(project_name: str, filename: str, _user: CurrentUser, _t: Translator):
+async def delete_source_file(
+    project_name: str,
+    filename: str,
+    current_user: CurrentUser,
+    _t: Translator,
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
     """删除 source 文件"""
     try:
+        manager = await _tenant_project_manager(session, current_user, minimum_role=ROLE_MEMBER)
 
         def _sync():
-            project_dir = get_project_manager().get_project_path(project_name)
+            project_dir = manager.get_project_path(project_name)
             source_path = project_dir / "source" / filename
 
             # 安全检查：确保路径在项目目录内

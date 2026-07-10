@@ -78,6 +78,7 @@ class MediaGenerator:
         *,
         config_resolver: Optional["ConfigResolver"] = None,
         user_id: str = DEFAULT_USER_ID,
+        tenant_id: str | None = None,
         image_provider_id: str | None = None,
         video_provider_id: str | None = None,
     ):
@@ -104,6 +105,7 @@ class MediaGenerator:
         self._audio_backend = audio_backend
         self._config = config_resolver
         self._user_id = user_id
+        self._tenant_id = tenant_id
         self._image_provider_id = image_provider_id
         self._video_provider_id = video_provider_id
         self.versions = VersionManager(project_path)
@@ -332,6 +334,7 @@ class MediaGenerator:
             aspect_ratio=aspect_ratio,
             provider=self._image_backend.name,
             user_id=self._user_id,
+            tenant_id=self._tenant_id,
             segment_id=resource_id if resource_type in ("storyboards", "videos", "grids") else None,
         )
 
@@ -445,6 +448,7 @@ class MediaGenerator:
             prompt=text,
             provider=self._audio_backend.name,
             user_id=self._user_id,
+            tenant_id=self._tenant_id,
             segment_id=resource_id,
         )
 
@@ -611,6 +615,7 @@ class MediaGenerator:
             generate_audio=effective_generate_audio,
             provider=provider_name,
             user_id=self._user_id,
+            tenant_id=self._tenant_id,
             segment_id=resource_id if resource_type in ("storyboards", "videos") else None,
         )
 

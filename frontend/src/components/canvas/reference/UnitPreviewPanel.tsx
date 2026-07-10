@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Film, Loader2, Sparkles, RotateCcw, AlertTriangle } from "lucide-react";
 import { API } from "@/api";
@@ -48,9 +49,32 @@ export function UnitPreviewPanel({
   onRestored,
 }: UnitPreviewPanelProps) {
   const { t } = useTranslation("dashboard");
-  const clip = unit?.generated_assets.video_clip ?? null;
+  const [signedClip, setSignedClip] = useState<{ id: string; url: string } | null>(null);
+  const clip = unit?.generated_assets.video_clip_file_id ?? unit?.generated_assets.video_clip ?? null;
   // 上传/还原后路径不变，靠 fingerprint cache-bust 让 <video> 重新拉取
-  const clipFp = useProjectsStore((s) => (clip ? s.getAssetFingerprint(clip) : null));
+  const clipFp = useProjectsStore((s) => (clip && !clip.startsWith("fil_") ? s.getAssetFingerprint(clip) : null));
+  const videoUrl = clip?.startsWith("fil_")
+    ? signedClip?.id === clip
+      ? signedClip.url
+      : null
+    : clip && projectName
+      ? API.getFileUrl(projectName, clip, clipFp)
+      : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!clip?.startsWith("fil_")) return;
+    void API.getFileSignedUrl(clip)
+      .then((res) => {
+        if (!cancelled) setSignedClip({ id: clip, url: res.url });
+      })
+      .catch(() => {
+        if (!cancelled) setSignedClip(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clip]);
 
   if (!unit) {
     return (
@@ -61,7 +85,6 @@ export function UnitPreviewPanel({
   }
 
   const effectiveStatus = status ?? deriveUnitStatus(unit);
-  const videoUrl = clip && projectName ? API.getFileUrl(projectName, clip, clipFp) : null;
 
   // 状态先于 video_clip 落库的窗口里，effectiveStatus==="ready" 但 videoUrl
   // 还为 null —— 这种情况下走 inFlight 占位避免空白面板。

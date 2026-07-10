@@ -1,6 +1,6 @@
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Edit2, Trash2, User as UserIcon, Landmark, Package } from "lucide-react";
+import { Edit2, RefreshCcw, Trash2, User as UserIcon, Landmark, Package } from "lucide-react";
 import { API } from "@/api";
 import { formatDate } from "@/utils/date-format";
 import type { Asset } from "@/types/asset";
@@ -10,6 +10,7 @@ interface Props {
   asset: Asset;
   onEdit: (asset: Asset) => void;
   onDelete: (asset: Asset) => void;
+  onSync?: (asset: Asset) => void;
 }
 
 const TYPE_ICON = { character: UserIcon, scene: Landmark, prop: Package };
@@ -18,13 +19,31 @@ const SHORT_DATE_OPTS: Intl.DateTimeFormatOptions = { month: "short", day: "nume
 
 export const AssetCard = memo(AssetCardImpl);
 
-function AssetCardImpl({ asset, onEdit, onDelete }: Props) {
+function AssetCardImpl({ asset, onEdit, onDelete, onSync }: Props) {
   const { t, i18n } = useTranslation("assets");
   const Icon = TYPE_ICON[asset.type];
-  const imageUrl = API.getGlobalAssetUrl(asset.image_path, asset.updated_at);
+  const [signedImage, setSignedImage] = useState<{ fileId: string; url: string } | null>(null);
+  const imageUrl = signedImage?.fileId === asset.image_file_id
+    ? signedImage.url
+    : API.getGlobalAssetUrl(asset.image_path, asset.updated_at);
   const formattedDate = asset.updated_at
     ? formatDate(asset.updated_at, i18n.language, SHORT_DATE_OPTS, "")
     : "";
+
+  useEffect(() => {
+    let canceled = false;
+    if (!asset.image_file_id) return;
+    void API.getFileSignedUrl(asset.image_file_id)
+      .then((res) => {
+        if (!canceled) setSignedImage({ fileId: asset.image_file_id!, url: res.url });
+      })
+      .catch(() => {
+        if (!canceled) setSignedImage(null);
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [asset.image_file_id, asset.updated_at]);
 
   return (
     <div className="group relative overflow-hidden rounded-[10px] border border-hairline-soft bg-bg-grad-a/55 transition-[transform,border-color] motion-safe:hover:-translate-y-0.5 hover:border-hairline">
@@ -53,21 +72,36 @@ function AssetCardImpl({ asset, onEdit, onDelete }: Props) {
                 <span className="tabular-nums">{t("meta_updated_at", { date: formattedDate })}</span>
               </div>
             ) : null}
+            <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.12em] text-text-4">
+              {t(`library.${asset.library}`)}
+            </div>
           </div>
           <div className="flex flex-col gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+            {asset.can_sync && onSync ? (
+              <button
+                type="button"
+                onClick={() => onSync(asset)}
+                aria-label={t("sync")}
+                className="rounded-[5px] p-1 text-text-4 transition-colors hover:text-accent-2 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => onEdit(asset)}
+              disabled={!asset.can_write}
               aria-label={t("edit")}
-              className="rounded-[5px] p-1 text-text-4 transition-colors hover:text-text focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="rounded-[5px] p-1 text-text-4 transition-colors hover:text-text disabled:cursor-not-allowed disabled:opacity-35 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               <Edit2 className="h-3.5 w-3.5" />
             </button>
             <button
               type="button"
               onClick={() => onDelete(asset)}
+              disabled={!asset.can_write}
               aria-label={t("delete")}
-              className="rounded-[5px] p-1 text-text-4 transition-colors hover:text-warm-bright focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warm-ring"
+              className="rounded-[5px] p-1 text-text-4 transition-colors hover:text-warm-bright disabled:cursor-not-allowed disabled:opacity-35 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warm-ring"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>

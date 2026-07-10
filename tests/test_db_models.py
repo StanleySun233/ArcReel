@@ -1,29 +1,62 @@
 """Tests for ORM model definitions — verify tables can be created."""
 
 from datetime import UTC, datetime
+import os
+import uuid
 
 import pytest
-from sqlalchemy import inspect, select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 import lib.db.models  # noqa: F401 — ensure all models registered for Base.metadata
-from lib.db.base import Base, TimestampMixin, UserOwnedMixin
-from lib.db.models import AgentSession, Task, User
+from lib.db.base import Base, TenantOwnedMixin, TimestampMixin, UserOwnedMixin
+from lib.db.models import AgentSession, Task, Tenant, TenantMembership, User
 
 
 @pytest.fixture
 async def engine():
-    eng = create_async_engine("sqlite+aiosqlite:///:memory:")
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if not url.startswith("postgresql+asyncpg://"):
+        raise RuntimeError("DATABASE_URL must be postgresql+asyncpg:// for database model tests")
+    schema = f"test_{uuid.uuid4().hex[:12]}"
+    eng = create_async_engine(
+        url,
+        poolclass=NullPool,
+        connect_args={"server_settings": {"search_path": schema}},
+    )
+    async with eng.begin() as conn:
+        await conn.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{schema}"'))
     async with eng.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield eng
-    await eng.dispose()
+    try:
+        async with eng.begin() as conn:
+            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    finally:
+        await eng.dispose()
 
 
 @pytest.fixture
 async def session(engine):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
+        session.add(User(id="default", username="admin", provider="local", provider_subject="default"))
+        await session.flush()
+        session.add(
+            Tenant(
+                id="ten_test",
+                name="Test Tenant",
+                owner_user_id="default",
+                personal_for_user_id="default",
+                created_by_user_id="default",
+            )
+        )
+        await session.flush()
+        session.add(
+            TenantMembership(tenant_id="ten_test", user_id="default", role="admin", created_by_user_id="default")
+        )
+        await session.commit()
         yield session
 
 
@@ -48,6 +81,7 @@ class TestModelsCreateTables:
             status="queued",
             queued_at=now,
             updated_at=now,
+            tenant_id="ten_test",
         )
         session.add(task)
         await session.commit()
@@ -86,10 +120,20 @@ class TestUserModel:
             columns = await conn.run_sync(
                 lambda sync_conn: {c["name"] for c in inspect(sync_conn).get_columns("users")}
             )
-        assert columns == {"id", "username", "role", "is_active", "created_at", "updated_at"}
+        assert columns == {
+            "id",
+            "username",
+            "provider",
+            "provider_subject",
+            "role",
+            "is_active",
+            "camel_provider_bootstrap_completed_at",
+            "created_at",
+            "updated_at",
+        }
 
     async def test_user_round_trip(self, session):
-        user = User(id="u1", username="alice")
+        user = User(id="u1", username="alice", provider="camel", provider_subject="u1")
         session.add(user)
         await session.commit()
 
@@ -122,16 +166,22 @@ class TestUserOwnedMixin:
         assert col.server_default.arg == "default"
 
 
+class TestTenantOwnedMixin:
+    def test_tenant_owned_mixin_has_tenant_id(self):
+        col = TenantOwnedMixin.__dict__["tenant_id"].column
+        assert col.foreign_keys
+
+
 class TestMixinApplicationToModels:
     """Verify Mixin columns are present on ORM models after refactoring."""
 
     async def test_task_has_user_id(self, engine):
-        """Task model should have user_id from UserOwnedMixin."""
         async with engine.connect() as conn:
             columns = await conn.run_sync(
                 lambda sync_conn: {c["name"] for c in inspect(sync_conn).get_columns("tasks")}
             )
         assert "user_id" in columns
+        assert "tenant_id" in columns
 
     async def test_api_call_has_timestamp_and_user_id(self, engine):
         """ApiCall should have created_at (NOT NULL), updated_at, and user_id from Mixins."""
@@ -143,6 +193,7 @@ class TestMixinApplicationToModels:
         assert col_info["created_at"]["nullable"] is False
         assert "updated_at" in col_info
         assert "user_id" in col_info
+        assert "tenant_id" in col_info
 
     async def test_api_key_has_timestamp_and_user_id(self, engine):
         """ApiKey should have updated_at and user_id from Mixins."""
@@ -152,6 +203,7 @@ class TestMixinApplicationToModels:
             )
         assert "updated_at" in columns
         assert "user_id" in columns
+        assert "tenant_id" in columns
 
     async def test_agent_session_has_timestamp_and_user_id(self, engine):
         """AgentSession should have created_at, updated_at, and user_id from Mixins."""
@@ -164,12 +216,12 @@ class TestMixinApplicationToModels:
         assert "user_id" in columns
 
     async def test_task_event_no_user_id(self, engine):
-        """TaskEvent should NOT have user_id — it was not given UserOwnedMixin."""
         async with engine.connect() as conn:
             columns = await conn.run_sync(
                 lambda sync_conn: {c["name"] for c in inspect(sync_conn).get_columns("task_events")}
             )
         assert "user_id" not in columns
+        assert "tenant_id" in columns
 
     async def test_worker_lease_no_user_id(self, engine):
         """WorkerLease should NOT have user_id — it was not given UserOwnedMixin."""

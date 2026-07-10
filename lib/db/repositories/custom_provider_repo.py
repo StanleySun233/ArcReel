@@ -4,12 +4,23 @@ from __future__ import annotations
 
 from sqlalchemy import delete, select
 
+from lib.db.base import DEFAULT_USER_ID
 from lib.db.models.custom_provider import CustomProvider, CustomProviderModel
 from lib.db.repositories.base import BaseRepository
 
 
 class CustomProviderRepository(BaseRepository):
     """自定义供应商 + 模型 CRUD。"""
+
+    def __init__(self, session, user_id: str | None = None, tenant_id: str | None = None):
+        super().__init__(session)
+        self.user_id = user_id or str(session.info.get("user_id") or DEFAULT_USER_ID)
+        resolved_tenant_id = tenant_id or session.info.get("tenant_id")
+        if not resolved_tenant_id:
+            raise ValueError("tenant_id is required")
+        self.tenant_id = str(resolved_tenant_id)
+        session.info["user_id"] = self.user_id
+        session.info["tenant_id"] = self.tenant_id
 
     # ── Provider CRUD ──────────────────────────────────────────────
 
@@ -27,6 +38,8 @@ class CustomProviderRepository(BaseRepository):
     ) -> CustomProvider:
         """创建供应商，可选同时创建模型列表。"""
         provider = CustomProvider(
+            user_id=self.user_id,
+            tenant_id=self.tenant_id,
             display_name=display_name,
             discovery_format=discovery_format,
             base_url=base_url,
@@ -40,19 +53,22 @@ class CustomProviderRepository(BaseRepository):
 
         if models:
             for m in models:
-                model = CustomProviderModel(provider_id=provider.id, **m)
+                model = CustomProviderModel(tenant_id=self.tenant_id, provider_id=provider.id, **m)
                 self.session.add(model)
             await self.session.flush()
 
         return provider
 
     async def get_provider(self, provider_id: int) -> CustomProvider | None:
-        stmt = select(CustomProvider).where(CustomProvider.id == provider_id)
+        stmt = select(CustomProvider).where(
+            CustomProvider.tenant_id == self.tenant_id,
+            CustomProvider.id == provider_id,
+        )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def list_providers(self) -> list[CustomProvider]:
-        stmt = select(CustomProvider).order_by(CustomProvider.id)
+        stmt = select(CustomProvider).where(CustomProvider.tenant_id == self.tenant_id).order_by(CustomProvider.id)
         result = await self.session.execute(stmt)
         return list(result.scalars())
 
@@ -70,16 +86,28 @@ class CustomProviderRepository(BaseRepository):
 
         显式删除模型而非依赖 FK CASCADE，因为 SQLite 默认不启用 foreign_keys pragma。
         """
-        await self.session.execute(delete(CustomProviderModel).where(CustomProviderModel.provider_id == provider_id))
-        await self.session.execute(delete(CustomProvider).where(CustomProvider.id == provider_id))
+        provider = await self.get_provider(provider_id)
+        if provider is None:
+            return
+        await self.session.execute(
+            delete(CustomProviderModel).where(
+                CustomProviderModel.tenant_id == self.tenant_id,
+                CustomProviderModel.provider_id == provider_id,
+            )
+        )
+        await self.session.execute(
+            delete(CustomProvider).where(CustomProvider.tenant_id == self.tenant_id, CustomProvider.id == provider_id)
+        )
         await self.session.flush()
 
     # ── Model management ──────────────────────────────────────────
 
     async def list_models(self, provider_id: int) -> list[CustomProviderModel]:
+        if await self.get_provider(provider_id) is None:
+            return []
         stmt = (
             select(CustomProviderModel)
-            .where(CustomProviderModel.provider_id == provider_id)
+            .where(CustomProviderModel.tenant_id == self.tenant_id, CustomProviderModel.provider_id == provider_id)
             .order_by(CustomProviderModel.id)
         )
         result = await self.session.execute(stmt)
@@ -87,10 +115,17 @@ class CustomProviderRepository(BaseRepository):
 
     async def replace_models(self, provider_id: int, models: list[dict]) -> list[CustomProviderModel]:
         """删除旧模型，插入新列表。返回新创建的模型。"""
-        await self.session.execute(delete(CustomProviderModel).where(CustomProviderModel.provider_id == provider_id))
+        if await self.get_provider(provider_id) is None:
+            return []
+        await self.session.execute(
+            delete(CustomProviderModel).where(
+                CustomProviderModel.tenant_id == self.tenant_id,
+                CustomProviderModel.provider_id == provider_id,
+            )
+        )
         new_models = []
         for m in models:
-            model = CustomProviderModel(provider_id=provider_id, **m)
+            model = CustomProviderModel(tenant_id=self.tenant_id, provider_id=provider_id, **m)
             self.session.add(model)
             new_models.append(model)
         await self.session.flush()
@@ -98,7 +133,11 @@ class CustomProviderRepository(BaseRepository):
 
     async def update_model(self, model_id: int, **kwargs) -> CustomProviderModel | None:
         """更新模型字段。返回更新后的对象，若不存在返回 None。"""
-        stmt = select(CustomProviderModel).where(CustomProviderModel.id == model_id)
+        stmt = (
+            select(CustomProviderModel)
+            .join(CustomProvider, CustomProviderModel.provider_id == CustomProvider.id)
+            .where(CustomProvider.tenant_id == self.tenant_id, CustomProviderModel.id == model_id)
+        )
         result = await self.session.execute(stmt)
         model = result.scalar_one_or_none()
         if model is None:
@@ -109,14 +148,24 @@ class CustomProviderRepository(BaseRepository):
 
     async def delete_model(self, model_id: int) -> None:
         """删除单个模型。"""
-        await self.session.execute(delete(CustomProviderModel).where(CustomProviderModel.id == model_id))
+        stmt = (
+            select(CustomProviderModel.id)
+            .join(CustomProvider, CustomProviderModel.provider_id == CustomProvider.id)
+            .where(CustomProvider.tenant_id == self.tenant_id, CustomProviderModel.id == model_id)
+        )
+        result = await self.session.execute(stmt)
+        scoped_id = result.scalar_one_or_none()
+        if scoped_id is not None:
+            await self.session.execute(delete(CustomProviderModel).where(CustomProviderModel.id == scoped_id))
         await self.session.flush()
 
     async def list_all_enabled_models(self) -> list[CustomProviderModel]:
         """跨所有供应商获取全部已启用模型。"""
         stmt = (
             select(CustomProviderModel)
+            .join(CustomProvider, CustomProviderModel.provider_id == CustomProvider.id)
             .where(CustomProviderModel.is_enabled == True)  # noqa: E712
+            .where(CustomProvider.tenant_id == self.tenant_id)
             .order_by(CustomProviderModel.provider_id, CustomProviderModel.id)
         )
         result = await self.session.execute(stmt)
@@ -153,7 +202,9 @@ class CustomProviderRepository(BaseRepository):
             return []
         stmt = (
             select(CustomProviderModel)
+            .join(CustomProvider, CustomProviderModel.provider_id == CustomProvider.id)
             .where(
+                CustomProvider.tenant_id == self.tenant_id,
                 CustomProviderModel.endpoint.in_(matching_endpoints),
                 CustomProviderModel.is_enabled == True,  # noqa: E712
             )
@@ -164,9 +215,14 @@ class CustomProviderRepository(BaseRepository):
 
     async def get_model_by_ids(self, provider_id: int, model_id: str) -> CustomProviderModel | None:
         """根据供应商 ID 和模型 ID 获取模型。"""
-        stmt = select(CustomProviderModel).where(
-            CustomProviderModel.provider_id == provider_id,
-            CustomProviderModel.model_id == model_id,
+        stmt = (
+            select(CustomProviderModel)
+            .join(CustomProvider, CustomProviderModel.provider_id == CustomProvider.id)
+            .where(
+                CustomProvider.tenant_id == self.tenant_id,
+                CustomProviderModel.provider_id == provider_id,
+                CustomProviderModel.model_id == model_id,
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -181,11 +237,16 @@ class CustomProviderRepository(BaseRepository):
         matching_endpoints = ENDPOINT_KEYS_BY_MEDIA_TYPE.get(media_type, ())
         if not matching_endpoints:
             return None
-        stmt = select(CustomProviderModel).where(
-            CustomProviderModel.provider_id == provider_id,
-            CustomProviderModel.endpoint.in_(matching_endpoints),
-            CustomProviderModel.is_default == True,  # noqa: E712
-            CustomProviderModel.is_enabled == True,  # noqa: E712
+        stmt = (
+            select(CustomProviderModel)
+            .join(CustomProvider, CustomProviderModel.provider_id == CustomProvider.id)
+            .where(
+                CustomProvider.tenant_id == self.tenant_id,
+                CustomProviderModel.provider_id == provider_id,
+                CustomProviderModel.endpoint.in_(matching_endpoints),
+                CustomProviderModel.is_default == True,  # noqa: E712
+                CustomProviderModel.is_enabled == True,  # noqa: E712
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Sparkles, ImageIcon, Film } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { API } from "@/api";
@@ -53,6 +54,10 @@ const UPLOAD_ACCEPT: Record<MediaKind, string> = {
   video: UPLOAD_VIDEO_ACCEPT,
 };
 
+function isFileId(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.startsWith("fil_");
+}
+
 export function MediaCard({
   kind,
   projectName,
@@ -72,17 +77,59 @@ export function MediaCard({
   uploadDisabled,
 }: MediaCardProps) {
   const { t } = useTranslation("dashboard");
+  const [signedAsset, setSignedAsset] = useState<{ id: string; url: string } | null>(null);
+  const [signedPoster, setSignedPoster] = useState<{ id: string; url: string } | null>(null);
 
   const assetFp = useProjectsStore((s) =>
-    assetPath ? s.getAssetFingerprint(assetPath) : null,
+    assetPath && !isFileId(assetPath) ? s.getAssetFingerprint(assetPath) : null,
   );
   const posterFp = useProjectsStore((s) =>
-    posterPath ? s.getAssetFingerprint(posterPath) : null,
+    posterPath && !isFileId(posterPath) ? s.getAssetFingerprint(posterPath) : null,
   );
-  const assetUrl = assetPath ? API.getFileUrl(projectName, assetPath, assetFp) : null;
-  const posterUrl = posterPath
-    ? API.getFileUrl(projectName, posterPath, posterFp)
-    : null;
+  const assetUrl = isFileId(assetPath)
+    ? signedAsset?.id === assetPath
+      ? signedAsset.url
+      : null
+    : assetPath
+      ? API.getFileUrl(projectName, assetPath, assetFp)
+      : null;
+  const posterUrl = isFileId(posterPath)
+    ? signedPoster?.id === posterPath
+      ? signedPoster.url
+      : null
+    : posterPath
+      ? API.getFileUrl(projectName, posterPath, posterFp)
+      : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isFileId(assetPath)) return;
+    void API.getFileSignedUrl(assetPath)
+      .then((res) => {
+        if (!cancelled) setSignedAsset({ id: assetPath, url: res.url });
+      })
+      .catch(() => {
+        if (!cancelled) setSignedAsset(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!isFileId(posterPath)) return;
+    void API.getFileSignedUrl(posterPath)
+      .then((res) => {
+        if (!cancelled) setSignedPoster({ id: posterPath, url: res.url });
+      })
+      .catch(() => {
+        if (!cancelled) setSignedPoster(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [posterPath]);
 
   const Icon = kind === "storyboard" ? ImageIcon : Film;
   const title =

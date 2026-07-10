@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
 import { API } from "@/api";
 import { useAppStore } from "@/stores/app-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { useProjectsStore } from "@/stores/projects-store";
 import { ProjectsPage } from "@/components/pages/ProjectsPage";
 
@@ -27,6 +28,7 @@ describe("ProjectsPage", () => {
   beforeEach(() => {
     useProjectsStore.setState(useProjectsStore.getInitialState(), true);
     useAppStore.setState(useAppStore.getInitialState(), true);
+    useAuthStore.setState(useAuthStore.getInitialState(), true);
     vi.restoreAllMocks();
   });
 
@@ -147,6 +149,80 @@ describe("ProjectsPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("create-project-modal")).toBeInTheDocument();
     });
+  });
+
+  it("hides project write actions for view-only tenants", async () => {
+    vi.spyOn(API, "listProjects").mockResolvedValue({ projects: [] });
+    useAuthStore.setState({
+      currentTenant: {
+        id: "ten_view",
+        name: "View Team",
+        role: "view",
+        is_owner: false,
+        personal: false,
+      },
+      tenantRole: null,
+      tenants: [],
+    });
+
+    renderPage();
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "创建项目" })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("新建项目")).not.toBeInTheDocument();
+    expect(screen.queryByText("导入 ZIP")).not.toBeInTheDocument();
+  });
+
+  it("reloads project list when the current tenant changes", async () => {
+    const personalTenant = {
+      id: "ten_personal",
+      name: "Owner 的个人空间",
+      role: "admin" as const,
+      is_owner: true,
+      personal: true,
+    };
+    const teamTenant = {
+      id: "ten_team",
+      name: "Team Space",
+      role: "admin" as const,
+      is_owner: true,
+      personal: false,
+    };
+    const listProjects = vi.spyOn(API, "listProjects")
+      .mockResolvedValueOnce({ projects: [] })
+      .mockResolvedValueOnce({
+        projects: [
+          {
+            name: "team-demo",
+            title: "Team Demo",
+            style: "",
+            thumbnail: null,
+            status: {
+              current_phase: "setup",
+              phase_progress: 0,
+              characters: { total: 0, completed: 0 },
+              scenes: { total: 0, completed: 0 },
+              props: { total: 0, completed: 0 },
+              episodes_summary: { total: 0, scripted: 0, in_production: 0, completed: 0 },
+            },
+          },
+        ],
+      });
+    useAuthStore.setState({
+      currentTenant: personalTenant,
+      tenantRole: "admin",
+      tenants: [personalTenant, teamTenant],
+    });
+
+    renderPage();
+
+    await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      useAuthStore.setState({ currentTenant: teamTenant, tenantRole: "admin" });
+    });
+
+    await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2));
+    expect((await screen.findAllByText("Team Demo")).length).toBeGreaterThan(0);
   });
 
   it("imports a zip project, refreshes the list, and navigates to the workspace", async () => {

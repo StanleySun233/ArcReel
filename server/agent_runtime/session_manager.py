@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any, Optional
 from uuid import uuid4
 
-from lib.db.base import DEFAULT_USER_ID
 from lib.i18n import DEFAULT_LOCALE
 from lib.logging_config import resolve_log_dir
+from lib.user_scope import get_current_user_id, scoped_projects_root
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.entry_pipeline import SessionEntryPipeline
 from server.agent_runtime.event_log import (
@@ -287,7 +287,7 @@ class SessionManager:
         # convention. Production passes the configured app_data_dir() explicitly.
         # 两路都 resolve，避免符号链接场景下 _resolve_project_cwd 的 relative_to
         # 校验失败（project_cwd 已经 resolve 过）。strict=False 容忍目录不存在。
-        self.projects_root = (
+        self._projects_root = (
             Path(projects_root).resolve(strict=False)
             if projects_root is not None
             else (self.project_root / "projects").resolve()
@@ -336,8 +336,15 @@ class SessionManager:
             max_turns_provider=lambda: self.max_turns,
             resolve_project_cwd=self._resolve_project_cwd,
             session_factory_provider=lambda: getattr(self, "_session_factory", None),
-            user_id_provider=lambda: getattr(self, "_user_id", DEFAULT_USER_ID),
+            user_id_provider=get_current_user_id,
+            projects_root_provider=lambda: self.projects_root,
         )
+
+    @property
+    def projects_root(self) -> Path:
+        root = scoped_projects_root(self._projects_root)
+        root.mkdir(parents=True, exist_ok=True)
+        return root.resolve(strict=False)
 
     def configure_sandbox_runtime(self, *, in_docker: bool, sandbox_enabled: bool) -> None:
         """startup 期注入平台运行时事实（Docker 嵌套、内核沙箱可用性）。
@@ -387,6 +394,7 @@ class SessionManager:
     ) -> Any:
         """委派给 ``OptionsAssembler.build``——SessionManager 不再直接构建 options 与
         hook，仅调用装配器；凭证注入、prompt 装配、hook 工厂均由装配器持有。"""
+        self.access_policy = replace(self.access_policy, projects_root=self.projects_root)
         return await self._options_assembler.build(
             project_name,
             resume_id=resume_id,
@@ -1025,7 +1033,7 @@ class SessionManager:
             model=resolve_assistant_model(result_msg, managed.assistant_model),
             prompt=managed.last_user_prompt[:500] if managed.last_user_prompt else None,
             provider=PROVIDER_ANTHROPIC,
-            user_id=getattr(self, "_user_id", DEFAULT_USER_ID),
+            user_id=get_current_user_id(),
         )
         await self.usage_tracker.finish_call(
             call_id,

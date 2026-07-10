@@ -47,6 +47,7 @@ class TestCustomProviderTable:
             "image_max_workers",
             "video_max_workers",
             "audio_max_workers",
+            "user_id",
             "created_at",
             "updated_at",
         }

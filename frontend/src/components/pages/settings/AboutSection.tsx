@@ -3,6 +3,7 @@ import { AlertTriangle, ExternalLink, Info, Loader2, RefreshCcw } from "lucide-r
 import { useTranslation } from "react-i18next";
 import { API } from "@/api";
 import { StreamMarkdown } from "@/components/copilot/StreamMarkdown";
+import { LegalLinks } from "@/components/legal/LegalLinks";
 import { CARD_STYLE, GHOST_BTN_LG_CLS } from "@/components/ui/darkroom-tokens";
 import { formatDate } from "@/utils/date-format";
 import type { GetSystemVersionResponse } from "@/types";
@@ -260,7 +261,6 @@ export function AboutSection() {
         )}
       </div>
 
-      {/* Copyright & attribution — NOTICE §7(b) 要求的署名句与仓库链接，逐字保留，不走品牌占位 */}
       <div
         className="rounded-[12px] border border-hairline p-6"
         style={CARD_STYLE}
@@ -268,20 +268,7 @@ export function AboutSection() {
         <div className="mb-3 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-accent-2">
           {t("about_legal_title")}
         </div>
-        <div className="space-y-1 text-[12.5px] text-text-3">
-          <p>Copyright © 2026 Pollo3470 and ArcReel contributors</p>
-          <p>
-            Powered by ArcReel —{" "}
-            <a
-              href="https://github.com/ArcReel/ArcReel"
-              target="_blank"
-              rel="noreferrer"
-              className="break-all text-accent-2 transition-colors hover:text-accent"
-            >
-              https://github.com/ArcReel/ArcReel
-            </a>
-          </p>
-        </div>
+        <LegalLinks />
       </div>
     </section>
   );

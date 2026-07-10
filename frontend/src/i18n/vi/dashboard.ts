@@ -82,6 +82,7 @@ export default {
   'models': 'Mô hình',
   'usage': 'Sử dụng',
   'api_keys': 'Khóa API',
+  'account': 'Tài khoản',
   'about': 'Giới thiệu',
   'system_config_title': 'Cấu hình hệ thống và quản lý truy cập API',
   'about_loading': 'Đang tải thông tin phiên bản…',

@@ -55,7 +55,7 @@ import type {
 } from "@/types";
 import type { GenerationMode } from "@/utils/generation-mode";
 import type { GridGeneration } from "@/types/grid";
-import type { Asset, AssetType, AssetCreatePayload, AssetUpdatePayload } from "@/types/asset";
+import type { Asset, AssetLibrary, AssetType, AssetCreatePayload, AssetUpdatePayload } from "@/types/asset";
 import type {
   AgentCredential,
   CreateAgentCredentialRequest,
@@ -64,7 +64,7 @@ import type {
   TestConnectionResponse,
   UpdateAgentCredentialRequest,
 } from "@/types/agent-credential";
-import { getToken, clearToken } from "@/utils/auth";
+import { getToken, clearToken, recoverTenantAccess, type AuthTenant } from "@/utils/auth";
 import i18n from "./i18n";
 
 // ==================== Helper types ====================
@@ -78,6 +78,27 @@ export interface LoginResponse {
 /** Standard error response body from backend (mirrors FastAPI HTTPException detail). */
 export interface ErrorResponse {
   detail: string | { msg?: string }[];
+  error?: string;
+  fallback_tenant_id?: string;
+}
+
+export interface AuthMeResponse {
+  user: {
+    id: string;
+    username: string;
+    provider: string;
+  };
+  tenant: AuthTenant;
+}
+
+export interface AuthTenantsResponse {
+  tenants: AuthTenant[];
+}
+
+export interface TenantTokenResponse {
+  access_token: string;
+  token_type: string;
+  tenant: AuthTenant;
 }
 
 /**
@@ -187,6 +208,66 @@ export interface UsageCallsFilters {
 export interface SuccessResponse {
   success: boolean;
   message?: string;
+}
+
+export type CamelBootstrapMode = "create" | "repair";
+
+export interface CamelBootstrapProviderPreview {
+  media: string;
+  provider_name: string;
+  base_url: string;
+  endpoint: string;
+  models: string[];
+  token_name: string;
+}
+
+export type CamelBootstrapStatus =
+  | {
+      needed: true;
+      completed: false;
+      camel_user_id: string;
+      providers: CamelBootstrapProviderPreview[];
+    }
+  | {
+      needed: false;
+      completed: true;
+    };
+
+export interface CamelBootstrapProviderResult {
+  media: string;
+  provider_id: number;
+  provider_name: string;
+  models: string[];
+}
+
+export interface CamelBootstrapTokenLink {
+  media: string;
+  token_name: string;
+  delete_url: string;
+}
+
+export type CamelBootstrapResult =
+  | {
+      completed: true;
+      providers: CamelBootstrapProviderResult[];
+    }
+  | {
+      completed: false;
+      error: "camel_token_conflict";
+      conflicts: CamelBootstrapTokenLink[];
+    }
+  | {
+      completed: false;
+      error: "partial_bootstrap_failed";
+      created_tokens: CamelBootstrapTokenLink[];
+    }
+  | {
+      completed: false;
+      error?: string;
+    };
+
+export interface CamelBootstrapStartResponse {
+  authorization_url: string;
 }
 
 /** 说书模式片段 PATCH 入参（drama 模式片段走 {@link API.updateScene}）。 */
@@ -331,7 +412,8 @@ class API {
    */
   static async request<T = unknown>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    tenantRecoveryAttempted = false,
   ): Promise<T> {
     const url = `${API_BASE}${endpoint}`;
     const defaultOptions: RequestInit = {
@@ -347,6 +429,18 @@ class API {
       const error = await response
         .json()
         .catch(() => ({ detail: response.statusText })) as ErrorResponse;
+      if (response.status === 403 && !tenantRecoveryAttempted) {
+        const code = typeof error.error === "string"
+          ? error.error
+          : typeof error.detail === "string" ? error.detail : "";
+        if (code === "STALE_TENANT_ROLE" && await recoverTenantAccess("stale_role")) {
+          return this.request<T>(endpoint, options, true);
+        }
+        if (code === "TENANT_ACCESS_REVOKED") {
+          await recoverTenantAccess("access_revoked", error.fallback_tenant_id);
+          throw new Error("TENANT_ACCESS_REVOKED");
+        }
+      }
       let message = "请求失败";
       if (typeof error.detail === "string") {
         message = error.detail;
@@ -392,6 +486,34 @@ class API {
       method: "PATCH",
       body: JSON.stringify(patch),
     });
+  }
+
+  static async getCamelBootstrapStatus(): Promise<CamelBootstrapStatus> {
+    return this.request("/camel/bootstrap/status");
+  }
+
+  static async startCamelBootstrap(mode: CamelBootstrapMode, from: string): Promise<CamelBootstrapStartResponse> {
+    const params = new URLSearchParams({ mode, from });
+    return this.request(`/camel/bootstrap/start-url?${params.toString()}`, { method: "POST" });
+  }
+
+  static async getAuthMe(): Promise<AuthMeResponse> {
+    return this.request("/auth/me");
+  }
+
+  static async listAuthTenants(): Promise<AuthTenantsResponse> {
+    return this.request("/auth/tenants");
+  }
+
+  static async switchTenantToken(tenantId: string): Promise<TenantTokenResponse> {
+    return this.request("/auth/tenant-token", {
+      method: "POST",
+      body: JSON.stringify({ tenant_id: tenantId }),
+    });
+  }
+
+  static async refreshCurrentTenantToken(): Promise<TenantTokenResponse> {
+    return this.request("/auth/refresh-current-tenant", { method: "POST" });
   }
 
 
@@ -2038,10 +2160,11 @@ class API {
   // ==================== Global Asset Library ====================
 
   static async listAssets(
-    params: { type?: AssetType; q?: string; limit?: number; offset?: number } = {},
+    params: { library?: AssetLibrary; type?: AssetType; q?: string; limit?: number; offset?: number } = {},
     options: RequestInit = {},
   ) {
     const usp = new URLSearchParams();
+    if (params.library) usp.set("library", params.library);
     if (params.type) usp.set("type", params.type);
     if (params.q) usp.set("q", params.q);
     if (params.limit) usp.set("limit", String(params.limit));
@@ -2053,23 +2176,11 @@ class API {
     return this.request<{ asset: Asset }>(`/assets/${encodeURIComponent(id)}`);
   }
 
-  static async createAsset(payload: AssetCreatePayload & { image?: File }) {
-    const form = new FormData();
-    form.append("type", payload.type);
-    form.append("name", payload.name);
-    form.append("description", payload.description ?? "");
-    form.append("voice_style", payload.voice_style ?? "");
-    if (payload.image) form.append("image", payload.image);
-    const url = `${API_BASE}/assets`;
-    const response = await fetch(url, withAuth({ method: "POST", body: form }));
-    if (!response.ok) {
-      handleUnauthorized(response);
-      const error = (await response.json().catch(() => ({ detail: response.statusText }))) as {
-        detail?: string;
-      };
-      throw new Error(typeof error.detail === "string" ? error.detail : "请求失败");
-    }
-    return response.json() as Promise<{ asset: Asset }>;
+  static async createAsset(payload: AssetCreatePayload) {
+    return this.request<{ asset: Asset }>("/assets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   }
 
   static async updateAsset(id: string, patch: AssetUpdatePayload) {
@@ -2080,34 +2191,52 @@ class API {
   }
 
   static async replaceAssetImage(id: string, image: File) {
-    const form = new FormData();
-    form.append("image", image);
-    const url = `${API_BASE}/assets/${encodeURIComponent(id)}/image`;
-    const response = await fetch(url, withAuth({ method: "POST", body: form }));
-    if (!response.ok) {
-      handleUnauthorized(response);
-      const error = (await response.json().catch(() => ({ detail: response.statusText }))) as {
-        detail?: string;
-      };
-      throw new Error(typeof error.detail === "string" ? error.detail : "请求失败");
-    }
-    return response.json() as Promise<{ asset: Asset }>;
+    const file = await this.uploadAssetFile(image);
+    return this.updateAsset(id, { image_file_id: file.file_id });
   }
 
   static async deleteAsset(id: string): Promise<void> {
     return this.request(`/assets/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
-  static async addAssetFromProject(payload: {
-    project_name: string;
-    resource_type: AssetType;
-    resource_id: string;
-    override_name?: string;
-    overwrite?: boolean;
+  static async uploadAssetFile(file: File): Promise<{
+    file_id: string;
+    alias: string;
+    mime_type: string | null;
+    size_bytes: number | null;
+  }> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("alias", file.name);
+    form.append("purpose", "library");
+    const response = await fetch(`${API_BASE}/files`, withAuth({ method: "POST", body: form }));
+    await throwIfNotOk(response, "上传失败");
+    return response.json() as Promise<{
+      file_id: string;
+      alias: string;
+      mime_type: string | null;
+      size_bytes: number | null;
+    }>;
+  }
+
+  static async getFileSignedUrl(fileId: string): Promise<{ file_id: string; url: string; expires_in: number }> {
+    return this.request(`/files/${encodeURIComponent(fileId)}/signed-url`);
+  }
+
+  static async importAssetSnapshot(payload: {
+    source_binding_id: string;
+    target_library: AssetLibrary;
   }) {
-    return this.request<{ asset: Asset }>(`/assets/from-project`, {
+    return this.request<{ asset: Asset }>(`/assets/import`, {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  }
+
+  static async syncAsset(id: string, confirmOverwrite: boolean) {
+    return this.request<{ asset: Asset }>(`/assets/${encodeURIComponent(id)}/sync`, {
+      method: "POST",
+      body: JSON.stringify({ confirm_overwrite: confirmOverwrite }),
     });
   }
 

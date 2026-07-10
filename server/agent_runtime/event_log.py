@@ -21,8 +21,9 @@ from sqlalchemy import exists, func, select
 from sqlalchemy.exc import IntegrityError
 
 from lib.db import safe_session_factory
-from lib.db.base import DEFAULT_USER_ID, utc_now
+from lib.db.base import utc_now
 from lib.db.models.session_event import AgentSessionEventLogEntry
+from lib.user_scope import get_current_user_id
 from server.agent_runtime.keyed_locks import KeyedLocks
 from server.agent_runtime.message_serialization import utc_now_iso
 from server.agent_runtime.turn_schema import _stringify_content, normalize_content
@@ -482,9 +483,12 @@ def _is_client_key_violation(exc: IntegrityError) -> bool:
 class EventLogStore:
     """事件日志 DB 访问：seq 单调分配（append-only）+ 幂等键查重。"""
 
-    def __init__(self, *, session_factory=None, user_id: str = DEFAULT_USER_ID):
+    def __init__(self, *, session_factory=None, user_id: str | None = None):
         self._session_factory = session_factory or safe_session_factory
         self._user_id = user_id
+
+    def _effective_user_id(self) -> str:
+        return self._user_id or get_current_user_id()
 
     async def append(
         self,
@@ -533,10 +537,12 @@ class EventLogStore:
         client_key: str | None,
     ) -> list[dict[str, Any]]:
         now_dt = utc_now()
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
             seq_start_row = await session.execute(
                 select(func.coalesce(func.max(AgentSessionEventLogEntry.seq), -1) + 1).where(
                     AgentSessionEventLogEntry.session_id == session_id,
+                    AgentSessionEventLogEntry.user_id == user_id,
                 )
             )
             seq_start = int(seq_start_row.scalar_one())
@@ -550,7 +556,7 @@ class EventLogStore:
                         entry_type=str(entry.get("type") or ""),
                         payload=entry,
                         client_key=client_key if len(entries) == 1 else None,
-                        user_id=self._user_id,
+                        user_id=user_id,
                         created_at=now_dt,
                         updated_at=now_dt,
                     )
@@ -582,11 +588,13 @@ class EventLogStore:
         return authoritative, created
 
     async def find_by_client_key(self, session_id: str, client_key: str) -> dict[str, Any] | None:
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
             result = await session.execute(
                 select(AgentSessionEventLogEntry.seq, AgentSessionEventLogEntry.payload).where(
                     AgentSessionEventLogEntry.session_id == session_id,
                     AgentSessionEventLogEntry.client_key == client_key,
+                    AgentSessionEventLogEntry.user_id == user_id,
                 )
             )
             row = result.first()
@@ -602,6 +610,7 @@ class EventLogStore:
         由本查询兜底让重试命中既有会话，而非重复建会话。限定 seq 0 是因为只有
         新会话的首条用户条目落在该位置，常规消息的幂等键不参与匹配。
         """
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
             result = await session.execute(
                 select(
@@ -612,6 +621,7 @@ class EventLogStore:
                 .where(
                     AgentSessionEventLogEntry.client_key == client_key,
                     AgentSessionEventLogEntry.seq == 0,
+                    AgentSessionEventLogEntry.user_id == user_id,
                 )
                 .order_by(AgentSessionEventLogEntry.created_at)
                 .limit(1)
@@ -622,12 +632,14 @@ class EventLogStore:
         return str(row.session_id), {"seq": int(row.seq), **row.payload}
 
     async def list_after(self, session_id: str, after_seq: int = -1) -> list[dict[str, Any]]:
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
             result = await session.execute(
                 select(AgentSessionEventLogEntry.seq, AgentSessionEventLogEntry.payload)
                 .where(
                     AgentSessionEventLogEntry.session_id == session_id,
                     AgentSessionEventLogEntry.seq > after_seq,
+                    AgentSessionEventLogEntry.user_id == user_id,
                 )
                 .order_by(AgentSessionEventLogEntry.seq)
             )
@@ -637,33 +649,51 @@ class EventLogStore:
     async def delete_entry(self, session_id: str, seq: int) -> None:
         """补偿删除单条条目（仅限受理失败回滚：SDK 投递失败时撤销刚写入的
         用户条目，否则同幂等键重试会短路而永不投递）。"""
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
             await session.execute(
                 sa_delete(AgentSessionEventLogEntry).where(
                     AgentSessionEventLogEntry.session_id == session_id,
                     AgentSessionEventLogEntry.seq == seq,
+                    AgentSessionEventLogEntry.user_id == user_id,
                 )
             )
             await session.commit()
 
     async def delete_session(self, session_id: str) -> None:
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
             await session.execute(
-                sa_delete(AgentSessionEventLogEntry).where(AgentSessionEventLogEntry.session_id == session_id)
+                sa_delete(AgentSessionEventLogEntry).where(
+                    AgentSessionEventLogEntry.session_id == session_id,
+                    AgentSessionEventLogEntry.user_id == user_id,
+                )
             )
             await session.commit()
 
     async def has_entries(self, session_id: str) -> bool:
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
-            result = await session.execute(select(exists().where(AgentSessionEventLogEntry.session_id == session_id)))
+            result = await session.execute(
+                select(
+                    exists().where(
+                        AgentSessionEventLogEntry.session_id == session_id,
+                        AgentSessionEventLogEntry.user_id == user_id,
+                    )
+                )
+            )
             return bool(result.scalar())
 
     async def last_entry(self, session_id: str) -> dict[str, Any] | None:
         """尾条条目（interrupt 相邻去重的写入点检查用）。"""
+        user_id = self._effective_user_id()
         async with self._session_factory() as session:
             result = await session.execute(
                 select(AgentSessionEventLogEntry.seq, AgentSessionEventLogEntry.payload)
-                .where(AgentSessionEventLogEntry.session_id == session_id)
+                .where(
+                    AgentSessionEventLogEntry.session_id == session_id,
+                    AgentSessionEventLogEntry.user_id == user_id,
+                )
                 .order_by(AgentSessionEventLogEntry.seq.desc())
                 .limit(1)
             )

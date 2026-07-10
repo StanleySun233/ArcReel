@@ -1,0 +1,66 @@
+services:
+  test-arcreel:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: test-arcreel:local
+    container_name: test-arcreel
+    ports:
+      - "11241:1241"
+    environment:
+      AUTH_ENABLED: "true"
+      AUTH_MODE: camel
+      AUTH_TOKEN_SECRET: test-arcreel-token-secret
+      CAMEL_OAUTH_BASE_URL: http://localhost:13080
+      CAMEL_OAUTH_INTERNAL_BASE_URL: http://host.docker.internal:13080
+      CAMEL_OAUTH_CLIENT_ID: arc-test-client
+      CAMEL_OAUTH_CLIENT_SECRET: arc-test-secret
+      CAMEL_OAUTH_REDIRECT_URI: http://localhost:11241/api/v1/auth/camel/callback
+      ARCREEL_DATA_DIR: /app/testdata/projects
+      ARCREEL_LOG_FILE_DISABLED: "1"
+      ARCREEL_SDK_SESSION_STORE: "off"
+      CORS_ORIGINS: http://localhost:11241,http://localhost:13080
+      TZ: UTC
+      LOG_LEVEL: INFO
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - test_arcreel_data:/app/testdata/projects
+      - test_arcreel_logs:/app/logs
+      - test_arcreel_vertex_keys:/app/vertex_keys
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1241/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  test-arcreel-api:
+    image: python:3.12-alpine
+    container_name: test-arcreel-api
+    environment:
+      ARCREEL_API_BASE_URL: http://test-arcreel:1241
+      ARCREEL_TOKEN_SECRET: test-arcreel-token-secret
+      ARCREEL_EXPECTED_PROVIDER_BASE_URL: http://host.docker.internal:13080
+      CAMEL_API_BASE_URL: http://host.docker.internal:13080
+      CAMEL_ROOT_USERNAME: root
+      CAMEL_ROOT_PASSWORD: test-root-password
+      ARCREEL_REDIRECT_URI: http://localhost:11241/api/v1/auth/camel/callback
+    volumes:
+      - ./arcreel_api_smoke.py:/smoke/arcreel_api_smoke.py:ro
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      test-arcreel:
+        condition: service_healthy
+    command: ["python", "/smoke/arcreel_api_smoke.py"]
+
+volumes:
+  test_arcreel_data:
+  test_arcreel_logs:
+  test_arcreel_vertex_keys:
