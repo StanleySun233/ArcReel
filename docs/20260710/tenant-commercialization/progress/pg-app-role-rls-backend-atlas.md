@@ -18,13 +18,13 @@
 ## Subtasks
 
 - [x] Add dev PostgreSQL app-role init script and compose service.
-  - Commit: pending
+  - Commit: a20c947
 - [x] Update environment examples and development documentation for app/admin DB URLs.
-  - Commit: pending
+  - Commit: a20c947
 - [x] Update PostgreSQL test helpers to use `ARCREEL_TEST_DATABASE_ADMIN_URL` for setup.
-  - Commit: pending
+  - Commit: a20c947
 - [x] Add app-role guard test and run Story 2 regression with app `DATABASE_URL`.
-  - Commit: pending
+  - Commit: a20c947
 
 ## Verification Evidence
 
