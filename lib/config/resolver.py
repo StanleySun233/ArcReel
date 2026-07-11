@@ -204,8 +204,7 @@ class ConfigResolver:
                 yield self
         else:
             async with self._session_factory() as sess:
-                if self._user_id is not None:
-                    sess.info["user_id"] = self._user_id
+                sess.info["user_id"] = self._user_id
                 if self._tenant_id is not None:
                     sess.info["tenant_id"] = self._tenant_id
                 with current_identity_scope(user_id=self._user_id, tenant_id=self._tenant_id):
@@ -231,8 +230,7 @@ class ConfigResolver:
                 )
         else:
             async with self._session_factory() as session:
-                if self._user_id is not None:
-                    session.info["user_id"] = self._user_id
+                session.info["user_id"] = self._user_id
                 if self._tenant_id is not None:
                     session.info["tenant_id"] = self._tenant_id
                 with current_identity_scope(user_id=self._user_id, tenant_id=self._tenant_id):
