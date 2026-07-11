@@ -262,6 +262,7 @@ Agent 规则：
 - SQLite 旧文档已删除或收敛为审计记录。
 - session/task/usage 存储列使用 `project_id`。
 - 同一租户内多 project 的 session list、task cancel-all、task events 均按 `project_id` 隔离。
+- 前端右侧智能体最后会话缓存按项目 id 隔离，重复显示名不会交叉加载 session。
 - Issued Tokens 后台 403、前端 disabled。
 - tenant role stale refresh。
 - owner/admin/member/view 权限矩阵关键路径。

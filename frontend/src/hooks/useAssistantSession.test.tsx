@@ -579,4 +579,48 @@ describe("useAssistantSession", () => {
       expect(sendResult).toBe(false);
     });
   });
+
+  it("persists last sessions by project id so duplicate display names cannot cross-load sessions", async () => {
+    vi.spyOn(API, "listAssistantSessions").mockImplementation(async (projectId) => ({
+      sessions: projectId === "proj-alpha"
+        ? [makeSession("session-alpha-default", "idle"), makeSession("session-alpha-selected", "idle")]
+        : [makeSession("session-beta-default", "idle"), makeSession("session-beta-selected", "idle")],
+    }));
+    vi.spyOn(API, "getAssistantSession").mockImplementation(async (_projectId, sessionId) => ({
+      session: makeSession(sessionId, "idle"),
+    }));
+    vi.spyOn(API, "listAssistantEntries").mockResolvedValue(makeEntriesResponse({ entries: [] }));
+
+    const alpha = renderHook(({ projectId }) => useAssistantSession(projectId), {
+      initialProps: { projectId: "proj-alpha" },
+    });
+
+    await waitFor(() => {
+      expect(useAssistantStore.getState().currentSessionId).toBe("session-alpha-default");
+    });
+
+    await act(async () => {
+      await alpha.result.current.switchSession("session-alpha-selected");
+    });
+
+    alpha.unmount();
+    useAssistantStore.setState(useAssistantStore.getInitialState(), true);
+
+    const beta = renderHook(({ projectId }) => useAssistantSession(projectId), {
+      initialProps: { projectId: "proj-beta" },
+    });
+
+    await waitFor(() => {
+      expect(useAssistantStore.getState().currentSessionId).toBe("session-beta-default");
+    });
+
+    await act(async () => {
+      await beta.result.current.switchSession("session-beta-selected");
+    });
+
+    expect(JSON.parse(localStorage.getItem("arcreel:lastSessionByProject") || "{}")).toEqual({
+      "proj-alpha": "session-alpha-selected",
+      "proj-beta": "session-beta-selected",
+    });
+  });
 });

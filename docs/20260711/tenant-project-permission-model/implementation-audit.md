@@ -306,6 +306,14 @@ Additional focused regression:
   - Result: 162 passed, 1 warning
 - `python -m ruff check tests/test_session_repo.py tests/test_task_repo.py`
   - Result: passed
+- Added `frontend/src/hooks/useAssistantSession.test.tsx` coverage for `arcreel:lastSessionByProject`.
+  - Evidence: explicit user-selected assistant sessions are persisted under `proj-alpha` and `proj-beta` keys, proving duplicate project display names cannot cross-load the right-panel assistant session.
+- `pnpm vitest run src/hooks/useAssistantSession.test.tsx`
+  - Result: 1 file passed, 15 tests passed
+- `pnpm vitest run src/hooks/useAssistantSession.test.tsx src/api.test.ts src/components/copilot/AgentCopilot.test.tsx`
+  - Result: 3 files passed, 70 tests passed
+- `pnpm exec eslint src/hooks/useAssistantSession.test.tsx --quiet`
+  - Result: passed
 
 ## Remaining gaps
 
