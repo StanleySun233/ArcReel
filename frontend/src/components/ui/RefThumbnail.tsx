@@ -1,8 +1,8 @@
 import { useRef, useState, type ComponentType, type RefObject } from "react";
 import { MapPin, Puzzle, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { API } from "@/api";
 import { Popover } from "@/components/ui/Popover";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useProjectsStore } from "@/stores/projects-store";
 import type { Character, Prop, Scene } from "@/types";
 import { type AssetKind, SHEET_FIELD } from "@/types/reference-video";
@@ -50,6 +50,13 @@ export function getSheetPath(
   return typeof value === "string" ? value : undefined;
 }
 
+function getSheetFileId(kind: AssetKind, asset: Asset | undefined): string | undefined {
+  if (!asset) return undefined;
+  const field = `${SHEET_FIELD[kind]}_file_id`;
+  const value = (asset as unknown as Record<string, unknown>)[field];
+  return typeof value === "string" ? value : undefined;
+}
+
 function RefPopover({
   kind,
   name,
@@ -68,6 +75,8 @@ function RefPopover({
   const { t } = useTranslation("dashboard");
   const meta = KIND_META[kind];
   const sheetPath = getSheetPath(kind, asset);
+  const sheetFileId = getSheetFileId(kind, asset);
+  const sheetUrl = useProjectMediaUrl(projectName, sheetFileId ?? sheetPath, sheetFp);
   const firstLine = asset.description?.split("\n")[0] ?? "";
   const { Icon } = meta;
 
@@ -82,9 +91,9 @@ function RefPopover({
       className="pointer-events-none max-w-[calc(100vw-1.5rem)] rounded-lg border border-gray-700 p-2 shadow-xl"
     >
       <div className="flex items-start gap-2.5">
-        {sheetPath ? (
+        {sheetUrl ? (
           <img
-            src={API.getFileUrl(projectName, sheetPath, sheetFp)}
+            src={sheetUrl}
             alt={name}
             className="h-[120px] w-[90px] shrink-0 rounded object-cover"
           />
@@ -125,15 +134,18 @@ export function RefThumbnail({
   projectName: string;
 }) {
   const sheetPath = getSheetPath(kind, asset);
+  const sheetFileId = getSheetFileId(kind, asset);
   const sheetFp = useProjectsStore((s) =>
     sheetPath ? s.getAssetFingerprint(sheetPath) : null,
   );
+  const sheetUrl = useProjectMediaUrl(projectName, sheetFileId ?? sheetPath, sheetFp);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   const meta = KIND_META[kind];
-  const currentKey = sheetPath ? `${sheetPath}#${sheetFp ?? ""}` : null;
-  const showImage = !!sheetPath && errorKey !== currentKey;
+  const currentAssetPath = sheetFileId ?? sheetPath;
+  const currentKey = currentAssetPath ? `${currentAssetPath}#${sheetFp ?? ""}` : null;
+  const showImage = !!sheetUrl && errorKey !== currentKey;
 
   return (
     <>
@@ -145,7 +157,7 @@ export function RefThumbnail({
       >
         {showImage ? (
           <img
-            src={API.getFileUrl(projectName, sheetPath, sheetFp)}
+            src={sheetUrl}
             alt={name}
             className={`h-7 w-7 border-2 border-gray-900 object-cover ${meta.shape}`}
             onError={() => setErrorKey(currentKey)}

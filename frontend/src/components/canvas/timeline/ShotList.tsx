@@ -3,7 +3,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import type { NarrationSegment, AdShot } from "@/types";
-import { API } from "@/api";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useProjectsStore } from "@/stores/projects-store";
 import { StatusBadge, statusFromAssets } from "@/components/canvas/timeline/StatusBadge";
 import {
@@ -239,9 +239,8 @@ export function ShotList({
             const status = statusFromAssets(seg.generated_assets?.status);
             const versions = getStoryboardVersionCount(seg);
             const active = originalIndex === selectedIndex;
-            const sbPath = seg.generated_assets?.storyboard_image;
+            const sbPath = seg.generated_assets?.storyboard_image_file_id ?? seg.generated_assets?.storyboard_image;
             const sbFp = sbPath ? (fingerprints[sbPath] ?? null) : null;
-            const sbUrl = sbPath ? API.getFileUrl(projectName, sbPath, sbFp) : null;
 
             return (
               <button
@@ -282,22 +281,7 @@ export function ShotList({
                   className="relative shrink-0 overflow-hidden rounded-[5px]"
                   style={{ width: 48, height: 64 }}
                 >
-                  {sbUrl ? (
-                    <img
-                      src={sbUrl}
-                      alt={id}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div
-                      className="flex h-full w-full items-center justify-center"
-                      style={{
-                        background:
-                          "linear-gradient(135deg, oklch(0.30 0.05 280), oklch(0.18 0.02 260))",
-                      }}
-                    />
-                  )}
+                  <ShotThumbnail projectName={projectName} path={sbPath} fingerprint={sbFp} alt={id} />
                   <span
                     className="num absolute bottom-0.5 left-1 text-[9px] font-bold"
                     style={{
@@ -360,4 +344,30 @@ export function ShotList({
       </div>
     </div>
   );
+}
+
+function ShotThumbnail({
+  projectName,
+  path,
+  fingerprint,
+  alt,
+}: {
+  projectName: string;
+  path: string | null | undefined;
+  fingerprint: number | string | null;
+  alt: string;
+}) {
+  const url = useProjectMediaUrl(projectName, path, fingerprint);
+  if (!url) {
+    return (
+      <div
+        className="flex h-full w-full items-center justify-center"
+        style={{
+          background:
+            "linear-gradient(135deg, oklch(0.30 0.05 280), oklch(0.18 0.02 260))",
+        }}
+      />
+    );
+  }
+  return <img src={url} alt={alt} className="h-full w-full object-cover" loading="lazy" />;
 }

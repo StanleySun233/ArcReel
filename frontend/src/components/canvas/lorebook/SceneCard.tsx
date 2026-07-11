@@ -7,6 +7,7 @@ import { VersionTimeMachine } from "@/components/canvas/timeline/VersionTimeMach
 import { AspectFrame } from "@/components/ui/AspectFrame";
 import { GenerateButton } from "@/components/ui/GenerateButton";
 import { PreviewableImageFrame } from "@/components/ui/PreviewableImageFrame";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useAppStore } from "@/stores/app-store";
 import { useProjectsStore } from "@/stores/projects-store";
 import { errMsg } from "@/utils/async";
@@ -55,7 +56,6 @@ export function SceneCard({
   );
   const [description, setDescription] = useState(scene.description);
   const [imgError, setImgError] = useState(false);
-  const [signedSheet, setSignedSheet] = useState<{ fileId: string; url: string } | null>(null);
   const [uploadingSheet, setUploadingSheet] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const sheetInputRef = useRef<HTMLInputElement>(null);
@@ -88,25 +88,7 @@ export function SceneCard({
     // 场景立绘变化时重置图片加载错误标记
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setImgError(false);
-  }, [scene.scene_sheet, scene.scene_sheet_file_id, sheetFp, signedSheet?.url]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!scene.scene_sheet_file_id) {
-      return;
-    }
-    const fileId = scene.scene_sheet_file_id;
-    void API.getFileSignedUrl(fileId)
-      .then((res) => {
-        if (!cancelled) setSignedSheet({ fileId, url: res.url });
-      })
-      .catch(() => {
-        if (!cancelled) setSignedSheet(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [scene.scene_sheet_file_id, sheetFp]);
+  }, [scene.scene_sheet, scene.scene_sheet_file_id, sheetFp]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const descId = useId();
@@ -127,13 +109,7 @@ export function SceneCard({
     onUpdate(name, { description });
   };
 
-  const sheetUrl = scene.scene_sheet_file_id
-    ? signedSheet?.fileId === scene.scene_sheet_file_id
-      ? signedSheet.url
-      : null
-    : scene.scene_sheet
-      ? API.getFileUrl(projectName, scene.scene_sheet, sheetFp)
-      : null;
+  const sheetUrl = useProjectMediaUrl(projectName, scene.scene_sheet_file_id ?? scene.scene_sheet, sheetFp);
 
   return (
     <div

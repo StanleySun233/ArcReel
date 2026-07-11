@@ -1,6 +1,6 @@
 import { AudioLines, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { API } from "@/api";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useProjectsStore } from "@/stores/projects-store";
 import { formatCost } from "@/utils/cost-format";
 import type { CostBreakdown } from "@/types";
@@ -42,7 +42,7 @@ export function NarrationAudioCard({
   const assetFp = useProjectsStore((s) =>
     assetPath ? s.getAssetFingerprint(assetPath) : null,
   );
-  const audioUrl = assetPath ? API.getFileUrl(projectName, assetPath, assetFp) : null;
+  const audioUrl = useProjectMediaUrl(projectName, assetPath, assetFp);
 
   const generateLabel = assetPath
     ? t("media_regenerate_narration")

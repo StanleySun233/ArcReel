@@ -9,11 +9,11 @@ import {
   User,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { API } from "@/api";
 import { GlassModal } from "@/components/ui/GlassModal";
 import { ModalCloseButton } from "@/components/ui/ModalCloseButton";
 import { PrimaryButton } from "@/components/ui/PrimaryButton";
 import { SecondaryButton } from "@/components/ui/SecondaryButton";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useProjectsStore } from "@/stores/projects-store";
 import type { Character, Prop, Scene } from "@/types";
 import { type AssetKind, SHEET_FIELD } from "@/types/reference-video";
@@ -26,6 +26,7 @@ interface RefRow {
   kind: AssetKind;
   name: string;
   thumbPath?: string;
+  thumbFileId?: string;
   description?: string;
   isStale: boolean;
 }
@@ -64,6 +65,11 @@ function getSheetPath(kind: AssetKind, asset: Asset): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function getSheetFileId(kind: AssetKind, asset: Asset): string | undefined {
+  const value = (asset as unknown as Record<string, unknown>)[`${SHEET_FIELD[kind]}_file_id`];
+  return typeof value === "string" ? value : undefined;
+}
+
 function buildRows<A extends Asset>(
   kind: AssetKind,
   dict: Record<string, A>,
@@ -74,6 +80,7 @@ function buildRows<A extends Asset>(
       kind,
       name,
       thumbPath: getSheetPath(kind, asset),
+      thumbFileId: getSheetFileId(kind, asset),
       description: asset.description,
       isStale: false,
     }))
@@ -465,9 +472,10 @@ function Row({ row, selected, onToggle, projectName, staleHint }: RowProps) {
   const sheetFp = useProjectsStore((s) =>
     row.thumbPath ? s.getAssetFingerprint(row.thumbPath) : null,
   );
+  const thumbUrl = useProjectMediaUrl(projectName, row.thumbFileId ?? row.thumbPath, sheetFp);
   const isCharacter = row.kind === "character";
   const thumbShape = isCharacter ? "rounded-full" : "rounded-md";
-  const showImage = !!row.thumbPath && !row.isStale;
+  const showImage = !!thumbUrl && !row.isStale;
 
   const baseStyle = row.isStale
     ? {
@@ -519,7 +527,7 @@ function Row({ row, selected, onToggle, projectName, staleHint }: RowProps) {
     >
       {showImage ? (
         <img
-          src={API.getFileUrl(projectName, row.thumbPath!, sheetFp)}
+          src={thumbUrl}
           alt={row.name}
           className={`h-8 w-8 shrink-0 object-cover ${thumbShape}`}
         />

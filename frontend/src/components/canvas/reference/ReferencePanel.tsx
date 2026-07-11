@@ -20,7 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Plus } from "lucide-react";
 import { MentionPicker, type MentionCandidate } from "./MentionPicker";
 import { RefChip } from "./RefChip";
-import { API } from "@/api";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useProjectsStore } from "@/stores/projects-store";
 import { SHEET_FIELD, type AssetKind, type ReferenceResource } from "@/types/reference-video";
 
@@ -31,12 +31,19 @@ const refId = (r: ReferenceResource): string => `${r.type}:${r.name}`;
 const refNameFromId = (id: string): string => id.slice(id.indexOf(":") + 1);
 
 type BucketEntry = Partial<Record<"character_sheet" | "scene_sheet" | "prop_sheet", string>>;
+type BucketFileIdEntry = Partial<Record<"character_sheet_file_id" | "scene_sheet_file_id" | "prop_sheet_file_id", string>>;
 const sheetOf = (
   bucket: Record<string, unknown> | undefined,
   kind: AssetKind,
   name: string,
 ): string | null =>
   (bucket?.[name] as BucketEntry | undefined)?.[SHEET_FIELD[kind]] ?? null;
+const sheetFileIdOf = (
+  bucket: Record<string, unknown> | undefined,
+  kind: AssetKind,
+  name: string,
+): string | null =>
+  (bucket?.[name] as BucketFileIdEntry | undefined)?.[`${SHEET_FIELD[kind]}_file_id`] ?? null;
 
 export interface ReferencePanelProps {
   references: ReferenceResource[];
@@ -50,19 +57,26 @@ export interface ReferencePanelProps {
 interface SortableChipProps {
   refItem: ReferenceResource;
   index: number;
-  imageUrl: string | null;
+  projectName: string;
+  imagePath: string | null;
+  imageFileId: string | null;
+  fingerprint: number | string | null;
   onRemove: (ref: ReferenceResource) => void;
 }
 
 const SortableChip = memo(function SortableChip({
   refItem,
   index,
-  imageUrl,
+  projectName,
+  imagePath,
+  imageFileId,
+  fingerprint,
   onRemove,
 }: SortableChipProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: refId(refItem),
   });
+  const imageUrl = useProjectMediaUrl(projectName, imageFileId ?? imagePath, fingerprint);
   return (
     <RefChip
       ref={setNodeRef}
@@ -120,7 +134,6 @@ export function ReferencePanel({
     return out;
   }, [existingKeys, characters, scenes, props]);
 
-  // 一次性派生每个 chip 的 imageUrl，避免每个 chip 订阅 store。
   const chipData = useMemo(() => {
     const buckets: Record<AssetKind, Record<string, unknown> | undefined> = {
       character: characters,
@@ -129,11 +142,11 @@ export function ReferencePanel({
     };
     return references.map((r) => {
       const imagePath = sheetOf(buckets[r.type], r.type, r.name);
+      const imageFileId = sheetFileIdOf(buckets[r.type], r.type, r.name);
       const fingerprint = imagePath ? (assetFingerprints[imagePath] ?? null) : null;
-      const imageUrl = imagePath ? API.getFileUrl(projectName, imagePath, fingerprint) : null;
-      return { ref: r, imageUrl };
+      return { ref: r, imagePath, imageFileId, fingerprint };
     });
-  }, [references, characters, scenes, props, assetFingerprints, projectName]);
+  }, [references, characters, scenes, props, assetFingerprints]);
 
   const handleAddClick = () => setPickerOpen((v) => !v);
 
@@ -208,7 +221,10 @@ export function ReferencePanel({
                 key={refId(d.ref)}
                 refItem={d.ref}
                 index={i}
-                imageUrl={d.imageUrl}
+                projectName={projectName}
+                imagePath={d.imagePath}
+                imageFileId={d.imageFileId}
+                fingerprint={d.fingerprint}
                 onRemove={onRemove}
               />
             ))}

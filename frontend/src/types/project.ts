@@ -39,6 +39,7 @@ export interface Product {
   description: string;
   /** 标准多角度产品参考图（可选，生成/上传后回写）。 */
   product_sheet?: string;
+  product_sheet_file_id?: string | null;
   /** 品牌要素自由文本。 */
   brand?: string;
   /** 用户上传的产品原图路径列表（保真验收锚点，系统级字段）。 */

@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
 import { Layers, RefreshCw, Sparkles } from "lucide-react";
 import { API } from "@/api";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useTasksStore } from "@/stores/tasks-store";
 import type { AdReferenceUnit, AdShot } from "@/types";
 
@@ -169,8 +170,7 @@ export function AdReferenceUnitsPanel({ projectName, episode, shots }: AdReferen
               (sum, s) => sum + (typeof s?.duration_seconds === "number" ? s.duration_seconds : 0),
               0,
             );
-            const clip = unit.generated_assets?.video_clip ?? null;
-            const videoUrl = clip ? API.getFileUrl(projectName, clip) : null;
+            const clip = unit.generated_assets?.video_clip_file_id ?? unit.generated_assets?.video_clip ?? null;
             const busy = busyUnitIds.has(unit.unit_id);
             return (
               <li
@@ -194,17 +194,7 @@ export function AdReferenceUnitsPanel({ projectName, episode, shots }: AdReferen
                     {t("ad_ref_stale")}
                   </span>
                 )}
-                {videoUrl && (
-                  <a
-                    href={videoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                    style={{ color: "var(--color-accent)" }}
-                  >
-                    {t("ad_ref_view_video")}
-                  </a>
-                )}
+                <AdUnitVideoLink projectName={projectName} clip={clip} label={t("ad_ref_view_video")} />
                 <button
                   type="button"
                   className="sv-navbtn inline-flex items-center gap-1"
@@ -229,5 +219,21 @@ export function AdReferenceUnitsPanel({ projectName, episode, shots }: AdReferen
         </p>
       )}
     </div>
+  );
+}
+
+function AdUnitVideoLink({ projectName, clip, label }: { projectName: string; clip: string | null; label: string }) {
+  const videoUrl = useProjectMediaUrl(projectName, clip);
+  if (!videoUrl) return null;
+  return (
+    <a
+      href={videoUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="underline"
+      style={{ color: "var(--color-accent)" }}
+    >
+      {label}
+    </a>
   );
 }

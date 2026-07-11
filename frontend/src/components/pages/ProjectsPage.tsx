@@ -35,6 +35,7 @@ import { ProgressBar } from "@/components/ui/ProgressBar";
 import { SecondaryButton } from "@/components/ui/SecondaryButton";
 import { TenantSwitcher } from "@/components/tenant/TenantSwitcher";
 import { Typewriter, type TypewriterSegment } from "@/components/ui/Typewriter";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { WARM_TONE } from "@/utils/severity-tone";
 import { getProjectDisplayName } from "@/utils/project-display";
 import { canWriteTenant } from "@/utils/auth";
@@ -176,6 +177,7 @@ interface PosterProps {
 
 function Poster({ project, styleLabel, large = false }: PosterProps) {
   const { t } = useTranslation("dashboard");
+  const thumbnailUrl = useProjectMediaUrl(project.id, project.thumbnail);
   const hue1 = useMemo(() => hashHue(project.name, 17), [project.name]);
   const aspect = large ? "2.39 / 1" : "2 / 1";
   const radius = large ? 8 : 6;
@@ -190,9 +192,9 @@ function Poster({ project, styleLabel, large = false }: PosterProps) {
         boxShadow: "inset 0 0 0 1px oklch(1 0 0 / 0.06)",
       }}
     >
-      {project.thumbnail ? (
+      {thumbnailUrl ? (
         <img
-          src={project.thumbnail}
+          src={thumbnailUrl}
           alt=""
           loading="lazy"
           decoding="async"

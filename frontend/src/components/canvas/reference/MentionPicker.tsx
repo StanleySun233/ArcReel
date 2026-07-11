@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { assetColor } from "./asset-colors";
 import { Popover } from "@/components/ui/Popover";
-import { API } from "@/api";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import type { AssetKind } from "@/types/reference-video";
 
 /** Default DOM id for the listbox; paired with combobox aria-controls in ReferenceVideoCard. */
@@ -257,12 +257,6 @@ export function MentionPicker({
                   {items.map((item) => {
                     const globalIndex = indexByKey.get(`${kind}:${item.name}`) ?? -1;
                     const active = globalIndex === clampedActive;
-                    // imagePath 是 project-relative 文件路径（如 "characters/foo.png"），用 API.getFileUrl
-                    // 转为可 fetch 的 URL；无 projectName 时回退圆点（测试环境常见）。
-                    const thumbUrl =
-                      item.imagePath && projectName
-                        ? API.getFileUrl(projectName, item.imagePath)
-                        : null;
                     return (
                       <button
                         key={`${kind}:${item.name}`}
@@ -286,22 +280,7 @@ export function MentionPicker({
                           active ? "bg-indigo-500/15 text-indigo-200" : "text-gray-300 hover:bg-gray-900"
                         }`}
                       >
-                        {thumbUrl ? (
-                          <img
-                            src={thumbUrl}
-                            alt=""
-                            aria-hidden="true"
-                            loading="lazy"
-                            className={`h-7 w-7 shrink-0 rounded object-cover ${palette.borderClass} border`}
-                          />
-                        ) : (
-                          <span
-                            aria-hidden="true"
-                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${palette.bgClass} ${palette.borderClass} border`}
-                          >
-                            <span className={`h-2 w-2 rounded-full ${palette.bgClass} ${palette.borderClass} border`} />
-                          </span>
-                        )}
+                        <MentionThumbnail projectName={projectName} imagePath={item.imagePath} kind={kind} />
                         <span className="truncate" title={item.name}>{item.name}</span>
                       </button>
                     );
@@ -312,5 +291,37 @@ export function MentionPicker({
         </div>
       </div>
     </Popover>
+  );
+}
+
+function MentionThumbnail({
+  projectName,
+  imagePath,
+  kind,
+}: {
+  projectName?: string;
+  imagePath: string | null;
+  kind: AssetKind;
+}) {
+  const palette = assetColor(kind);
+  const thumbUrl = useProjectMediaUrl(projectName ?? "", projectName ? imagePath : null);
+  if (thumbUrl) {
+    return (
+      <img
+        src={thumbUrl}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        className={`h-7 w-7 shrink-0 rounded object-cover ${palette.borderClass} border`}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${palette.bgClass} ${palette.borderClass} border`}
+    >
+      <span className={`h-2 w-2 rounded-full ${palette.bgClass} ${palette.borderClass} border`} />
+    </span>
   );
 }

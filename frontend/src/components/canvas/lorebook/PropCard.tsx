@@ -7,6 +7,7 @@ import { VersionTimeMachine } from "@/components/canvas/timeline/VersionTimeMach
 import { AspectFrame } from "@/components/ui/AspectFrame";
 import { GenerateButton } from "@/components/ui/GenerateButton";
 import { PreviewableImageFrame } from "@/components/ui/PreviewableImageFrame";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useAppStore } from "@/stores/app-store";
 import { useProjectsStore } from "@/stores/projects-store";
 import { errMsg } from "@/utils/async";
@@ -55,7 +56,6 @@ export function PropCard({
   );
   const [description, setDescription] = useState(prop.description);
   const [imgError, setImgError] = useState(false);
-  const [signedSheet, setSignedSheet] = useState<{ fileId: string; url: string } | null>(null);
   const [uploadingSheet, setUploadingSheet] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const sheetInputRef = useRef<HTMLInputElement>(null);
@@ -88,25 +88,7 @@ export function PropCard({
     // 道具立绘变化时重置图片加载错误标记
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setImgError(false);
-  }, [prop.prop_sheet, prop.prop_sheet_file_id, sheetFp, signedSheet?.url]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!prop.prop_sheet_file_id) {
-      return;
-    }
-    const fileId = prop.prop_sheet_file_id;
-    void API.getFileSignedUrl(fileId)
-      .then((res) => {
-        if (!cancelled) setSignedSheet({ fileId, url: res.url });
-      })
-      .catch(() => {
-        if (!cancelled) setSignedSheet(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [prop.prop_sheet_file_id, sheetFp]);
+  }, [prop.prop_sheet, prop.prop_sheet_file_id, sheetFp]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const descId = useId();
@@ -127,13 +109,7 @@ export function PropCard({
     onUpdate(name, { description });
   };
 
-  const sheetUrl = prop.prop_sheet_file_id
-    ? signedSheet?.fileId === prop.prop_sheet_file_id
-      ? signedSheet.url
-      : null
-    : prop.prop_sheet
-      ? API.getFileUrl(projectName, prop.prop_sheet, sheetFp)
-      : null;
+  const sheetUrl = useProjectMediaUrl(projectName, prop.prop_sheet_file_id ?? prop.prop_sheet, sheetFp);
 
   return (
     <div

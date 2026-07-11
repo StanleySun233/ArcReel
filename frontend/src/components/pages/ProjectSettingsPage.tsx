@@ -15,11 +15,12 @@ import type { CustomProviderInfo, ProviderInfo } from "@/types";
 import { GenerationModeSelector } from "@/components/shared/GenerationModeSelector";
 import { ACCENT_BTN_CLS, ACCENT_BUTTON_STYLE, GHOST_BTN_LG_CLS, radioCardClass } from "@/components/ui/darkroom-tokens";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useWarnUnsaved } from "@/hooks/useWarnUnsaved";
 import { normalizeMode, type GenerationMode } from "@/utils/generation-mode";
 import { getProjectDisplayName } from "@/utils/project-display";
 
-function deriveStyleValue(project: Record<string, unknown>, projectName: string): StylePickerValue {
+function deriveStyleValue(project: Record<string, unknown>): StylePickerValue {
   const styleImage = project.style_image as string | undefined;
   const templateId = (project.style_template_id as string | undefined) ?? null;
   if (styleImage) {
@@ -28,7 +29,7 @@ function deriveStyleValue(project: Record<string, unknown>, projectName: string)
       templateId: null,
       activeCategory: "live",
       uploadedFile: null,
-      uploadedPreview: `/api/v1/files/${encodeURIComponent(projectName)}/${styleImage}`,
+      uploadedPreview: styleImage,
     };
   }
   const effectiveId = templateId ?? DEFAULT_TEMPLATE_ID;
@@ -249,7 +250,7 @@ export function ProjectSettingsPage() {
       setImageResolution(iRes);
       setModelSettings(ms);
 
-      const derivedStyle = deriveStyleValue(project, projectName);
+      const derivedStyle = deriveStyleValue(project);
       setStyleValue(derivedStyle);
       initialStyleRef.current = derivedStyle;
       initialRef.current = {
@@ -361,7 +362,7 @@ export function ProjectSettingsPage() {
       }
       // Refetch project to reset styleValue from canonical server state
       const refreshed = await API.getProject(projectName);
-      const nextStyle = deriveStyleValue(refreshed.project as unknown as Record<string, unknown>, projectName);
+      const nextStyle = deriveStyleValue(refreshed.project as unknown as Record<string, unknown>);
       setStyleValue(nextStyle);
       initialStyleRef.current = nextStyle;
       useAppStore.getState().pushToast(t("saved"), "success");
@@ -432,6 +433,15 @@ export function ProjectSettingsPage() {
       setSaving(false);
     }
   }, [modelSettings, videoBackend, imageBackendT2I, imageBackendI2I, audioOverride, audioBackend, narrationVoice, narrationSpeed, textScript, textOverview, textStyle, aspectRatio, generationMode, defaultDuration, contentMode, videoResolution, imageResolution, projectName, t, globalDefaults.video, globalDefaults.imageT2I]);
+
+  const resolvedStylePreview = useProjectMediaUrl(
+    projectName,
+    styleValue?.uploadedPreview,
+  );
+  const pickerStyleValue =
+    styleValue?.mode === "custom" && styleValue.uploadedPreview && !styleValue.uploadedFile
+      ? { ...styleValue, uploadedPreview: resolvedStylePreview }
+      : styleValue;
 
   return (
     <div
@@ -538,7 +548,7 @@ export function ProjectSettingsPage() {
                 </div>
               }
             >
-              <StylePicker value={styleValue} onChange={setStyleValue} />
+              <StylePicker value={pickerStyleValue ?? styleValue} onChange={setStyleValue} />
             </SectionCard>
           )}
 

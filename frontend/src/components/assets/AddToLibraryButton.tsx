@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Package } from "lucide-react";
 import { API } from "@/api";
 import { AssetFormModal } from "./AssetFormModal";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useAppStore } from "@/stores/app-store";
 import { useProjectsStore } from "@/stores/projects-store";
 import { errMsg } from "@/utils/async";
@@ -34,7 +35,7 @@ export function AddToLibraryButton({
   const sheetFp = useProjectsStore((s) =>
     sheetPath ? s.getAssetFingerprint(sheetPath) : null,
   );
-  const previewUrl = sheetPath ? API.getFileUrl(projectName, sheetPath, sheetFp) : undefined;
+  const previewUrl = useProjectMediaUrl(projectName, sheetPath, sheetFp);
 
   const openPreview = async () => {
     try {
@@ -96,7 +97,7 @@ export function AddToLibraryButton({
             description: initialDescription,
             voice_style: initialVoiceStyle,
           }}
-          previewImageUrl={previewUrl}
+          previewImageUrl={previewUrl ?? undefined}
           conflictWith={modal.conflictWith}
           onClose={() => setModal(null)}
           onSubmit={handleSubmit}

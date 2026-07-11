@@ -6,6 +6,7 @@ import { VersionTimeMachine } from "@/components/canvas/timeline/VersionTimeMach
 import { AspectFrame } from "@/components/ui/AspectFrame";
 import { GenerateButton } from "@/components/ui/GenerateButton";
 import { PreviewableImageFrame } from "@/components/ui/PreviewableImageFrame";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { useAppStore } from "@/stores/app-store";
 import { useProjectsStore } from "@/stores/projects-store";
 import { errMsg } from "@/utils/async";
@@ -157,9 +158,7 @@ export function ProductCard({
     });
   };
 
-  const sheetUrl = product.product_sheet
-    ? API.getFileUrl(projectName, product.product_sheet, sheetFp)
-    : null;
+  const sheetUrl = useProjectMediaUrl(projectName, product.product_sheet_file_id ?? product.product_sheet, sheetFp);
 
   return (
     <div
@@ -268,20 +267,9 @@ export function ProductCard({
         </div>
         {referenceImages.length > 0 ? (
           <div className="mt-1.5 flex flex-wrap gap-2">
-            {referenceImages.map((ref) => {
-              const url = API.getFileUrl(projectName, ref);
-              return (
-                <div
-                  key={ref}
-                  className="h-16 w-16 overflow-hidden rounded-md"
-                  style={{ border: "1px solid var(--color-hairline-soft)" }}
-                >
-                  <PreviewableImageFrame src={url} alt={ref}>
-                    <img src={url} alt={ref} className="h-full w-full object-cover" />
-                  </PreviewableImageFrame>
-                </div>
-              );
-            })}
+            {referenceImages.map((ref) => (
+              <ProductReferenceImage key={ref} projectName={projectName} path={ref} />
+            ))}
           </div>
         ) : (
           <button
@@ -414,5 +402,20 @@ function CapsLabel({
     >
       {children}
     </label>
+  );
+}
+
+function ProductReferenceImage({ projectName, path }: { projectName: string; path: string }) {
+  const url = useProjectMediaUrl(projectName, path);
+  if (!url) return null;
+  return (
+    <div
+      className="h-16 w-16 overflow-hidden rounded-md"
+      style={{ border: "1px solid var(--color-hairline-soft)" }}
+    >
+      <PreviewableImageFrame src={url} alt={path}>
+        <img src={url} alt={path} className="h-full w-full object-cover" />
+      </PreviewableImageFrame>
+    </div>
   );
 }

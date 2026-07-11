@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { API } from "@/api";
+import { useProjectMediaUrl } from "@/hooks/useProjectMediaUrl";
 import { errMsg } from "@/utils/async";
 import { useProjectsStore } from "@/stores/projects-store";
 import { useAppStore } from "@/stores/app-store";
@@ -40,10 +41,6 @@ export interface GridPreviewPanelProps {
 // ---------------------------------------------------------------------------
 
 type GridStatus = GridGeneration["status"];
-
-function isFileId(value: string | null | undefined): value is string {
-  return typeof value === "string" && value.startsWith("fil_");
-}
 
 function StatusBadge({ status, t }: { status: GridStatus; t: (key: string) => string }) {
   const STATUS_KEY: Record<GridStatus, string> = {
@@ -127,11 +124,7 @@ function ReferenceImageStrip({
                   : "border-sky-800/30 group-hover:border-sky-500/50"
               }`}
             >
-              <img
-                src={API.getFileUrl(projectName, ref.path, cacheBust)}
-                alt={ref.name}
-                className="block aspect-square w-full object-cover transition-transform duration-200 group-hover:scale-105"
-              />
+              <GridReferenceImage projectName={projectName} reference={ref} fingerprint={cacheBust} />
             </div>
             <div className="flex max-w-full items-center gap-0.5">
               {isChar ? (
@@ -152,6 +145,26 @@ function ReferenceImageStrip({
         );
       })}
     </div>
+  );
+}
+
+function GridReferenceImage({
+  projectName,
+  reference,
+  fingerprint,
+}: {
+  projectName: string;
+  reference: ReferenceImage;
+  fingerprint: number | string | null;
+}) {
+  const url = useProjectMediaUrl(projectName, reference.path, fingerprint);
+  if (!url) return <div className="aspect-square w-full bg-gray-950/40" />;
+  return (
+    <img
+      src={url}
+      alt={reference.name}
+      className="block aspect-square w-full object-cover transition-transform duration-200 group-hover:scale-105"
+    />
   );
 }
 
@@ -222,36 +235,12 @@ export function GridPreviewPanel({
 
   const isInProgress =
     grid?.status === "pending" || grid?.status === "generating" || grid?.status === "splitting";
-  const [signedGrid, setSignedGrid] = useState<{ id: string; url: string } | null>(null);
-
   // 优先使用持久化的 mtime 指纹做 cache-bust，跨页面刷新仍然有效；
   // 回退到 refreshKey 仅用于指纹尚未送达前的当次会话。
   const gridFp = useProjectsStore((s) =>
     grid?.grid_image_path && !grid.grid_image_file_id ? (s.assetFingerprints[grid.grid_image_path] ?? null) : null,
   );
-  const imageUrl = grid?.grid_image_file_id
-    ? signedGrid?.id === grid.grid_image_file_id
-      ? signedGrid.url
-      : null
-    : grid?.grid_image_path
-      ? API.getFileUrl(projectName, grid.grid_image_path, gridFp ?? refreshKey)
-      : null;
-
-  useEffect(() => {
-    let cancelled = false;
-    const gridImageFileId = grid?.grid_image_file_id;
-    if (!isFileId(gridImageFileId)) return;
-    void API.getFileSignedUrl(gridImageFileId)
-      .then((res) => {
-        if (!cancelled) setSignedGrid({ id: gridImageFileId, url: res.url });
-      })
-      .catch(() => {
-        if (!cancelled) setSignedGrid(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [grid?.grid_image_file_id]);
+  const imageUrl = useProjectMediaUrl(projectName, grid?.grid_image_file_id ?? grid?.grid_image_path, gridFp ?? refreshKey);
 
   const refs = grid?.reference_images ?? [];
 
