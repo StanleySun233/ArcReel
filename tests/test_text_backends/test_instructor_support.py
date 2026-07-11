@@ -111,6 +111,30 @@ class TestGenerateStructuredViaInstructor:
         assert input_tokens is None
         assert output_tokens is None
 
+    def test_handles_completion_without_usage_attribute(self):
+        """OpenAI 兼容代理可能让 Instructor 返回无 usage 属性的 completion。"""
+        mock_client = MagicMock()
+        sample = SampleModel(name="Charlie", age=35)
+
+        with patch("lib.text_backends.instructor_support.instructor") as mock_instructor:
+            mock_patched = MagicMock()
+            mock_instructor.from_openai.return_value = mock_patched
+            mock_patched.chat.completions.create_with_completion.return_value = (
+                sample,
+                "raw completion without usage",
+            )
+
+            json_text, input_tokens, output_tokens = generate_structured_via_instructor(
+                client=mock_client,
+                model="test-model",
+                messages=[{"role": "user", "content": "test"}],
+                response_model=SampleModel,
+            )
+
+        assert json_text == sample.model_dump_json()
+        assert input_tokens is None
+        assert output_tokens is None
+
     def test_max_tokens_uses_default_param_name(self):
         """默认 token_param 下 max_tokens 值以 max_tokens 为参数名上线。"""
         sample = SampleModel(name="Dave", age=40)
@@ -178,6 +202,28 @@ class TestGenerateStructuredViaInstructor:
 
 
 class TestGenerateStructuredViaInstructorAsync:
+    async def test_handles_completion_without_usage_attribute_async(self):
+        """异步 Instructor completion 无 usage 属性时也不应阻断结构化输出。"""
+        sample = SampleModel(name="Frank", age=50)
+
+        with patch("lib.text_backends.instructor_support.instructor") as mock_instructor:
+            mock_patched = MagicMock()
+            mock_instructor.from_openai.return_value = mock_patched
+            mock_patched.chat.completions.create_with_completion = AsyncMock(
+                return_value=(sample, "raw completion without usage")
+            )
+
+            json_text, input_tokens, output_tokens = await generate_structured_via_instructor_async(
+                client=AsyncMock(),
+                model="test-model",
+                messages=[{"role": "user", "content": "test"}],
+                response_model=SampleModel,
+            )
+
+        assert json_text == sample.model_dump_json()
+        assert input_tokens is None
+        assert output_tokens is None
+
     async def test_explicit_token_param_max_completion_tokens(self):
         """异步版显式 token_param 时以 max_completion_tokens 为参数名上线。"""
         sample = SampleModel(name="Frank", age=50)

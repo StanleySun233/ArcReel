@@ -61,9 +61,10 @@ def generate_structured_via_instructor(
 
     input_tokens = None
     output_tokens = None
-    if completion.usage:
-        input_tokens = completion.usage.prompt_tokens
-        output_tokens = completion.usage.completion_tokens
+    usage = getattr(completion, "usage", None)
+    if usage:
+        input_tokens = getattr(usage, "prompt_tokens", None)
+        output_tokens = getattr(usage, "completion_tokens", None)
 
     return json_text, input_tokens, output_tokens
 
@@ -109,9 +110,10 @@ async def generate_structured_via_instructor_async(
 
     input_tokens = None
     output_tokens = None
-    if completion.usage:
-        input_tokens = completion.usage.prompt_tokens
-        output_tokens = completion.usage.completion_tokens
+    usage = getattr(completion, "usage", None)
+    if usage:
+        input_tokens = getattr(usage, "prompt_tokens", None)
+        output_tokens = getattr(usage, "completion_tokens", None)
 
     return json_text, input_tokens, output_tokens
 
