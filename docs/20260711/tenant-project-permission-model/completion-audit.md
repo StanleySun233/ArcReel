@@ -86,6 +86,16 @@ Same-session API read with local ArcReel bearer token:
 No generation endpoint was invoked during this recheck.
 ```
 
+Local focused verification on 2026-07-11 20:20 +08:
+
+```text
+pnpm vitest run src/api.test.ts src/stores/auth-store.test.ts src/hooks/useAssistantSession.test.tsx
+Result: 3 files passed, 72 tests passed.
+
+DATABASE_URL=postgresql+asyncpg://arcreel_app:...@127.0.0.1:15432/arcreel ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://arcreel:...@127.0.0.1:15432/arcreel REDIS_URL=redis://127.0.0.1:16379/0 conda run -n arcreel python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_agent_chat_router.py tests/test_session_repo.py tests/test_task_repo.py tests/test_usage_repo.py tests/test_usage_tracker.py -q
+Result: 131 passed, 1 warning.
+```
+
 Backend:
 
 ```bash
