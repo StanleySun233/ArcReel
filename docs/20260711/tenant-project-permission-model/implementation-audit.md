@@ -294,6 +294,22 @@ Documentation audit:
 
 Additional focused regression:
 
+- Added MCP / usage session identity regression.
+  - `UsageTracker.start_call()` now resolves default calls from current `user_id + tenant_id` identity scope instead of falling back to `default / ten_default`.
+  - MCP enqueue tool tests now accept and verify `user_id`, `tenant_id`, and `requested_by_user_id` propagation into the queue boundary.
+  - Evidence: `tests/test_usage_tracker.py::TestUsageTracker::test_start_call_uses_current_identity_scope_by_default`.
+  - Evidence: `tests/test_usage_tracker.py::TestUsageTracker::test_start_call_explicit_identity_wins_over_current_scope`.
+  - Evidence: `tests/server/agent_runtime/test_sdk_tools.py::test_generate_assets_happy`.
+- Audited project runtime skills.
+  - ArcReel runtime skills live under `agent_runtime_profile/.claude/skills`; no host-level `~/.codex/skills` or `~/.claude` skill files were modified.
+  - `manage-project`, `generate-assets`, `generate-storyboard`, `generate-grid`, `generate-video`, `generate-narration-audio`, and `generate-script` route project writes through `mcp__arcreel__*`.
+  - `compose-video` is the only runtime skill with a Python script that writes files; it requires the assistant session cwd to be the current project root and writes final media under current-project `output/`.
+  - `server/agent_runtime/agent_access_policy.py` rejects Write/Edit outside the session project cwd and rejects direct writes to `project.json` and `scripts/`.
+  - `server/agent_runtime/options_assembler.py` sets Claude SDK `cwd` to the session project root and builds a per-session in-process MCP server with current `user_id + tenant_id`.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_usage_tracker.py tests/test_text_generator.py tests/server/agent_runtime/test_sdk_tools.py -q`
+  - Result: 106 passed
+- `ruff check lib/usage_tracker.py tests/test_usage_tracker.py tests/server/agent_runtime/test_sdk_tools.py`
+  - Result: passed
 - `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_task_repo.py tests/test_usage_repo.py tests/test_session_repo.py -q`
   - Result: 139 passed, 1 warning
 - Added `tests/test_task_repo.py::TestTaskRepository::test_cancel_all_queued_is_scoped_by_project_id`.

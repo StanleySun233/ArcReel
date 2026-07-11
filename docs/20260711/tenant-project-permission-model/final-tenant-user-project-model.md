@@ -227,6 +227,16 @@ Agent 规则：
 - Agent cwd 由 `tenant_id + project_id` 计算。
 - MCP 工具不接受用户传入的项目名推断；项目上下文由 session 注入。
 
+MCP / Skill session 规则：
+
+- 每个 assistant session 构造独立的 in-process MCP server，工具闭包绑定当前 `project_id` 对应的项目根。
+- MCP 工具执行时必须进入 `user_id + tenant_id` identity scope；队列任务、文本/媒体调用、用量落账都从当前 session 继承身份。
+- MCP 工具参数不得接受 `tenant_id`、`role` 或任意项目路径前缀作为授权或落点依据。
+- Skill 只能在当前 session cwd 下工作；项目 JSON 和剧本 JSON 的写入必须走 MCP 编辑工具。
+- Skill 脚本只允许作为已登记 runtime profile 的项目内脚本运行，且输出必须落在当前项目允许目录内，例如 `output/`。
+- Write / Edit / Bash 直改 `project.json` 或 `scripts/` 必须被 sandbox denyWrite 与 PreToolUse hook 双层拒绝。
+- 任何后台 session store、transcript、event log、usage、task row 都必须至少携带 `tenant_id + project_id/session_id`，避免多项目并发时落到默认租户或同名项目。
+
 任务规则：
 
 - 入队时检查当前用户权限。
