@@ -36,7 +36,7 @@ def upgrade() -> None:
     op.create_index(
         "idx_tasks_dedupe_active",
         "tasks",
-        ["project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
+        ["project_id", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running', 'cancelling')"),
     )
@@ -48,7 +48,7 @@ def downgrade() -> None:
     op.create_index(
         "idx_tasks_dedupe_active",
         "tasks",
-        ["project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
+        ["project_id", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running')"),
     )

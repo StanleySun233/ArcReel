@@ -236,17 +236,17 @@ def upgrade() -> None:
     op.drop_index("idx_tasks_dedupe_active", table_name="tasks")
     op.create_index("idx_tasks_tenant_status_queued_at", "tasks", ["tenant_id", "status", "queued_at"], unique=False)
     op.create_index(
-        "idx_tasks_tenant_project_updated_at", "tasks", ["tenant_id", "project_name", "updated_at"], unique=False
+        "idx_tasks_tenant_project_updated_at", "tasks", ["tenant_id", "project_id", "updated_at"], unique=False
     )
     op.create_index(
         "idx_tasks_dedupe_active",
         "tasks",
-        ["tenant_id", "project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
+        ["tenant_id", "project_id", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running', 'cancelling')"),
     )
     op.create_index(
-        "idx_task_events_tenant_project_id", "task_events", ["tenant_id", "project_name", "id"], unique=False
+        "idx_task_events_tenant_project_id", "task_events", ["tenant_id", "project_id", "id"], unique=False
     )
     op.create_index("idx_api_calls_tenant_project_name", "api_calls", ["tenant_id", "project_name"], unique=False)
     op.create_index("idx_api_calls_tenant_started_at", "api_calls", ["tenant_id", "started_at"], unique=False)
@@ -369,7 +369,7 @@ def downgrade() -> None:
     op.create_index(
         "idx_tasks_dedupe_active",
         "tasks",
-        ["project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
+        ["project_id", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running', 'cancelling')"),
     )

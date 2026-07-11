@@ -39,7 +39,8 @@ def _json_loads(value: str | None, default: Any) -> Any:
 def _task_to_dict(row: Task) -> dict[str, Any]:
     return {
         "task_id": row.task_id,
-        "project_name": row.project_name,
+        "project_id": row.project_id,
+        "project_name": row.project_id,
         "task_type": row.task_type,
         "media_type": row.media_type,
         "resource_id": row.resource_id,
@@ -69,7 +70,8 @@ def _event_to_dict(row: TaskEvent) -> dict[str, Any]:
     return {
         "id": row.id,
         "task_id": row.task_id,
-        "project_name": row.project_name,
+        "project_id": row.project_id,
+        "project_name": row.project_id,
         "event_type": row.event_type,
         "status": row.status,
         "data": _json_loads(row.data_json, {}),
@@ -107,7 +109,7 @@ class TaskRepository(BaseRepository):
         self,
         *,
         task_id: str,
-        project_name: str,
+        project_id: str,
         event_type: str,
         status: str,
         data: dict | None = None,
@@ -115,7 +117,7 @@ class TaskRepository(BaseRepository):
         now = utc_now()
         event = TaskEvent(
             task_id=task_id,
-            project_name=project_name,
+            project_id=project_id,
             event_type=event_type,
             status=status,
             data_json=_json_dumps(data or {}),
@@ -156,7 +158,7 @@ class TaskRepository(BaseRepository):
         task = Task(
             task_id=task_id,
             tenant_id=write_tenant_id,
-            project_name=project_name,
+            project_id=project_name,
             task_type=task_type,
             media_type=media_type,
             resource_id=resource_id,
@@ -182,7 +184,7 @@ class TaskRepository(BaseRepository):
             result = await self.session.execute(
                 select(Task)
                 .where(
-                    Task.project_name == project_name,
+                    Task.project_id == project_name,
                     Task.tenant_id == write_tenant_id,
                     Task.task_type == task_type,
                     Task.resource_id == resource_id,
@@ -205,7 +207,7 @@ class TaskRepository(BaseRepository):
         task_data = _task_to_dict(task)
         await self._append_event(
             task_id=task_id,
-            project_name=project_name,
+            project_id=project_name,
             event_type="queued",
             status="queued",
             data=task_data,
@@ -297,7 +299,7 @@ class TaskRepository(BaseRepository):
 
         await self._append_event(
             task_id=target_task_id,
-            project_name=running_task.project_name,
+            project_id=running_task.project_id,
             event_type="running",
             status="running",
             data=task_data,
@@ -335,7 +337,7 @@ class TaskRepository(BaseRepository):
         task_data = _task_to_dict(done_task)
         await self._append_event(
             task_id=task_id,
-            project_name=done_task.project_name,
+            project_id=done_task.project_id,
             event_type="succeeded",
             status="succeeded",
             data=task_data,
@@ -380,7 +382,7 @@ class TaskRepository(BaseRepository):
         task_data = _task_to_dict(failed_task)
         await self._append_event(
             task_id=task_id,
-            project_name=failed_task.project_name,
+            project_id=failed_task.project_id,
             event_type="failed",
             status="failed",
             data=task_data,
@@ -410,7 +412,7 @@ class TaskRepository(BaseRepository):
         task_data = _task_to_dict(failed_task)
         await self._append_event(
             task_id=task_id,
-            project_name=failed_task.project_name,
+            project_id=failed_task.project_id,
             event_type="failed",
             status="failed",
             data=task_data,
@@ -620,7 +622,7 @@ class TaskRepository(BaseRepository):
         task_data = _task_to_dict(cancelled_task)
         await self._append_event(
             task_id=task_id,
-            project_name=cancelled_task.project_name,
+            project_id=cancelled_task.project_id,
             event_type="cancelled",
             status="cancelled",
             data=task_data,
@@ -663,7 +665,7 @@ class TaskRepository(BaseRepository):
         task_data = _task_to_dict(cancelling_task)
         await self._append_event(
             task_id=task_id,
-            project_name=cancelling_task.project_name,
+            project_id=cancelling_task.project_id,
             event_type="cancelling",
             status="cancelling",
             data=task_data,
@@ -776,20 +778,20 @@ class TaskRepository(BaseRepository):
 
     async def get_cancel_all_preview(self, project_name: str) -> int:
         """返回项目中当前 queued 状态的任务数量。"""
-        stmt = select(func.count()).select_from(Task).where(Task.project_name == project_name, Task.status == "queued")
+        stmt = select(func.count()).select_from(Task).where(Task.project_id == project_name, Task.status == "queued")
         stmt = self._scope_query(stmt, Task)
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
     async def cancel_all_queued(self, project_name: str) -> dict[str, Any]:
         """取消项目中所有 queued 任务。"""
-        queued_stmt = select(Task).where(Task.project_name == project_name, Task.status == "queued")
+        queued_stmt = select(Task).where(Task.project_id == project_name, Task.status == "queued")
         queued_stmt = self._scope_query(queued_stmt, Task)
         queued_result = await self.session.execute(queued_stmt)
         queued_tasks = list(queued_result.scalars().all())
 
         now = utc_now()
-        stmt = update(Task).where(Task.project_name == project_name, Task.status == "queued")
+        stmt = update(Task).where(Task.project_id == project_name, Task.status == "queued")
         stmt = self._scope_query(stmt, Task)
         stmt = stmt.values(
             status="cancelled",
@@ -810,7 +812,7 @@ class TaskRepository(BaseRepository):
                 task_data = _task_to_dict(updated_task)
                 await self._append_event(
                     task_id=updated_task.task_id,
-                    project_name=project_name,
+                    project_id=project_name,
                     event_type="cancelled",
                     status="cancelled",
                     data=task_data,
@@ -864,7 +866,7 @@ class TaskRepository(BaseRepository):
         events = [
             TaskEvent(
                 task_id=t.task_id,
-                project_name=t.project_name,
+                project_id=t.project_id,
                 event_type="requeued",
                 status="queued",
                 data_json=_json_dumps(_task_to_dict(t)),
@@ -900,7 +902,7 @@ class TaskRepository(BaseRepository):
 
         filters = []
         if project_name:
-            filters.append(Task.project_name == project_name)
+            filters.append(Task.project_id == project_name)
         if status:
             filters.append(Task.status == status)
         if task_type:
@@ -933,7 +935,7 @@ class TaskRepository(BaseRepository):
     async def get_stats(self, *, project_name: str | None = None) -> dict[str, int]:
         filters = []
         if project_name:
-            filters.append(Task.project_name == project_name)
+            filters.append(Task.project_id == project_name)
 
         # Group by status
         stmt = select(Task.status, func.count().label("cnt")).where(*filters).group_by(Task.status)
@@ -967,7 +969,7 @@ class TaskRepository(BaseRepository):
         limit = max(1, min(1000, limit))
         stmt = select(Task)
         if project_name:
-            stmt = stmt.where(Task.project_name == project_name)
+            stmt = stmt.where(Task.project_id == project_name)
         stmt = stmt.order_by(Task.updated_at.desc()).limit(limit)
         stmt = self._scope_query(stmt, Task)
 
@@ -985,7 +987,7 @@ class TaskRepository(BaseRepository):
         limit = max(1, min(1000, limit))
         stmt = select(TaskEvent).where(TaskEvent.id > last_event_id)
         if project_name:
-            stmt = stmt.where(TaskEvent.project_name == project_name)
+            stmt = stmt.where(TaskEvent.project_id == project_name)
         stmt = stmt.order_by(TaskEvent.id.asc()).limit(limit)
         stmt = self._scope_query(stmt, TaskEvent)
 
@@ -996,7 +998,7 @@ class TaskRepository(BaseRepository):
     async def get_latest_event_id(self, *, project_name: str | None = None) -> int:
         stmt = select(func.max(TaskEvent.id))
         if project_name:
-            stmt = stmt.where(TaskEvent.project_name == project_name)
+            stmt = stmt.where(TaskEvent.project_id == project_name)
         stmt = self._scope_query(stmt, TaskEvent)
         result = await self.session.execute(stmt)
         return result.scalar() or 0

@@ -80,6 +80,8 @@ Generation task enqueue, provider derivation, worker provider extraction, resume
 Evidence:
 
 - `lib/generation_queue.py` derives provider id under `task_tenant_scope`.
+- `lib/db/models/task.py` stores task and task event project scope in `project_id`.
+- `lib/db/repositories/task_repo.py` writes and filters task/task event rows through `project_id`.
 - `lib/generation_queue_client.py` uses the current identity context when SDK tools do not pass explicit ids.
 - `lib/generation_worker.py` resolves project config/provider capacity under the task tenant.
 - `server/services/generation_tasks.py` and `lib/config/resolver.py` return tenant-scoped `ProjectManager` instances.
@@ -88,6 +90,8 @@ Evidence:
 - `tests/test_generation_queue.py::test_enqueue_provider_derivation_receives_tenant_and_user`.
 - `tests/test_generation_queue.py::test_queue_client_uses_current_identity_scope_by_default`.
 - `tests/test_generation_worker_module.py::test_project_lookup_is_scoped_by_task_tenant`.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_task_repo.py tests/test_task_repo_state_machine.py tests/test_generation_queue.py tests/test_generation_worker_module.py tests/test_tasks_router_more.py -q`
+  - Result: 145 passed, 1 warning
 
 ### Agent session metadata, event log, and transcript store are tenant-scoped
 
@@ -244,7 +248,7 @@ Dominant failure classes:
 - `tenant_id is required` in config/model resolver tests that still instantiate services without tenant context.
 - `403` responses in route tests that do not provide current tenant membership.
 - PostgreSQL foreign-key failures in fixtures that insert tenant rows before user rows.
-- Remaining task and usage tests that assert `project_name` field names while the target contract is `project_id`.
+- Remaining usage tests that assert `project_name` field names while the target contract is `project_id`.
 
 ### Full API scenario test is not complete
 
@@ -263,9 +267,9 @@ Required scenario still pending:
 
 `agent-browser` testing requires a running local ArcReel web service. This remains pending until the service is available or explicit authorization is given to start it.
 
-### Remaining old task/usage `project_name` storage names
+### Remaining old usage `project_name` storage names
 
-Task and usage persistence models still use `project_name` as a historical column or response field name while carrying project id values. These need separate schema-level cleanup so the final storage vocabulary is consistently `project_id`.
+Usage persistence models still use `project_name` as a historical column or response field name while carrying project id values. This needs a separate schema-level cleanup so the final storage vocabulary is consistently `project_id`.
 
 ### Remaining project-id audit gap
 

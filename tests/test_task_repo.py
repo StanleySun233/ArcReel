@@ -3,8 +3,10 @@
 import asyncio
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from lib.db.models.task import Task, TaskEvent
 from lib.db.repositories.task_repo import TaskRepository
 from tests.pg_utils import create_pg_test_engine, create_pg_test_engine_with_cleanup, drop_pg_test_engine
 
@@ -58,6 +60,26 @@ class TestTaskRepository:
         assert affected == 1
         done = await repo.get(first["task_id"])
         assert done["status"] == "succeeded"
+
+    async def test_task_storage_uses_project_id_column(self, db_session):
+        repo = TaskRepository(db_session)
+
+        created = await repo.enqueue(
+            project_name="proj-storage",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="E1S01",
+        )
+
+        task_row = (
+            await db_session.execute(select(Task).where(Task.task_id == created["task_id"]))
+        ).scalar_one()
+        event_row = (
+            await db_session.execute(select(TaskEvent).where(TaskEvent.task_id == created["task_id"]))
+        ).scalar_one()
+
+        assert task_row.project_id == "proj-storage"
+        assert event_row.project_id == "proj-storage"
 
     async def test_event_sequence(self, db_session):
         repo = TaskRepository(db_session)

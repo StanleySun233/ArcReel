@@ -14,7 +14,7 @@ class Task(TenantOwnedMixin, UserOwnedMixin, Base):
     __tablename__ = "tasks"
 
     task_id: Mapped[str] = mapped_column(String, primary_key=True)
-    project_name: Mapped[str] = mapped_column(String, nullable=False)
+    project_id: Mapped[str] = mapped_column(String, nullable=False)
     task_type: Mapped[str] = mapped_column(String, nullable=False)
     media_type: Mapped[str] = mapped_column(String, nullable=False)
     resource_id: Mapped[str] = mapped_column(String, nullable=False)
@@ -37,15 +37,15 @@ class Task(TenantOwnedMixin, UserOwnedMixin, Base):
 
     __table_args__ = (
         Index("idx_tasks_status_queued_at", "status", "queued_at"),
-        Index("idx_tasks_project_updated_at", "project_name", "updated_at"),
+        Index("idx_tasks_project_updated_at", "project_id", "updated_at"),
         Index("idx_tasks_tenant_status_queued_at", "tenant_id", "status", "queued_at"),
-        Index("idx_tasks_tenant_project_updated_at", "tenant_id", "project_name", "updated_at"),
+        Index("idx_tasks_tenant_project_updated_at", "tenant_id", "project_id", "updated_at"),
         Index("idx_tasks_dependency_task_id", "dependency_task_id"),
         Index("idx_tasks_status_provider_queued", "status", "provider_id", "queued_at"),
         Index(
             "idx_tasks_dedupe_active",
             "tenant_id",
-            "project_name",
+            "project_id",
             "task_type",
             "resource_id",
             text("COALESCE(script_file, '')"),
@@ -60,15 +60,15 @@ class TaskEvent(TenantOwnedMixin, Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     task_id: Mapped[str] = mapped_column(String, ForeignKey("tasks.task_id", ondelete="CASCADE"), nullable=False)
-    project_name: Mapped[str] = mapped_column(String, nullable=False)
+    project_id: Mapped[str] = mapped_column(String, nullable=False)
     event_type: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False)
     data_json: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     __table_args__ = (
-        Index("idx_task_events_project_id", "project_name", "id"),
-        Index("idx_task_events_tenant_project_id", "tenant_id", "project_name", "id"),
+        Index("idx_task_events_project_id", "project_id", "id"),
+        Index("idx_task_events_tenant_project_id", "tenant_id", "project_id", "id"),
     )
 
 

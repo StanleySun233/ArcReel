@@ -24,7 +24,7 @@ def upgrade() -> None:
         "agent_sessions",
         sa.Column("id", sa.String, primary_key=True, nullable=False),
         sa.Column("sdk_session_id", sa.String, nullable=True),
-        sa.Column("project_id", sa.String, nullable=False),
+        sa.Column("project_name", sa.String, nullable=False),
         sa.Column("title", sa.String, server_default="", nullable=False),
         sa.Column("status", sa.String, server_default="idle", nullable=False),
         sa.Column("created_at", sa.String, nullable=False),
@@ -36,7 +36,7 @@ def upgrade() -> None:
     op.create_table(
         "api_calls",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True, nullable=False),
-        sa.Column("project_name", sa.String, nullable=False),
+        sa.Column("project_id", sa.String, nullable=False),
         sa.Column("call_type", sa.String, nullable=False),
         sa.Column("model", sa.String, nullable=False),
         sa.Column("prompt", sa.Text, nullable=True),
@@ -63,18 +63,18 @@ def upgrade() -> None:
         "task_events",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True, nullable=False),
         sa.Column("task_id", sa.String, nullable=False),
-        sa.Column("project_name", sa.String, nullable=False),
+        sa.Column("project_id", sa.String, nullable=False),
         sa.Column("event_type", sa.String, nullable=False),
         sa.Column("status", sa.String, nullable=False),
         sa.Column("data_json", sa.Text, nullable=True),
         sa.Column("created_at", sa.String, nullable=False),
     )
-    op.create_index("idx_task_events_project_id", "task_events", ["project_name", "id"])
+    op.create_index("idx_task_events_project_id", "task_events", ["project_id", "id"])
 
     op.create_table(
         "tasks",
         sa.Column("task_id", sa.String, primary_key=True, nullable=False),
-        sa.Column("project_name", sa.String, nullable=False),
+        sa.Column("project_id", sa.String, nullable=False),
         sa.Column("task_type", sa.String, nullable=False),
         sa.Column("media_type", sa.String, nullable=False),
         sa.Column("resource_id", sa.String, nullable=False),
@@ -93,12 +93,12 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.String, nullable=False),
     )
     op.create_index("idx_tasks_status_queued_at", "tasks", ["status", "queued_at"])
-    op.create_index("idx_tasks_project_updated_at", "tasks", ["project_name", "updated_at"])
+    op.create_index("idx_tasks_project_updated_at", "tasks", ["project_id", "updated_at"])
     op.create_index("idx_tasks_dependency_task_id", "tasks", ["dependency_task_id"])
     op.create_index(
         "idx_tasks_dedupe_active",
         "tasks",
-        ["project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
+        ["project_id", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running')"),
     )
