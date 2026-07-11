@@ -228,6 +228,42 @@ class TestCleanup:
         finally:
             await mgr.close_session("s1")
 
+    async def test_running_watchdog_interrupts_idle_session(self, tmp_path, monkeypatch):
+        mgr = _make_manager(tmp_path)
+        managed, _ = _make_managed("s1", status="running")
+        await _start(managed)
+        managed.last_activity = time.monotonic() - 10
+        mgr.sessions["s1"] = managed
+
+        monkeypatch.setattr("server.agent_runtime.session_manager._RUNNING_IDLE_TIMEOUT_SECONDS", 0.01)
+        monkeypatch.setattr("server.agent_runtime.session_manager._RUNNING_IDLE_POLL_SECONDS", 0.01)
+
+        with patch.object(managed, "send_interrupt", new_callable=AsyncMock) as mock_interrupt:
+            mgr._schedule_running_watchdog("s1")
+            await asyncio.sleep(0.05)
+            mock_interrupt.assert_awaited_once()
+
+        await mgr.close_session("s1")
+
+    async def test_running_watchdog_cancelled_on_finalize(self, tmp_path):
+        mgr = _make_manager(tmp_path)
+        managed, _ = _make_managed("s1", status="running")
+        await _start(managed)
+        mgr.sessions["s1"] = managed
+
+        with patch.object(mgr, "_schedule_cleanup") as mock_schedule:
+            with patch.object(mgr.meta_store, "update_status", new_callable=AsyncMock):
+                mgr._schedule_running_watchdog("s1")
+                task = managed._running_watchdog_task
+                await mgr._finalize_turn(managed, {"type": "result", "subtype": "success", "is_error": False})
+
+        assert task is not None
+        await asyncio.sleep(0)
+        assert task.cancelled()
+        assert managed._running_watchdog_task is None
+        mock_schedule.assert_called_once_with("s1")
+        await mgr.close_session("s1")
+
 
 class TestEnsureCapacity:
     async def test_under_limit_no_eviction(self, tmp_path):

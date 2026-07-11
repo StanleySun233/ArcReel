@@ -71,6 +71,8 @@ SDK_AVAILABLE = True
 # 持续高于此值说明 _process_inbox 被阻塞或下游 I/O 超慢。
 _INBOX_BACKLOG_WARN_THRESHOLD = 100
 _INBOX_BACKLOG_RESET_THRESHOLD = 50  # 降至此水位以下才重置告警状态，避免抖动刷屏
+_RUNNING_IDLE_TIMEOUT_SECONDS = 900
+_RUNNING_IDLE_POLL_SECONDS = 30
 
 # SDK stderr 缓冲上限（行）：actor.start() 失败时启动期 stderr 一般 <20 行；
 # 上限主要为应对启动成功后 SDK 在会话存活期间持续输出 stderr 的场景，cap
@@ -160,6 +162,7 @@ class ManagedSession:
     interrupt_requested: bool = False
     last_activity: float | None = None  # updated on every send/receive
     _cleanup_task: asyncio.Task | None = None  # current cleanup timer (idle TTL or terminal delay)
+    _running_watchdog_task: asyncio.Task | None = None
     _inbox: asyncio.Queue = field(default_factory=asyncio.Queue)  # async post-processing queue
     _inbox_warned: bool = False  # edge-triggered backlog warning state
     _process_task: asyncio.Task | None = None  # per-session async inbox processor
@@ -455,6 +458,7 @@ class SessionManager:
             msg_dict = message_to_dict(raw_msg)
             if not isinstance(msg_dict, dict):
                 return
+            managed.last_activity = time.monotonic()
             if is_duplicate_user_echo(managed.pending_user_echoes, msg_dict):
                 # SDK 回放的用户消息副本：POST 受理时已写日志分配身份，
                 # 打标让事件日志写入点跳过，不产生重复条目。
@@ -680,6 +684,7 @@ class SessionManager:
                 logger.exception("持久化 error 状态失败 session_id=%s", sdk_id)
             raise RuntimeError("新会话首条用户消息写入事件日志失败") from managed.initial_user_entry_error
 
+        self._schedule_running_watchdog(managed.session_id)
         return sdk_id
 
     async def _process_inbox(self, managed: ManagedSession) -> None:
@@ -943,6 +948,7 @@ class SessionManager:
             # send_query 确认投递成功后再广播：避免失败回滚已删条目后，
             # 在线 SSE 订阅者仍残留一条已撤销的用户消息。
             managed.channel.broadcast({"type": "log_entry", "session_id": session_id, "entry": log_entry})
+        self._schedule_running_watchdog(managed.session_id)
         return log_entry
 
     async def interrupt_session(self, session_id: str) -> SessionStatus:
@@ -976,6 +982,7 @@ class SessionManager:
             return managed.status
 
         managed.last_activity = time.monotonic()
+        self._cancel_running_watchdog(managed)
         # status 由 _on_actor_message 在收到 ResultMessage(error_during_execution) 时推导为 "interrupted"
         return managed.status
 
@@ -1002,6 +1009,7 @@ class SessionManager:
         )
         managed.status = final_status
         managed.last_activity = time.monotonic()
+        self._cancel_running_watchdog(managed)
         if final_status == "error":
             logger.warning(
                 "assistant session result error",
@@ -1059,6 +1067,7 @@ class SessionManager:
         managed.cancel_pending_questions(reason)
         managed.status = status
         managed.last_activity = time.monotonic()
+        self._cancel_running_watchdog(managed)
         await self.meta_store.update_status(managed.session_id, status)
         managed.interrupt_requested = False
 
@@ -1090,6 +1099,44 @@ class SessionManager:
         if managed._cleanup_task is not None and not managed._cleanup_task.done():
             managed._cleanup_task.cancel()
         managed._cleanup_task = asyncio.create_task(self._cleanup_idle(session_id))
+
+    def _schedule_running_watchdog(self, session_id: str) -> None:
+        managed = self.sessions.get(session_id)
+        if managed is None or managed.status != "running":
+            return
+        if managed._running_watchdog_task is not None and not managed._running_watchdog_task.done():
+            managed._running_watchdog_task.cancel()
+        managed._running_watchdog_task = asyncio.create_task(self._running_idle_watchdog(session_id))
+
+    def _cancel_running_watchdog(self, managed: ManagedSession) -> None:
+        if managed._running_watchdog_task is not None and not managed._running_watchdog_task.done():
+            managed._running_watchdog_task.cancel()
+        managed._running_watchdog_task = None
+
+    async def _running_idle_watchdog(self, session_id: str) -> None:
+        try:
+            while True:
+                await asyncio.sleep(_RUNNING_IDLE_POLL_SECONDS)
+                managed = self.sessions.get(session_id)
+                if managed is None or managed.status != "running":
+                    return
+                last_activity = managed.last_activity or 0
+                if time.monotonic() - last_activity < _RUNNING_IDLE_TIMEOUT_SECONDS:
+                    continue
+                logger.warning(
+                    "assistant session running idle timeout session_id=%s idle_seconds=%s",
+                    session_id,
+                    int(time.monotonic() - last_activity),
+                )
+                managed.interrupt_requested = True
+                try:
+                    await managed.send_interrupt()
+                except Exception:
+                    logger.exception("running idle watchdog interrupt failed session_id=%s", session_id)
+                    await self._mark_session_terminal(managed, "error", "running idle watchdog failed")
+                return
+        except asyncio.CancelledError:
+            return
 
     async def _cleanup_idle(self, session_id: str) -> None:
         try:
@@ -1125,6 +1172,7 @@ class SessionManager:
                 managed._cleanup_task.cancel()
                 with contextlib.suppress(BaseException):
                     await managed._cleanup_task
+            self._cancel_running_watchdog(managed)
 
             try:
                 await asyncio.wait_for(

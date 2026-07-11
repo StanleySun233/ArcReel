@@ -306,8 +306,17 @@ Additional focused regression:
   - `compose-video` is the only runtime skill with a Python script that writes files; it requires the assistant session cwd to be the current project root and writes final media under current-project `output/`.
   - `server/agent_runtime/agent_access_policy.py` rejects Write/Edit outside the session project cwd and rejects direct writes to `project.json` and `scripts/`.
   - `server/agent_runtime/options_assembler.py` sets Claude SDK `cwd` to the session project root and builds a per-session in-process MCP server with current `user_id + tenant_id`.
+- Added assistant running-idle watchdog.
+  - `server/agent_runtime/session_manager.py` now refreshes session activity on every SDK message and interrupts sessions that remain `running` without any SDK output past the idle threshold.
+  - This prevents a model/subagent stall from leaving the session permanently `running` and blocking the project assistant lane.
+  - Evidence: `tests/test_session_lifecycle.py::TestCleanup::test_running_watchdog_interrupts_idle_session`.
+  - Evidence: `tests/test_session_lifecycle.py::TestCleanup::test_running_watchdog_cancelled_on_finalize`.
 - `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_usage_tracker.py tests/test_text_generator.py tests/server/agent_runtime/test_sdk_tools.py -q`
   - Result: 106 passed
+- `DATABASE_URL=postgresql+asyncpg://... python -m pytest tests/test_session_lifecycle.py tests/test_session_manager_sdk_session_id.py tests/test_session_actor.py -q`
+  - Result: 53 passed
+- `DATABASE_URL=postgresql+asyncpg://... ruff check server/agent_runtime/session_manager.py tests/test_session_lifecycle.py`
+  - Result: passed
 - `ruff check lib/usage_tracker.py tests/test_usage_tracker.py tests/server/agent_runtime/test_sdk_tools.py`
   - Result: passed
 - `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_task_repo.py tests/test_usage_repo.py tests/test_session_repo.py -q`
