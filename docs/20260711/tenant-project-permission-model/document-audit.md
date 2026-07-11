@@ -17,12 +17,15 @@
 
 已删除 `docs/20260710/tenant-commercialization/`，并从 `docs/INDEX.md` 移除该条目。
 
+已删除 `docs/superpowers/plans/` 和 `docs/superpowers/specs/` 下仍记录 SQLite / aiosqlite / `.arcreel.db` / SQLite migration 的历史开发文档。
+
 删除原因：
 
 - 旧文档将项目 API 和文件路径绑定到 `project_name`。
 - 旧文档记录了 Issued Tokens / external access tokens 作为已实现能力。
 - 旧文档使用 story/worktree 并行计划。
 - 旧文档包含旧兼容和历史修复记录，和当前“新发行版、不做旧兼容”的口径冲突。
+- 旧文档继续传播 SQLite、本地 `.arcreel.db`、旧数据迁移脚本、SQLite/PG 双栈测试矩阵等已经废弃的数据库方案。
 
 ## 最终口径
 
@@ -48,3 +51,4 @@
 - 当前权威文档明确 Issued Tokens disable 行为。
 - 当前权威文档明确串行执行方式。
 - `docs/20260710/tenant-commercialization/` 目录已从工作树清除。
+- 除本审计记录外，`docs/` 下已无 SQLite / aiosqlite / `.arcreel.db` / `migrate_sqlite_to_orm` 文档命中。
