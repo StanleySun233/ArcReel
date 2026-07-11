@@ -22,7 +22,8 @@ def resolve_ark_api_key(api_key: str | None = None) -> str:
 
 def create_ark_client(*, api_key: str | None = None, base_url: str | None = None):
     """创建 Ark 客户端；base_url 缺省走 ARK_BASE_URL（即 /api/v3）。"""
+    resolved_api_key = resolve_ark_api_key(api_key)
     from volcenginesdkarkruntime import Ark
 
     effective_base_url = base_url or ARK_BASE_URL
-    return Ark(base_url=effective_base_url, api_key=resolve_ark_api_key(api_key))
+    return Ark(base_url=effective_base_url, api_key=resolved_api_key)

@@ -40,7 +40,7 @@ def configure_bootstrap_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CAMEL_ARCREEL_TOKEN_LINK_TEMPLATE", "https://camel-hub.com/token?keyword={token_name}")
     monkeypatch.setenv("CAMEL_ARCREEL_IMAGE_ENDPOINT", "openai-images")
     monkeypatch.setenv("CAMEL_ARCREEL_TEXT_ENDPOINT", "openai-chat")
-    monkeypatch.setenv("CAMEL_ARCREEL_VIDEO_ENDPOINT", "openai-video")
+    monkeypatch.setenv("CAMEL_ARCREEL_VIDEO_ENDPOINT", "ark-seedance")
     monkeypatch.setenv("CAMEL_ARCREEL_AUDIO_ENDPOINT", "openai-tts")
     monkeypatch.setenv("CAMEL_ARCREEL_IMAGE_MODELS", "gpt-image-2")
     monkeypatch.setenv("CAMEL_ARCREEL_TEXT_MODELS", "gpt-5.5")
@@ -128,7 +128,7 @@ def test_camel_bootstrap_settings_derive_from_oauth_minimal_env(monkeypatch: pyt
     assert [(spec.media, spec.base_url, spec.endpoint, spec.models) for spec in settings.media_specs] == [
         ("image", "http://camel-internal:3000", "openai-images", ("gpt-image-2",)),
         ("text", "http://camel-internal:3000", "openai-chat", ("gpt-5.5",)),
-        ("video", "http://camel-internal:3000/seedance", "openai-video", ("doubao-seedance-2-0-260128",)),
+        ("video", "http://camel-internal:3000/seedance", "ark-seedance", ("doubao-seedance-2-0-260128",)),
         ("audio", "http://camel-internal:3000", "openai-tts", ("gpt-4o-mini-tts",)),
         ("anthropic", "http://camel-internal:3000", "anthropic-messages", ("claude-opus-4-8",)),
     ]
@@ -285,7 +285,7 @@ async def test_camel_bootstrap_status_returns_needed_provider_plan(
         "media": "video",
         "provider_name": "CaMeL Video",
         "base_url": "https://api.camel-hub.com/seedance",
-        "endpoint": "openai-video",
+        "endpoint": "ark-seedance",
         "models": ["doubao-seedance-2-0-260128"],
         "token_name": "camel-arcreel-123-video",
     }

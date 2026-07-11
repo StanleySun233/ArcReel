@@ -33,7 +33,7 @@ _SECRET_VALUE_RE = re.compile(
 _DEFAULT_MEDIA_SPECS = {
     "image": ("CaMeL Image", "openai-images", ("gpt-image-2",)),
     "text": ("CaMeL Text", "openai-chat", ("gpt-5.5",)),
-    "video": ("CaMeL Video", "openai-video", ("doubao-seedance-2-0-260128",)),
+    "video": ("CaMeL Video", "ark-seedance", ("doubao-seedance-2-0-260128",)),
     "audio": ("CaMeL Audio", "openai-tts", ("gpt-4o-mini-tts",)),
     "anthropic": ("CaMeL Agent", "anthropic-messages", ("claude-opus-4-8",)),
 }

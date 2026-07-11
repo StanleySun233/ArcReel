@@ -166,6 +166,45 @@ class TestOpenAIVideoBackend:
         mock_client.videos.retrieve.assert_called_with("vid_gateway")
         mock_client.videos.download_content.assert_called_with("vid_gateway")
 
+    async def test_create_rejects_html_string_task_id(self, tmp_path: Path):
+        mock_client = AsyncMock()
+        mock_client.videos.create = AsyncMock(return_value="<!doctype html>\n<html></html>")
+        mock_client.videos.retrieve = AsyncMock(side_effect=AssertionError("should not poll"))
+
+        with patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client):
+            from lib.video_backends.openai import OpenAIVideoBackend
+
+            backend = OpenAIVideoBackend(api_key="test-key")
+            output_path = tmp_path / "output.mp4"
+            request = VideoGenerationRequest(
+                prompt="A cat walking in the park",
+                output_path=output_path,
+                aspect_ratio="9:16",
+                resolution="720p",
+                duration_seconds=8,
+            )
+            with pytest.raises(RuntimeError, match="invalid OpenAI video id"):
+                await backend.generate(request)
+
+        mock_client.videos.retrieve.assert_not_called()
+
+    async def test_short_video_poll_timeout_is_1800_seconds(self, monkeypatch):
+        captured = {}
+
+        async def fake_poll_with_retry(**kwargs):
+            captured["max_wait"] = kwargs["max_wait"]
+            return _make_mock_video(status="completed")
+
+        with patch("lib.openai_shared.AsyncOpenAI"):
+            from lib.video_backends import openai as openai_video
+            from lib.video_backends.openai import OpenAIVideoBackend
+
+            monkeypatch.setattr(openai_video, "poll_with_retry", fake_poll_with_retry)
+            backend = OpenAIVideoBackend(api_key="test-key")
+            await backend._poll_until_complete("vid_123", 8)
+
+        assert captured["max_wait"] == 1800.0
+
     async def test_failed_video_raises(self, tmp_path: Path):
         error = MagicMock()
         error.message = "Content policy violation"

@@ -23,7 +23,7 @@ from lib.video_backends.base import (
 )
 
 _POLL_INTERVAL_SECONDS = 5.0
-_MIN_POLL_TIMEOUT_SECONDS = 600.0
+_MIN_POLL_TIMEOUT_SECONDS = 1800.0
 _POLL_TIMEOUT_PER_SECOND = 30.0
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,10 @@ def _video_id(video) -> str:
     else:
         value = _video_field(video, "id") or _video_field(video, "task_id")
     if isinstance(value, str) and value.strip():
-        return value.strip()
+        normalized = value.strip()
+        if normalized.startswith("<") or any(ch.isspace() for ch in normalized):
+            raise RuntimeError(f"invalid OpenAI video id: {normalized[:80]!r}")
+        return normalized
     raise RuntimeError(f"OpenAI video response missing id: {video!r}")
 
 

@@ -370,6 +370,27 @@ class TestArkRetryBehavior:
         assert backend._client.content_generation.tasks.create.call_count == 1
         assert backend._client.content_generation.tasks.get.call_count == 1
 
+    async def test_default_poll_timeout_is_1800_seconds(self, backend, tmp_path, monkeypatch):
+        captured = {}
+        result = MagicMock()
+        result.status = "succeeded"
+        result.content = MagicMock()
+        result.content.video_url = "https://cdn.example.com/video.mp4"
+        result.seed = None
+        result.usage = None
+
+        async def fake_poll_with_retry(**kwargs):
+            captured["max_wait"] = kwargs["max_wait"]
+            return result
+
+        monkeypatch.setattr("lib.video_backends.ark.poll_with_retry", fake_poll_with_retry)
+        monkeypatch.setattr(ArkVideoBackend, "_download_video_with_retry", AsyncMock())
+
+        request = VideoGenerationRequest(prompt="test", output_path=tmp_path / "out.mp4")
+        await backend._poll_until_done("cgt-timeout", request)
+
+        assert captured["max_wait"] == 1800
+
 
 class TestArkModelCapabilities:
     """测试不同模型的能力映射。"""
