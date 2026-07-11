@@ -42,7 +42,8 @@ def _classify_asset_output_path(output_path: str | None) -> str:
 def _row_to_dict(row: ApiCall) -> dict[str, Any]:
     return {
         "id": row.id,
-        "project_name": row.project_name,
+        "project_id": row.project_id,
+        "project_name": row.project_id,
         "call_type": row.call_type,
         "model": row.model,
         "prompt": row.prompt,
@@ -108,7 +109,7 @@ class UsageRepository(BaseRepository):
 
         row = ApiCall(
             tenant_id=resolved_tenant_id,
-            project_name=project_name,
+            project_id=project_name,
             call_type=call_type,
             model=model,
             prompt=prompt_truncated,
@@ -378,7 +379,7 @@ class UsageRepository(BaseRepository):
     @staticmethod
     def _build_filters(
         *,
-        project_name: str | None = None,
+        project_id: str | None = None,
         provider: str | None = None,
         call_type: CallType | None = None,
         status: str | None = None,
@@ -386,8 +387,8 @@ class UsageRepository(BaseRepository):
         end_date: datetime | None = None,
     ) -> list:
         filters: list = []
-        if project_name:
-            filters.append(ApiCall.project_name == project_name)
+        if project_id:
+            filters.append(ApiCall.project_id == project_id)
         if provider:
             filters.append(ApiCall.provider == provider)
         if call_type:
@@ -411,7 +412,7 @@ class UsageRepository(BaseRepository):
         end_date: datetime | None = None,
     ) -> dict[str, Any]:
         filters = self._build_filters(
-            project_name=project_name,
+            project_id=project_name,
             provider=provider,
             start_date=start_date,
             end_date=end_date,
@@ -485,7 +486,7 @@ class UsageRepository(BaseRepository):
         end_date: datetime | None = None,
     ) -> dict[str, Any]:
         filters = self._build_filters(
-            project_name=project_name,
+            project_id=project_name,
             provider=provider,
             start_date=start_date,
             end_date=end_date,
@@ -609,7 +610,7 @@ class UsageRepository(BaseRepository):
         page_size: int = 20,
     ) -> dict[str, Any]:
         filters = self._build_filters(
-            project_name=project_name,
+            project_id=project_name,
             call_type=call_type,
             status=status,
             start_date=start_date,
@@ -653,7 +654,7 @@ class UsageRepository(BaseRepository):
                 func.sum(ApiCall.cost_amount).label("total"),
             )
             .where(
-                ApiCall.project_name == project_name,
+                ApiCall.project_id == project_name,
                 ApiCall.status == "success",
                 ApiCall.cost_amount > 0,
             )
@@ -684,7 +685,7 @@ class UsageRepository(BaseRepository):
                 func.sum(ApiCall.cost_amount).label("total"),
             )
             .where(
-                ApiCall.project_name == project_name,
+                ApiCall.project_id == project_name,
                 ApiCall.status == "success",
                 ApiCall.cost_amount > 0,
                 ApiCall.call_type == "image",
@@ -703,7 +704,7 @@ class UsageRepository(BaseRepository):
         return result
 
     async def get_projects_list(self) -> list[str]:
-        stmt = select(ApiCall.project_name).distinct().order_by(ApiCall.project_name)
+        stmt = select(ApiCall.project_id).distinct().order_by(ApiCall.project_id)
         stmt = self._scope_query(stmt, ApiCall)
         result = await self.session.execute(stmt)
         return [row[0] for row in result.all()]

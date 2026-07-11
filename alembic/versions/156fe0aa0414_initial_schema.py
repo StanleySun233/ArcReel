@@ -24,7 +24,7 @@ def upgrade() -> None:
         "agent_sessions",
         sa.Column("id", sa.String, primary_key=True, nullable=False),
         sa.Column("sdk_session_id", sa.String, nullable=True),
-        sa.Column("project_name", sa.String, nullable=False),
+        sa.Column("project_id", sa.String, nullable=False),
         sa.Column("title", sa.String, server_default="", nullable=False),
         sa.Column("status", sa.String, server_default="idle", nullable=False),
         sa.Column("created_at", sa.String, nullable=False),
@@ -57,7 +57,7 @@ def upgrade() -> None:
     op.create_index("idx_api_calls_status", "api_calls", ["status"])
     op.create_index("idx_api_calls_started_at", "api_calls", ["started_at"])
     op.create_index("idx_api_calls_call_type", "api_calls", ["call_type"])
-    op.create_index("idx_api_calls_project_name", "api_calls", ["project_name"])
+    op.create_index("idx_api_calls_project_id", "api_calls", ["project_id"])
 
     op.create_table(
         "task_events",
@@ -121,7 +121,7 @@ def downgrade() -> None:
     op.drop_table("tasks")
     op.drop_index("idx_task_events_project_id", table_name="task_events")
     op.drop_table("task_events")
-    op.drop_index("idx_api_calls_project_name", table_name="api_calls")
+    op.drop_index("idx_api_calls_project_id", table_name="api_calls")
     op.drop_index("idx_api_calls_call_type", table_name="api_calls")
     op.drop_index("idx_api_calls_started_at", table_name="api_calls")
     op.drop_index("idx_api_calls_status", table_name="api_calls")

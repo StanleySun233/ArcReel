@@ -1,7 +1,7 @@
 """Tests for UsageRepository."""
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.db.models.api_call import ApiCall
@@ -46,7 +46,20 @@ class TestUsageRepository:
 
         calls = await repo.get_calls(project_name="demo")
         assert calls["total"] == 1
+        assert calls["items"][0]["project_id"] == "demo"
         assert calls["items"][0]["status"] == "success"
+
+    async def test_usage_storage_uses_project_id_column(self, db_session):
+        repo = UsageRepository(db_session)
+        call_id = await repo.start_call(
+            project_name="proj-storage",
+            call_type="image",
+            model="test-model",
+        )
+
+        row = (await db_session.execute(select(ApiCall).where(ApiCall.id == call_id))).scalar_one()
+
+        assert row.project_id == "proj-storage"
 
     async def test_get_stats(self, db_session):
         repo = UsageRepository(db_session)

@@ -37,7 +37,8 @@ Evidence:
 - `server/routers/projects.py` export token/archive/Jianying draft routes use `project_id`; download tokens bind `tenant_id:project_id` and export services use the token tenant's project repository.
 - `server/services/jianying_draft_service.py` supports the current pyJianYingDraft track API through `TrackSpec`.
 - `server/routers/usage.py` accepts `project_id` query filters, checks tenant membership, and passes the current tenant to usage reads.
-- `lib/db/repositories/usage_repo.py` applies tenant scoping to usage queries.
+- `lib/db/models/api_call.py` stores usage project scope in `project_id`.
+- `lib/db/repositories/usage_repo.py` applies tenant and `project_id` scoping to usage queries.
 - `frontend/src/api.ts` sends `project_id` for usage stats/calls filters.
 - Project creation stores local project JSON under tenant-scoped project-id paths.
 - `frontend/src/types/project.ts` requires `ProjectSummary.id`.
@@ -194,6 +195,18 @@ Evidence:
 - `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py -q`
   - Result: 12 passed
 
+### Usage facts are stored and queried by project id
+
+API usage facts now use `project_id` as the storage column. Usage read APIs still accept the public `project_id` query parameter and validate that the project belongs to the current tenant before querying.
+
+Evidence:
+
+- `lib/db/models/api_call.py`
+- `lib/db/repositories/usage_repo.py`
+- `server/routers/usage.py`
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_usage_repo.py tests/test_usage_tracker.py tests/test_usage_router.py tests/test_session_manager_sdk_session_id.py -q`
+  - Result: 54 passed, 1 warning
+
 ### Multi-project Agent session isolation is verified at tenant/project boundaries
 
 Agent session metadata and transcript storage are scoped by tenant/user and project key. Route-level ownership checks compare the stored session project key with the requested `project_id`, while transcript mirror rows include `tenant_id + project_key + session_id` in their primary key.
@@ -248,7 +261,7 @@ Dominant failure classes:
 - `tenant_id is required` in config/model resolver tests that still instantiate services without tenant context.
 - `403` responses in route tests that do not provide current tenant membership.
 - PostgreSQL foreign-key failures in fixtures that insert tenant rows before user rows.
-- Remaining usage tests that assert `project_name` field names while the target contract is `project_id`.
+- Remaining tests may still use `project_name` as a function argument name while carrying project ids.
 
 ### Full API scenario test is not complete
 
@@ -267,9 +280,9 @@ Required scenario still pending:
 
 `agent-browser` testing requires a running local ArcReel web service. This remains pending until the service is available or explicit authorization is given to start it.
 
-### Remaining old usage `project_name` storage names
+### Remaining old function-argument `project_name` names
 
-Usage persistence models still use `project_name` as a historical column or response field name while carrying project id values. This needs a separate schema-level cleanup so the final storage vocabulary is consistently `project_id`.
+Some internal function arguments and temporary response aliases still use `project_name` while carrying project ids. The storage schema for sessions, tasks, task events, and usage facts has been moved to `project_id`; remaining work is naming cleanup at call boundaries.
 
 ### Remaining project-id audit gap
 

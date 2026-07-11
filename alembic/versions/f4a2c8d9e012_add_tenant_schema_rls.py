@@ -248,7 +248,7 @@ def upgrade() -> None:
     op.create_index(
         "idx_task_events_tenant_project_id", "task_events", ["tenant_id", "project_id", "id"], unique=False
     )
-    op.create_index("idx_api_calls_tenant_project_name", "api_calls", ["tenant_id", "project_name"], unique=False)
+    op.create_index("idx_api_calls_tenant_project_id", "api_calls", ["tenant_id", "project_id"], unique=False)
     op.create_index("idx_api_calls_tenant_started_at", "api_calls", ["tenant_id", "started_at"], unique=False)
 
     op.execute("ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS api_keys_name_key")
@@ -361,7 +361,7 @@ def downgrade() -> None:
     op.create_unique_constraint("api_keys_name_key", "api_keys", ["name"])
 
     op.drop_index("idx_api_calls_tenant_started_at", table_name="api_calls")
-    op.drop_index("idx_api_calls_tenant_project_name", table_name="api_calls")
+    op.drop_index("idx_api_calls_tenant_project_id", table_name="api_calls")
     op.drop_index("idx_task_events_tenant_project_id", table_name="task_events")
     op.drop_index("idx_tasks_dedupe_active", table_name="tasks")
     op.drop_index("idx_tasks_tenant_project_updated_at", table_name="tasks")

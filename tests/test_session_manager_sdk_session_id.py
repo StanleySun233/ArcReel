@@ -97,14 +97,14 @@ class TestSessionManagerSdkSessionId:
             row = (
                 await session.execute(
                     select(ApiCall).where(
-                        ApiCall.project_name == "demo",
+                        ApiCall.project_id == "demo",
                         ApiCall.model == "claude-sonnet-4",
                         ApiCall.prompt == "hello assistant",
                     )
                 )
             ).scalar_one()
 
-        assert row.project_name == "demo"
+        assert row.project_id == "demo"
         assert row.user_id == "default"
         assert row.provider == "anthropic"
         assert row.call_type == "text"
@@ -139,7 +139,7 @@ class TestSessionManagerSdkSessionId:
             row = (
                 await session.execute(
                     select(ApiCall).where(
-                        ApiCall.project_name == "demo",
+                        ApiCall.project_id == "demo",
                         ApiCall.model == "claude-sonnet-4",
                         ApiCall.prompt == "failed but billed",
                     )
@@ -176,7 +176,7 @@ class TestSessionManagerSdkSessionId:
             row = (
                 await session.execute(
                     select(ApiCall).where(
-                        ApiCall.project_name == "demo",
+                        ApiCall.project_id == "demo",
                         ApiCall.model == "claude-sonnet-4",
                         ApiCall.prompt == "model usage cost",
                     )
@@ -212,7 +212,7 @@ class TestSessionManagerSdkSessionId:
             row = (
                 await session.execute(
                     select(ApiCall).where(
-                        ApiCall.project_name == "demo",
+                        ApiCall.project_id == "demo",
                         ApiCall.model == "claude-sonnet-4",
                         ApiCall.prompt == "model usage tokens",
                     )

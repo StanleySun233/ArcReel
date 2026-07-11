@@ -15,7 +15,7 @@ class ApiCall(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
     __tablename__ = "api_calls"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    project_name: Mapped[str] = mapped_column(String, nullable=False)
+    project_id: Mapped[str] = mapped_column(String, nullable=False)
     call_type: Mapped[str] = mapped_column(String, nullable=False)
     model: Mapped[str] = mapped_column(String, nullable=False)
     prompt: Mapped[str | None] = mapped_column(Text)
@@ -42,10 +42,10 @@ class ApiCall(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
     text_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     text_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     __table_args__ = (
-        Index("idx_api_calls_project_name", "project_name"),
+        Index("idx_api_calls_project_id", "project_id"),
         Index("idx_api_calls_call_type", "call_type"),
         Index("idx_api_calls_status", "status"),
         Index("idx_api_calls_started_at", "started_at"),
-        Index("idx_api_calls_tenant_project_name", "tenant_id", "project_name"),
+        Index("idx_api_calls_tenant_project_id", "tenant_id", "project_id"),
         Index("idx_api_calls_tenant_started_at", "tenant_id", "started_at"),
     )
