@@ -55,6 +55,7 @@ export function SceneCard({
   );
   const [description, setDescription] = useState(scene.description);
   const [imgError, setImgError] = useState(false);
+  const [signedSheet, setSignedSheet] = useState<{ fileId: string; url: string } | null>(null);
   const [uploadingSheet, setUploadingSheet] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const sheetInputRef = useRef<HTMLInputElement>(null);
@@ -87,7 +88,25 @@ export function SceneCard({
     // 场景立绘变化时重置图片加载错误标记
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setImgError(false);
-  }, [scene.scene_sheet, sheetFp]);
+  }, [scene.scene_sheet, scene.scene_sheet_file_id, sheetFp, signedSheet?.url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!scene.scene_sheet_file_id) {
+      return;
+    }
+    const fileId = scene.scene_sheet_file_id;
+    void API.getFileSignedUrl(fileId)
+      .then((res) => {
+        if (!cancelled) setSignedSheet({ fileId, url: res.url });
+      })
+      .catch(() => {
+        if (!cancelled) setSignedSheet(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [scene.scene_sheet_file_id, sheetFp]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const descId = useId();
@@ -108,9 +127,13 @@ export function SceneCard({
     onUpdate(name, { description });
   };
 
-  const sheetUrl = scene.scene_sheet
-    ? API.getFileUrl(projectName, scene.scene_sheet, sheetFp)
-    : null;
+  const sheetUrl = scene.scene_sheet_file_id
+    ? signedSheet?.fileId === scene.scene_sheet_file_id
+      ? signedSheet.url
+      : null
+    : scene.scene_sheet
+      ? API.getFileUrl(projectName, scene.scene_sheet, sheetFp)
+      : null;
 
   return (
     <div

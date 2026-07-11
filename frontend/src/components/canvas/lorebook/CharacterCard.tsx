@@ -58,6 +58,7 @@ export function CharacterCard({
   const [description, setDescription] = useState(character.description);
   const [voiceStyle, setVoiceStyle] = useState(character.voice_style ?? "");
   const [imgError, setImgError] = useState(false);
+  const [signedSheet, setSignedSheet] = useState<{ fileId: string; url: string } | null>(null);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [referencePreview, setReferencePreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -96,7 +97,25 @@ export function CharacterCard({
     // 角色立绘变化时重置图片加载错误标记
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setImgError(false);
-  }, [character.character_sheet, sheetFp]);
+  }, [character.character_sheet, character.character_sheet_file_id, sheetFp, signedSheet?.url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!character.character_sheet_file_id) {
+      return;
+    }
+    const fileId = character.character_sheet_file_id;
+    void API.getFileSignedUrl(fileId)
+      .then((res) => {
+        if (!cancelled) setSignedSheet({ fileId, url: res.url });
+      })
+      .catch(() => {
+        if (!cancelled) setSignedSheet(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [character.character_sheet_file_id, sheetFp]);
 
   useEffect(() => {
     // 上游参考图变化时清空本地未提交的上传文件 + 释放 blob URL
@@ -169,9 +188,13 @@ export function CharacterCard({
     }
   };
 
-  const sheetUrl = character.character_sheet
-    ? API.getFileUrl(projectName, character.character_sheet, sheetFp)
-    : null;
+  const sheetUrl = character.character_sheet_file_id
+    ? signedSheet?.fileId === character.character_sheet_file_id
+      ? signedSheet.url
+      : null
+    : character.character_sheet
+      ? API.getFileUrl(projectName, character.character_sheet, sheetFp)
+      : null;
 
   const savedReferenceUrl = character.reference_image
     ? API.getFileUrl(projectName, character.reference_image, referenceFp)

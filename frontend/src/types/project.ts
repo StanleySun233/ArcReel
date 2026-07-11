@@ -18,6 +18,7 @@ export interface ProjectOverview {
 export interface Character {
   description: string;
   character_sheet?: string;
+  character_sheet_file_id?: string | null;
   voice_style?: string;
   reference_image?: string;
 }
@@ -25,11 +26,13 @@ export interface Character {
 export interface Scene {
   description: string;
   scene_sheet?: string;
+  scene_sheet_file_id?: string | null;
 }
 
 export interface Prop {
   description: string;
   prop_sheet?: string;
+  prop_sheet_file_id?: string | null;
 }
 
 export interface Product {
