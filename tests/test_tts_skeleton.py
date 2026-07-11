@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 
 import pytest
@@ -227,6 +228,23 @@ class TestWorkerAudioLane:
         dummy.set_result(None)
         w._slots.register("dashscope", "audio", "t", dummy)
         assert w._pool_full_providers("audio") == frozenset({"dashscope"})
+
+    async def test_worker_main_task_exception_is_logged(self, caplog):
+        class _Q:
+            async def acquire_or_renew_worker_lease(self, **_kwargs):
+                raise RuntimeError("boom")
+
+            async def release_worker_lease(self, **_kwargs):
+                return None
+
+        w = GenerationWorker(queue=_Q())  # type: ignore[arg-type]
+        with caplog.at_level(logging.ERROR, logger="lib.generation_worker"):
+            await w.start()
+            with pytest.raises(RuntimeError):
+                await asyncio.wait_for(w._main_task, timeout=1)
+            await asyncio.sleep(0)
+
+        assert any("GenerationWorker 主循环异常退出" in record.getMessage() for record in caplog.records)
 
     async def test_claim_routes_audio_to_audio_lane(self, monkeypatch):
         from lib import generation_worker as gw

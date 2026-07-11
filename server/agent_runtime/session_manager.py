@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from lib.i18n import DEFAULT_LOCALE
 from lib.logging_config import resolve_log_dir
-from lib.user_scope import get_current_tenant_id, get_current_user_id, scoped_projects_root
+from lib.user_scope import current_identity_scope, get_current_tenant_id, get_current_user_id, scoped_projects_root
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.entry_pipeline import SessionEntryPipeline
 from server.agent_runtime.event_log import (
@@ -60,6 +60,7 @@ from claude_agent_sdk.types import (
 
 from lib.config.service import ConfigService
 from lib.db import async_session_factory
+from lib.db.base import DEFAULT_USER_ID
 from lib.providers import PROVIDER_ANTHROPIC
 from lib.usage_tracker import UsageTracker
 
@@ -138,6 +139,8 @@ class ManagedSession:
     actor: "SessionActor"  # per-session actor owning the SDK client
     status: SessionStatus = "idle"
     project_name: str = ""  # 用于 _register_new_session
+    user_id: str = DEFAULT_USER_ID
+    tenant_id: str | None = None
     sdk_id_event: asyncio.Event = field(default_factory=asyncio.Event)
     resolved_sdk_id: str | None = None  # consumer 设置，send_new_session 读取
     channel: SseChannel = field(default_factory=_make_session_channel)
@@ -323,9 +326,8 @@ class SessionManager:
         self.usage_tracker = UsageTracker(session_factory=getattr(meta_store, "_session_factory", None))
         # Options 装配器：持依赖、允许 I/O，异步 build 产出 SDK options。access_policy /
         # max_turns / session_factory / user_id 一律用 provider 回调现取——前两者
-        # configure_sandbox_runtime / refresh_config 换新后对后续会话立即生效；后两者
-        # 保持析出前惰性读 self 属性的时点，与用量记录侧 _finalize_turn 实时读 _user_id
-        # 同源，避免 store 与用量落到不同 per-user 命名空间。_resolve_project_cwd
+        # configure_sandbox_runtime / refresh_config 换新后对后续会话立即生效；user_id
+        # 读取请求级 identity context，避免 store 与用量落到不同 per-user 命名空间。_resolve_project_cwd
         # （项目名校验/作用域）留在会话管理侧，作为依赖注入。
         self._options_assembler = OptionsAssembler(
             data_dir=self.data_dir,
@@ -562,6 +564,8 @@ class SessionManager:
             status="running",
             project_name=project_name,
             assistant_model=assistant_model,
+            user_id=get_current_user_id(),
+            tenant_id=get_current_tenant_id(),
         )
         if user_entry is not None:
             managed.pending_initial_user_entry = {"entry": user_entry, "client_key": client_key}
@@ -824,6 +828,8 @@ class SessionManager:
                 project_name=meta.project_id,
                 assistant_model=assistant_model,
                 resolved_sdk_id=meta.id,  # 标记为已注册，防止重复创建 DB 记录
+                user_id=get_current_user_id(),
+                tenant_id=meta.tenant_id,
             )
             managed.sdk_id_event.set()  # 已有会话不需要等待 sdk_id
             managed.entry_pipeline = self._build_entry_pipeline(managed)
@@ -1027,23 +1033,25 @@ class SessionManager:
         if input_tokens is None and output_tokens is None and total_cost_usd is None:
             return
 
-        call_id = await self.usage_tracker.start_call(
-            project_name=managed.project_name,
-            call_type="text",
-            model=resolve_assistant_model(result_msg, managed.assistant_model),
-            prompt=managed.last_user_prompt[:500] if managed.last_user_prompt else None,
-            provider=PROVIDER_ANTHROPIC,
-            user_id=get_current_user_id(),
-        )
-        await self.usage_tracker.finish_call(
-            call_id,
-            status="success" if final_status == "completed" else "failed",
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            usage_tokens=usage_tokens,
-            cost_amount=total_cost_usd,
-            currency="USD" if total_cost_usd is not None else None,
-        )
+        with current_identity_scope(user_id=managed.user_id, tenant_id=managed.tenant_id):
+            call_id = await self.usage_tracker.start_call(
+                project_name=managed.project_name,
+                call_type="text",
+                model=resolve_assistant_model(result_msg, managed.assistant_model),
+                prompt=managed.last_user_prompt[:500] if managed.last_user_prompt else None,
+                provider=PROVIDER_ANTHROPIC,
+                user_id=managed.user_id,
+                tenant_id=managed.tenant_id,
+            )
+            await self.usage_tracker.finish_call(
+                call_id,
+                status="success" if final_status == "completed" else "failed",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                usage_tokens=usage_tokens,
+                cost_amount=total_cost_usd,
+                currency="USD" if total_cost_usd is not None else None,
+            )
 
     async def _mark_session_terminal(self, managed: ManagedSession, status: SessionStatus, reason: str) -> None:
         """Set terminal status on abnormal consumer exit."""

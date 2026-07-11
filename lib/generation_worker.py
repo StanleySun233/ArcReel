@@ -439,12 +439,21 @@ class GenerationWorker:
             return
         self._stop_event.clear()
         self._main_task = asyncio.create_task(self._run_loop(), name="generation-worker")
+        self._main_task.add_done_callback(self._log_main_task_done)
 
     async def stop(self) -> None:
         self._stop_event.set()
         if self._main_task:
             await self._main_task
             self._main_task = None
+
+    def _log_main_task_done(self, task: asyncio.Task) -> None:
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            logger.exception("GenerationWorker 主循环异常退出")
 
     # ------------------------------------------------------------------
     # Main loop

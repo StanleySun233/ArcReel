@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from lib.agent_session_store.store import DbSessionStore
+from lib.user_scope import current_identity_scope
 from server.agent_runtime.session_manager import SessionManager
 
 
@@ -57,19 +58,37 @@ def test_store_db_explicit_returns_store(monkeypatch, tmp_path):
 
 
 def test_store_uses_session_factory_seam(monkeypatch, tmp_path):
-    """SessionManager 的 _session_factory / _user_id 经装配器 provider 现取生效于
-    build_session_store（store 首次构建时按当时属性值取，与析出前时点一致）。"""
     monkeypatch.delenv("ARCREEL_SDK_SESSION_STORE", raising=False)
     sm = _build_sm(tmp_path)
 
     sentinel = object()
     sm._session_factory = sentinel  # type: ignore[attr-defined]
-    sm._user_id = "test-user"  # type: ignore[attr-defined]
 
-    store = sm._build_session_store()
+    with current_identity_scope(user_id="test-user", tenant_id="ten_test"):
+        store = sm._build_session_store()
     assert isinstance(store, DbSessionStore)
-    # Test the user_id seam took effect
     assert store._user_id == "test-user"
+    assert store._tenant_id == "ten_test"
+
+
+def test_store_cache_is_scoped_by_tenant_and_user(monkeypatch, tmp_path):
+    monkeypatch.delenv("ARCREEL_SDK_SESSION_STORE", raising=False)
+    sm = _build_sm(tmp_path)
+
+    default_store = sm._build_session_store()
+    with current_identity_scope(user_id="camel:alice", tenant_id="ten_a"):
+        alice_store = sm._build_session_store()
+    with current_identity_scope(user_id="camel:bob", tenant_id="ten_b"):
+        bob_store = sm._build_session_store()
+
+    assert default_store is not alice_store
+    assert alice_store is not bob_store
+    assert isinstance(alice_store, DbSessionStore)
+    assert alice_store._user_id == "camel:alice"
+    assert alice_store._tenant_id == "ten_a"
+    assert isinstance(bob_store, DbSessionStore)
+    assert bob_store._user_id == "camel:bob"
+    assert bob_store._tenant_id == "ten_b"
 
 
 @pytest.mark.asyncio

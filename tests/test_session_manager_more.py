@@ -1229,6 +1229,57 @@ def test_on_actor_message_broadcasts_to_subscribers():
     assert queue.get_nowait()["type"] == "assistant"
 
 
+@pytest.mark.asyncio
+async def test_record_assistant_usage_uses_managed_identity(tmp_path):
+    class _MetaStore:
+        async def get(self, *args, **kwargs):
+            return None
+
+    class _UsageTracker:
+        def __init__(self):
+            self.started = None
+            self.finished = None
+
+        async def start_call(self, **kwargs):
+            self.started = kwargs
+            return 42
+
+        async def finish_call(self, call_id, **kwargs):
+            self.finished = {"call_id": call_id, **kwargs}
+
+    manager = sm_mod.SessionManager(project_root=tmp_path, data_dir=tmp_path / "data", meta_store=_MetaStore())
+    tracker = _UsageTracker()
+    manager.usage_tracker = tracker
+    managed = ManagedSession(
+        session_id="s1",
+        actor=None,
+        project_name="proj-1",
+        user_id="camel:16",
+        tenant_id="ten_9979",
+        assistant_model="claude-opus-4-8",
+    )
+    managed.last_user_prompt = "hello"
+
+    await manager._record_assistant_usage(
+        managed,
+        {"type": "result", "usage": {"input_tokens": 10, "output_tokens": 5}, "total_cost_usd": 0.01},
+        "completed",
+    )
+
+    assert tracker.started["user_id"] == "camel:16"
+    assert tracker.started["tenant_id"] == "ten_9979"
+    assert tracker.started["project_name"] == "proj-1"
+    assert tracker.finished == {
+        "call_id": 42,
+        "status": "success",
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "usage_tokens": 15,
+        "cost_amount": 0.01,
+        "currency": "USD",
+    }
+
+
 # --- ManagedSession 对 actor 的代理 -----------------------------------------
 
 

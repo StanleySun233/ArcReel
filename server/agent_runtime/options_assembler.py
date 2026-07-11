@@ -87,9 +87,7 @@ class OptionsAssembler:
     SessionManager 注入（项目名校验/作用域是会话管理侧职责）。
 
     ``session_factory_provider`` / ``user_id_provider`` 同样用回调而非构造期快照：
-    store 在首次 ``build_session_store`` 时按当时取值建好并缓存，与析出前
-    ``_build_session_store`` 惰性读 SessionManager 属性的时点一致——避免用量记录
-    （实时读 ``_user_id``）与 transcript store 落到不同的 per-user 命名空间。
+    store 按当前 user/tenant 维度缓存，避免跨租户复用 transcript store。
     """
 
     def __init__(
@@ -118,9 +116,7 @@ class OptionsAssembler:
         self._provider_env_loader = provider_env_loader
         self._session_factory_provider = session_factory_provider or (lambda: None)
         self._user_id_provider = user_id_provider or (lambda: DEFAULT_USER_ID)
-        # session store 单例缓存：每个 assembler 一份，避免每次 build 都新建 store。
-        self._cached_session_store: DbSessionStore | None = None
-        self._session_store_resolved = False
+        self._session_store_cache: dict[tuple[str | None, str], DbSessionStore] = {}
 
     async def build_provider_env_overrides(self) -> dict[str, str]:
         """DB 凭证注入入口。默认走模块级 ``load_provider_env_overrides``（现取 module
@@ -178,26 +174,24 @@ class OptionsAssembler:
         return "\n".join(parts)
 
     def build_session_store(self) -> DbSessionStore | None:
-        """Return a cached per-user DbSessionStore, or None when env disables it.
+        """Return a cached per-user/tenant DbSessionStore, or None when env disables it.
 
         Set ARCREEL_SDK_SESSION_STORE=off to roll back to SDK's filesystem path.
-        The result is cached on first call so every session shares one instance
-        instead of allocating a fresh store per ``build`` invocation.
         """
-        if self._cached_session_store is not None or self._session_store_resolved:
-            return self._cached_session_store
-
         mode = session_store_mode()
-        store: DbSessionStore | None
         if mode == "off":
-            store = None
-        else:
-            if not is_known_session_store_mode(mode):
-                logger.warning("Unknown ARCREEL_SDK_SESSION_STORE=%r; defaulting to db", mode)
+            return None
+        if not is_known_session_store_mode(mode):
+            logger.warning("Unknown ARCREEL_SDK_SESSION_STORE=%r; defaulting to db", mode)
+
+        user_id = self._user_id_provider()
+        tenant_id = get_current_tenant_id()
+        key = (tenant_id, user_id)
+        store = self._session_store_cache.get(key)
+        if store is None:
             factory = self._session_factory_provider() or default_async_session_factory
-            store = DbSessionStore(factory, user_id=self._user_id_provider(), tenant_id=get_current_tenant_id())
-        self._cached_session_store = store
-        self._session_store_resolved = True
+            store = DbSessionStore(factory, user_id=user_id, tenant_id=tenant_id)
+            self._session_store_cache[key] = store
         return store
 
     async def build(
