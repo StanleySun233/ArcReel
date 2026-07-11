@@ -138,6 +138,149 @@ async def test_member_can_add_viewer_but_cannot_add_member(async_session):
 
 
 @pytest.mark.asyncio
+async def test_owner_can_add_admin_and_admin_cannot_add_admin(async_session):
+    await _seed_team(async_session)
+    await _seed_user(async_session, "camel:admin_target", "admin_target")
+    await _seed_user(async_session, "camel:admin_actor", "admin_actor")
+    async_session.add(
+        TenantMembership(
+            tenant_id="ten_team",
+            user_id="camel:admin_actor",
+            role=ROLE_ADMIN,
+            created_by_user_id="camel:owner",
+        )
+    )
+    await async_session.flush()
+
+    owner_app = _app(
+        async_session,
+        CurrentUserInfo(
+            id="camel:owner",
+            sub="owner",
+            provider="camel",
+            role="admin",
+            tenant_id="ten_team",
+            tenant_role=ROLE_ADMIN,
+        ),
+    )
+    admin_app = _app(
+        async_session,
+        CurrentUserInfo(
+            id="camel:admin_actor",
+            sub="admin_actor",
+            provider="camel",
+            role="admin",
+            tenant_id="ten_team",
+            tenant_role=ROLE_ADMIN,
+        ),
+    )
+
+    allowed = await _request(
+        owner_app,
+        "POST",
+        "/api/v1/tenant/members",
+        json={"user_id": "camel:admin_target", "role": ROLE_ADMIN},
+    )
+    denied = await _request(
+        admin_app,
+        "PATCH",
+        "/api/v1/tenant/members/camel:member",
+        json={"role": ROLE_ADMIN},
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.json()["role"] == ROLE_ADMIN
+    assert denied.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_can_add_member_and_viewer(async_session):
+    await _seed_team(async_session)
+    await _seed_user(async_session, "camel:admin", "admin")
+    await _seed_user(async_session, "camel:new_member", "new_member")
+    await _seed_user(async_session, "camel:new_viewer", "new_viewer")
+    async_session.add(
+        TenantMembership(
+            tenant_id="ten_team",
+            user_id="camel:admin",
+            role=ROLE_ADMIN,
+            created_by_user_id="camel:owner",
+        )
+    )
+    await async_session.flush()
+    app = _app(
+        async_session,
+        CurrentUserInfo(
+            id="camel:admin",
+            sub="admin",
+            provider="camel",
+            role="admin",
+            tenant_id="ten_team",
+            tenant_role=ROLE_ADMIN,
+        ),
+    )
+
+    member_response = await _request(
+        app,
+        "POST",
+        "/api/v1/tenant/members",
+        json={"user_id": "camel:new_member", "role": ROLE_MEMBER},
+    )
+    viewer_response = await _request(
+        app,
+        "POST",
+        "/api/v1/tenant/members",
+        json={"user_id": "camel:new_viewer", "role": ROLE_VIEW},
+    )
+
+    assert member_response.status_code == 200
+    assert member_response.json()["role"] == ROLE_MEMBER
+    assert viewer_response.status_code == 200
+    assert viewer_response.json()["role"] == ROLE_VIEW
+
+
+@pytest.mark.asyncio
+async def test_viewer_can_list_members_but_cannot_add_members(async_session):
+    await _seed_team(async_session)
+    async_session.add(
+        TenantMembership(
+            tenant_id="ten_team",
+            user_id="camel:viewer",
+            role=ROLE_VIEW,
+            created_by_user_id="camel:owner",
+        )
+    )
+    await async_session.flush()
+    app = _app(
+        async_session,
+        CurrentUserInfo(
+            id="camel:viewer",
+            sub="viewer",
+            provider="camel",
+            role="admin",
+            tenant_id="ten_team",
+            tenant_role=ROLE_VIEW,
+        ),
+    )
+
+    members_response = await _request(app, "GET", "/api/v1/tenant/members")
+    add_response = await _request(
+        app,
+        "POST",
+        "/api/v1/tenant/members",
+        json={"user_id": "camel:owner", "role": ROLE_VIEW},
+    )
+
+    assert members_response.status_code == 200
+    assert {member["user_id"] for member in members_response.json()["members"]} == {
+        "camel:owner",
+        "camel:member",
+        "camel:viewer",
+    }
+    assert add_response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_member_cannot_change_existing_member_role(async_session):
     await _seed_team(async_session)
     async_session.add(

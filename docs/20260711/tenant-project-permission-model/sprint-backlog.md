@@ -120,8 +120,8 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 **Status:** in progress
 
 **Acceptance Criteria**
-- [ ] 场景矩阵覆盖 owner/admin/member/view。
-- [ ] 场景矩阵覆盖 viewer 查询成员列表。
+- [x] 场景矩阵覆盖 owner/admin/member/view。
+- [x] 场景矩阵覆盖 viewer 查询成员列表。
 - [x] 场景矩阵覆盖只允许 owner/admin 删除项目。
 - [x] 场景矩阵覆盖跨租户同名项目。
 - [ ] 场景矩阵覆盖创建项目、上传文件、生成图片、生成视频、Agent 输入文本、资产导入、用量查看。
