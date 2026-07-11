@@ -34,9 +34,9 @@ async def test_active_credential_returns_full_dict(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(
         "lib.db.repositories.agent_credential_repo.AgentCredentialRepository",
-        lambda _s: repo_mock,
+        lambda _s, **_kwargs: repo_mock,
     )
-    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s: setting_repo)
+    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s, **_kwargs: setting_repo)
 
     result = await build_anthropic_env_dict(session)
     assert result["ANTHROPIC_API_KEY"] == "sk-test"
@@ -55,9 +55,9 @@ async def test_no_active_credential_returns_empty_strings(monkeypatch: pytest.Mo
 
     monkeypatch.setattr(
         "lib.db.repositories.agent_credential_repo.AgentCredentialRepository",
-        lambda _s: repo_mock,
+        lambda _s, **_kwargs: repo_mock,
     )
-    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s: setting_repo)
+    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s, **_kwargs: setting_repo)
 
     result = await build_anthropic_env_dict(session)
     assert result["ANTHROPIC_API_KEY"] == ""
@@ -81,9 +81,9 @@ async def test_no_active_credential_falls_back_to_system_settings(monkeypatch: p
 
     monkeypatch.setattr(
         "lib.db.repositories.agent_credential_repo.AgentCredentialRepository",
-        lambda _s: repo_mock,
+        lambda _s, **_kwargs: repo_mock,
     )
-    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s: setting_repo)
+    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s, **_kwargs: setting_repo)
 
     result = await build_anthropic_env_dict(session)
     assert result["ANTHROPIC_API_KEY"] == "legacy-sk"
@@ -121,9 +121,9 @@ async def test_function_does_not_touch_environ(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(
         "lib.db.repositories.agent_credential_repo.AgentCredentialRepository",
-        lambda _s: repo_mock,
+        lambda _s, **_kwargs: repo_mock,
     )
-    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s: setting_repo)
+    monkeypatch.setattr("lib.config.service.SystemSettingRepository", lambda _s, **_kwargs: setting_repo)
 
     await build_anthropic_env_dict(session)
     assert dict(os.environ) == baseline, "build 函数禁止改 os.environ"

@@ -366,6 +366,13 @@ Additional focused regression:
   - Result: 8 passed
 - `DATABASE_URL=postgresql+asyncpg://... ruff check server/services/reference_video_tasks.py server/agent_runtime/sdk_tools/enqueue_videos.py server/routers/reference_videos.py tests/server/agent_runtime/test_sdk_tools.py tests/server/test_reference_video_tasks.py`
   - Result: passed
+- Adapted the Anthropic env dict legacy tests to tenant-aware repository constructors.
+  - Root cause: `build_anthropic_env_dict()` now constructs `AgentCredentialRepository(session, tenant_id=...)` and `SystemSettingRepository(session, user_id=..., tenant_id=...)`, while the tests monkeypatched old single-argument factories.
+  - Fix: test fakes now accept keyword arguments without changing production behavior.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/config/test_anthropic_env_dict.py -q`
+  - Result: 4 passed
+- `DATABASE_URL=postgresql+asyncpg://... ruff check tests/config/test_anthropic_env_dict.py`
+  - Result: passed
 
 ## Remote real model scenario
 
