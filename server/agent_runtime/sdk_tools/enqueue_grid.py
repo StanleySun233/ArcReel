@@ -183,8 +183,9 @@ def generate_grid_tool(ctx: ToolContext):
             failures: list[tuple[str, str]] = []
             # Wait for all queued grids concurrently — image worker channel can run
             # multiple in parallel, so serial wait_for_task would mask that throughput.
+            wait_kwargs = ctx.queue_kwargs()
             results = await asyncio.gather(
-                *(wait_for_task(task_id) for _, task_id in pending),
+                *(wait_for_task(task_id, **wait_kwargs) for _, task_id in pending),
                 return_exceptions=True,
             )
             for (grid, _task_id), result in zip(pending, results, strict=True):

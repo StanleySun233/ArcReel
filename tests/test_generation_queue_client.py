@@ -11,6 +11,7 @@ from lib.generation_queue_client import (
     TaskSpecValidationError,
     TaskWaitTimeoutError,
     WorkerOfflineError,
+    batch_enqueue_and_wait,
     batch_enqueue_and_wait_sync,
     enqueue_and_wait,
     enqueue_task_only,
@@ -332,6 +333,72 @@ class TestGenerationQueueClient:
                 script_file="episode_01.json",
                 source="skill",
             )
+
+    async def test_enqueue_and_wait_reads_task_in_requested_tenant(self, monkeypatch):
+        class FakeQueue:
+            async def is_worker_online(self, name="default"):
+                return True
+
+            async def enqueue_task(self, **kwargs):
+                assert kwargs["tenant_id"] == "ten_alpha"
+                assert kwargs["requested_by_user_id"] == "camel:alice"
+                return {"task_id": "task-single"}
+
+            async def get_task(self, task_id, *, tenant_id=None, requested_by_user_id=None):
+                if tenant_id != "ten_alpha" or requested_by_user_id != "camel:alice":
+                    return None
+                return {"task_id": task_id, "status": "succeeded", "result": {"file_id": "fil_single"}}
+
+        monkeypatch.setattr("lib.generation_queue_client.get_generation_queue", lambda: FakeQueue())
+
+        result = await enqueue_and_wait(
+            project_name="proj-alpha",
+            task_type="video",
+            media_type="video",
+            resource_id="E1S01",
+            payload={"prompt": "run"},
+            tenant_id="ten_alpha",
+            requested_by_user_id="camel:alice",
+        )
+
+        assert result["result"] == {"file_id": "fil_single"}
+
+    async def test_batch_enqueue_and_wait_reads_task_in_requested_tenant(self, monkeypatch):
+        class FakeQueue:
+            async def is_worker_online(self, name="default"):
+                return True
+
+            async def enqueue_task(self, **kwargs):
+                assert kwargs["tenant_id"] == "ten_alpha"
+                assert kwargs["requested_by_user_id"] == "camel:alice"
+                return {"task_id": "task-alpha"}
+
+            async def get_task(self, task_id, *, tenant_id=None, requested_by_user_id=None):
+                if tenant_id != "ten_alpha" or requested_by_user_id != "camel:alice":
+                    return None
+                return {"task_id": task_id, "status": "succeeded", "result": {"file_id": "fil_alpha"}}
+
+        monkeypatch.setattr("lib.generation_queue_client.get_generation_queue", lambda: FakeQueue())
+
+        specs = [
+            TaskSpec.from_request(
+                task_type="tts",
+                media_type="audio",
+                resource_id="E1S03",
+                prompt="夜色深沉",
+                script_file="episode_1.json",
+            )
+        ]
+        successes, failures = await batch_enqueue_and_wait(
+            project_name="proj-alpha",
+            specs=specs,
+            tenant_id="ten_alpha",
+            requested_by_user_id="camel:alice",
+        )
+
+        assert failures == []
+        assert len(successes) == 1
+        assert successes[0].result == {"file_id": "fil_alpha"}
 
 
 class TestBatchEnqueueAndWaitSync:

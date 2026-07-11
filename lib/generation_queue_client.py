@@ -69,8 +69,13 @@ async def wait_for_task(
     timeout_seconds: float | None = None,
     lease_name: str = "default",
     worker_offline_grace_seconds: float | None = None,
+    user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
+    requested_by_user_id: str | None = None,
 ) -> dict[str, Any]:
     queue = get_generation_queue()
+    resolved_user_id = requested_by_user_id or (get_current_user_id() if user_id == DEFAULT_USER_ID else user_id)
+    resolved_tenant_id = tenant_id or get_current_tenant_id()
     interval = poll_interval if poll_interval is not None else read_queue_poll_interval()
     timeout = read_task_wait_timeout() if timeout_seconds is None else timeout_seconds
     if timeout is not None:
@@ -84,7 +89,11 @@ async def wait_for_task(
     offline_since: float | None = None
 
     while True:
-        task = await queue.get_task(task_id)
+        task = await queue.get_task(
+            task_id,
+            tenant_id=resolved_tenant_id,
+            requested_by_user_id=resolved_user_id,
+        )
         if not task:
             raise RuntimeError(f"task not found: {task_id}")
 
@@ -150,6 +159,9 @@ async def enqueue_and_wait(
         timeout_seconds=wait_timeout_seconds,
         lease_name=lease_name,
         worker_offline_grace_seconds=worker_offline_grace_seconds,
+        user_id=resolved_user_id,
+        tenant_id=resolved_tenant_id,
+        requested_by_user_id=resolved_user_id,
     )
     if task.get("status") == "failed":
         message = task.get("error_message") or "task failed"
@@ -456,6 +468,8 @@ async def batch_enqueue_and_wait(
     """
     if not specs:
         return [], []
+    resolved_user_id = requested_by_user_id or (get_current_user_id() if user_id == DEFAULT_USER_ID else user_id)
+    resolved_tenant_id = tenant_id or get_current_tenant_id()
     # Phase 1 — Sequential enqueue (dependency resolution requires order)
     task_ids: dict[str, str] = {}
     for spec in specs:
@@ -474,9 +488,9 @@ async def batch_enqueue_and_wait(
             dependency_task_id=dep_task_id,
             dependency_group=spec.dependency_group,
             dependency_index=spec.dependency_index,
-            user_id=user_id,
-            tenant_id=tenant_id,
-            requested_by_user_id=requested_by_user_id,
+            user_id=resolved_user_id,
+            tenant_id=resolved_tenant_id,
+            requested_by_user_id=resolved_user_id,
         )
         task_ids[spec.resource_id] = enqueue_result["task_id"]
 
@@ -484,7 +498,12 @@ async def batch_enqueue_and_wait(
     async def _wait_one(spec: TaskSpec) -> BatchTaskResult:
         tid = task_ids[spec.resource_id]
         try:
-            task = await wait_for_task(tid)
+            task = await wait_for_task(
+                tid,
+                user_id=resolved_user_id,
+                tenant_id=resolved_tenant_id,
+                requested_by_user_id=resolved_user_id,
+            )
             return _task_result_from_finished(task, spec.resource_id, tid)
         except Exception as exc:
             return BatchTaskResult(
