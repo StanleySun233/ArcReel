@@ -279,7 +279,7 @@ async def derive_units(
     project, _script, _sf = _load_episode_script(project_id, episode, _t, manager)
     _require_ad_project(project, True, _t)
     # 供应商时长上限在锁外解析（异步 I/O 不进项目锁临界区）
-    max_unit_duration = await resolve_max_unit_duration(project, user_id=_user.id)
+    max_unit_duration = await resolve_max_unit_duration(project, user_id=_user.id, tenant_id=_user.tenant_id)
 
     with _locked_episode_script(
         project_id, _episode_script_resolver(episode, _t, require_ad=True), _t, manager

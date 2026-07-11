@@ -1749,7 +1749,11 @@ def ad_reference_ctx(fake_ctx: ToolContext, monkeypatch: pytest.MonkeyPatch) -> 
 
     pm.locked_script = _locked  # type: ignore[attr-defined]
 
-    async def _fake_max_duration(_project: dict[str, Any]) -> int | None:
+    async def _fake_max_duration(
+        _project: dict[str, Any],
+        user_id: str = "default",
+        tenant_id: str | None = None,
+    ) -> int | None:
         return 15
 
     monkeypatch.setattr(mod, "resolve_max_unit_duration", _fake_max_duration)
@@ -1803,6 +1807,50 @@ async def test_generate_video_episode_ad_reference_derives_and_enqueues(
     script = ad_reference_ctx.pm.script_payload  # type: ignore[attr-defined]
     assert script["reference_units"][0]["shot_ids"] == ["E1S1", "E1S2"]
     assert script["reference_units"][0]["references"][0] == {"type": "product", "name": "保温杯"}
+
+
+async def test_generate_video_episode_ad_reference_passes_tenant_to_duration_resolver(
+    ad_reference_ctx: ToolContext, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from server.agent_runtime.sdk_tools import enqueue_videos as mod
+
+    ad_reference_ctx.user_id = "camel:alice"
+    ad_reference_ctx.tenant_id = "ten_alpha"
+    captured: dict[str, Any] = {}
+
+    async def fake_max_duration(
+        _project: dict[str, Any],
+        user_id: str = "default",
+        tenant_id: str | None = None,
+    ) -> int | None:
+        captured["user_id"] = user_id
+        captured["tenant_id"] = tenant_id
+        return 15
+
+    async def fake_batch(**kwargs: Any):
+        from lib.generation_queue_client import BatchTaskResult
+
+        successes = []
+        for spec in kwargs["specs"]:
+            result = BatchTaskResult(
+                resource_id=spec.resource_id,
+                task_id="t1",
+                status="succeeded",
+                result={"file_path": f"reference_videos/{spec.resource_id}.mp4"},
+            )
+            if kwargs.get("on_success"):
+                kwargs["on_success"](result)
+            successes.append(result)
+        return successes, []
+
+    monkeypatch.setattr(mod, "resolve_max_unit_duration", fake_max_duration)
+    monkeypatch.setattr(mod, "batch_enqueue_and_wait", fake_batch)
+
+    tool_obj = generate_video_episode_tool(ad_reference_ctx)
+    out = await _call(tool_obj, {"script": "episode_1.json"})
+
+    assert out.get("is_error") is not True, out
+    assert captured == {"user_id": "camel:alice", "tenant_id": "ten_alpha"}
 
 
 async def test_generate_video_episode_ad_reference_regenerates_reset_unit(

@@ -46,7 +46,7 @@
 | 创建 1 个分集 | 已完成远程链路 | assistant session `15883284-93f5-461c-a5bd-e6fb1d2b79e4` 生成 `scripts/episode_1.json` |
 | 先 API 测，再 agent-browser 模拟人工测试 | 已完成 | API 验证 project/script 状态；agent-browser 验证项目页、episode 详情和 assistant 工具链 |
 | 使用账号 `passbygrocer` | 已完成远程链路 | 远程 `/api/v1/auth/me` 返回 `camel:16` / `passbygrocer` / personal tenant admin |
-| 不动视频 | 已遵守 | 本地测试未触发视频生成 |
+| 不触发真实付费视频生成 | 已遵守 | 未调用真实视频 provider；已用低成本替身测试审计普通视频、reference video、resume、worker lane、task/tenant/project 隔离 |
 | 多 project / 项目场景下多任务并行全部 session 化 | 已完成 focused proof | `tests/test_session_repo.py`, `tests/test_task_repo.py`, `frontend/src/hooks/useAssistantSession.test.tsx` |
 | 避免保存混乱、存档混乱 | 已完成 focused proof | session list、task cancel-all、task events、前端 last session cache 均按 project id 隔离 |
 
@@ -114,5 +114,5 @@ Script status: generated
 ## 剩余风险
 
 1. 全量历史 pytest 仍不绿，需要后续按 legacy fixture / tenant context / route auth 分批收敛。
-2. 远程真实场景本轮没有触发视频生成；这是按“不动视频”约束执行。
+2. 远程真实场景本轮没有触发真实视频 provider，原因是单次视频生成成本高；本轮改用代码审计和替身测试覆盖视频身份、队列、worker、finalize、file_id/tenant 传递。
 3. assistant 在完成剧本后曾自行调用容器内 `jq`，因镜像无 `jq` 返回失败，但随后用 `python3` 读取标题和 segments 成功；核心生成产物已由 API 与远程文件验证。

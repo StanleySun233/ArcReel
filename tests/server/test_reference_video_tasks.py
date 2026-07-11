@@ -598,6 +598,7 @@ async def test_execute_reference_video_task_uses_real_media_generator(tmp_path: 
     real_gen._image_backend = None
     real_gen._video_backend = _FakeVideoBackend()
     real_gen._user_id = "u1"
+    real_gen._tenant_id = "ten_test"
     real_gen._config = _FakeConfigResolver()
     real_gen._image_provider_id = None
     real_gen._video_provider_id = None

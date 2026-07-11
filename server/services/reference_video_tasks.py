@@ -143,7 +143,11 @@ def _apply_provider_constraints(
     return new_refs, new_duration, warnings
 
 
-async def resolve_max_unit_duration(project: dict, user_id: str = DEFAULT_USER_ID) -> int | None:
+async def resolve_max_unit_duration(
+    project: dict,
+    user_id: str = DEFAULT_USER_ID,
+    tenant_id: str | None = None,
+) -> int | None:
     """解析项目视频后端的单次生成时长上限（秒），供派生分组约束 unit 总长。
 
     单一真相源与 executor clamp 同口径（``video_capabilities_for_project`` 的
@@ -151,7 +155,7 @@ async def resolve_max_unit_duration(project: dict, user_id: str = DEFAULT_USER_I
     切分，超长 unit 交由执行层 clamp + warning 兜底，不阻塞派生。
     """
     try:
-        resolver = ConfigResolver(async_session_factory, user_id=user_id)
+        resolver = ConfigResolver(async_session_factory, user_id=user_id, tenant_id=tenant_id)
         caps = await resolver.video_capabilities_for_project(project)
         max_duration = caps.get("max_duration")
         return int(max_duration) if max_duration else None

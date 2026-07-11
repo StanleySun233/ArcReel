@@ -348,6 +348,24 @@ Additional focused regression:
   - Result: 53 passed
 - `DATABASE_URL=postgresql+asyncpg://... ruff check lib/text_backends/openai.py tests/test_openai_text_backend.py`
   - Result: passed
+- Audited paid video generation paths without calling real video providers.
+  - Normal storyboard video path: `execute_video_task` receives task `tenant_id`, constructs `MediaGenerator(... tenant_id=tenant_id)`, records `UsageTracker.start_call(... tenant_id=self._tenant_id)`, persists `api_call_id` to task payload, and finalizes video/thumbnail through `_record_output_file(... tenant_id=tenant_id, task_id=task_id)`.
+  - Reference video path: `execute_reference_video_task` receives task `tenant_id`, constructs `MediaGenerator(... tenant_id=tenant_id)`, calls `generate_video_async`, and finalizes video/thumbnail through `_finalize_reference_video_unit(... tenant_id=tenant_id, task_id=task_id)`.
+  - Resume path: `execute_resume_video_task` reads persisted task `tenant_id`, re-enters `task_tenant_scope`, constructs `MediaGenerator(... tenant_id=tenant_id)`, and finalizes normal/reference videos with persisted identity.
+  - Worker lane routing treats `reference_video` as video lane for provider derivation and capacity, not image lane.
+  - Queue/task storage persists `tenant_id`, `requested_by_user_id`, and `project_id`; cancel/list/event operations are project/tenant scoped.
+- Fixed a reference-video grouping identity gap.
+  - Root cause: `resolve_max_unit_duration(project, user_id=...)` constructed `ConfigResolver` without tenant, so ad + reference_video grouping could lose model-specific max-duration constraints under tenant-scoped config.
+  - Fix: `resolve_max_unit_duration()` now accepts `tenant_id`; HTTP derive route passes `_user.tenant_id`; SDK video tool passes `ctx.tenant_id`.
+  - Evidence: `tests/server/agent_runtime/test_sdk_tools.py::test_generate_video_episode_ad_reference_passes_tenant_to_duration_resolver`.
+- Fixed a low-cost video test harness gap.
+  - `MediaGenerator.__init__` already initializes `_tenant_id` in production; `tests/server/test_reference_video_tasks.py::test_execute_reference_video_task_uses_real_media_generator` uses `object.__new__(MediaGenerator)` to avoid DB/provider setup and now mirrors `_tenant_id`.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/server/test_reference_video_tasks.py tests/server/test_ad_reference_video_tasks.py tests/server/agent_runtime/test_sdk_tools.py::test_generate_video_episode_ad_reference_derives_and_enqueues tests/server/agent_runtime/test_sdk_tools.py::test_generate_video_episode_ad_reference_passes_tenant_to_duration_resolver tests/server/agent_runtime/test_sdk_tools.py::test_generate_video_episode_ad_reference_regenerates_reset_unit tests/server/agent_runtime/test_sdk_tools.py::test_generate_video_episode_ad_reference_skips_unchanged_unit_with_output tests/server/agent_runtime/test_sdk_tools.py::test_generate_video_all_ad_reference_falls_through_to_episode -q`
+  - Result: 36 passed
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_generation_worker_module.py::TestExtractProvider::test_reference_video_routes_to_video_lane tests/test_generation_worker_module.py::TestExtractProvider::test_project_lookup_is_scoped_by_task_tenant tests/test_generation_worker_module.py::TestExtractProviderAlignsWithExecution::test_video_alignment tests/test_generation_worker_module.py::TestGenerationWorker::test_process_resume_task_locks_persisted_provider_to_payload tests/test_task_repo.py::TestTaskRepository::test_task_storage_uses_project_id_column tests/test_task_repo.py::TestTaskRepository::test_claim_next_running_event_uses_claimed_task_tenant tests/test_task_repo.py::TestTaskRepository::test_cancel_all_queued_is_scoped_by_project_id tests/test_task_repo.py::TestTaskRepository::test_tenant_snapshot_and_scoped_queries -q`
+  - Result: 8 passed
+- `DATABASE_URL=postgresql+asyncpg://... ruff check server/services/reference_video_tasks.py server/agent_runtime/sdk_tools/enqueue_videos.py server/routers/reference_videos.py tests/server/agent_runtime/test_sdk_tools.py tests/server/test_reference_video_tasks.py`
+  - Result: passed
 
 ## Remote real model scenario
 
