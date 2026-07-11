@@ -282,9 +282,10 @@ MCP / Skill session 规则：
 - 远程项目 `proj-c56f473025444b8d` 已验证：2 个角色、2 个场景、2 个道具及图片产物存在；第 1 集 step1 审核确认后由右侧 assistant 生成 `scripts/episode_1.json`。
 - 远程 API 和文件验证均显示剧本标题为 `思特里克兰德的名字与画作`，segments 数量为 3，episode `script_status=generated`，status=`scripted`。
 - agent-browser 独立 session 打开远程项目页，验证资产计数、Episode 列表、Episode 详情、3 个 shots、右侧 assistant 工具链渲染正常。
+- 远程视频模型预检已切换到 `doubao-seedance-1-5-pro-251215`，`video-capabilities` 返回 `custom-3` 和 4-15 秒能力；提交 `E1S01` 视频生成被后端正确阻断为缺少 `scene_E1S01.png` 分镜图，未触发付费视频 provider。
 
 仍需后续收敛：
 
 - 全量历史 pytest 仍不绿；当前可信结论来自目标相关 focused tests、远程 API 验证和 agent-browser 验证。
 - 本地真实 CaMeL OAuth 仍因 `http://127.0.0.1:1241/api/v1/auth/camel/callback` 未在 CaMeL client 注册而不可用；本地不得通过修改 `camel-api`、猜测 password grant 或添加 fallback 规避。
-- 本轮按“不动视频”约束执行，没有验证视频生成。
+- 第一集真实视频生成仍未执行；当前阻断是缺少分镜图。继续生成需要先授权 3 张分镜图和后续视频任务的付费调用。

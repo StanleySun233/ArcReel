@@ -1,7 +1,7 @@
 # Tenant Project Permission Implementation Audit
 
 **Date:** 20260711
-**Status:** in progress
+**Status:** current; remote video preflight complete; full legacy pytest still not green
 
 ## Verified in this pass
 
@@ -402,6 +402,11 @@ Evidence:
   - Result: 92 passed, 62 deselected
 - `ruff check lib/video_backends/base.py lib/media_generator.py lib/generation_queue.py tests/test_video_backend_base.py tests/test_generation_queue.py tests/test_agent_config_router.py tests/test_credential_api.py`
   - Result: passed
+- GitHub Actions for commit `097a592 fix(video): type sdk tenant duration lookup`:
+  - `Private Docker Deploy` run `29148215374`: passed.
+  - `CodeQL` run `29148215357`: passed.
+  - `Tests` run `29148215395`: frontend and postgres compatibility jobs passed; backend coverage job was still running at the latest audit check.
+  - `release-please` remains a known unrelated failure.
 
 ### Legacy agent/provider credential route tests now model tenant access
 

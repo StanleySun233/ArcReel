@@ -1074,7 +1074,7 @@ async def upload_style_image(
     """
     上传风格参考图并分析风格
 
-    1. 保存图片到 projects/{project_name}/style_reference.png
+    1. 保存图片到 project style_reference.png
     2. 调用 Gemini API 分析风格
     3. 更新 project.json 的 style_image 和 style_description 字段
     """
