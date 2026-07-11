@@ -23,7 +23,6 @@ from pyJianYingDraft import (
     TextSegment,
     TextShadow,
     TextStyle,
-    TrackSpec,
     TrackType,
     TransitionType,
     VideoMaterial,
@@ -54,7 +53,8 @@ def _add_track(script_file: Any, track_type: TrackType, name: str | None = None)
         else:
             add_track(track_type, name)
         return
-    script_file.append_track(TrackSpec(track_type, name))
+    track_spec = getattr(draft, "TrackSpec")
+    script_file.append_track(track_spec(track_type, name))
 
 
 # 字幕由有序 span 派生（而非单字段）的内容模式。drama 从 utterances 派生 subtitle_spans；

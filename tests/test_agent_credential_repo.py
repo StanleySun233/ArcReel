@@ -7,9 +7,13 @@ import pytest
 from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 
 
+def _repo(async_session) -> AgentCredentialRepository:
+    return AgentCredentialRepository(async_session, tenant_id="ten_default")
+
+
 @pytest.mark.asyncio
 async def test_create_and_get(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     cred = await repo.create(
         preset_id="deepseek",
         display_name="My DeepSeek",
@@ -27,7 +31,7 @@ async def test_create_and_get(async_session) -> None:
 
 @pytest.mark.asyncio
 async def test_list_orders_by_id(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     a = await repo.create(preset_id="deepseek", display_name="A", base_url="u", api_key="k1")
     b = await repo.create(preset_id="kimi", display_name="B", base_url="u", api_key="k2")
     await async_session.flush()
@@ -38,7 +42,7 @@ async def test_list_orders_by_id(async_session) -> None:
 
 @pytest.mark.asyncio
 async def test_set_active_makes_others_inactive(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     a = await repo.create(preset_id="x", display_name="A", base_url="u", api_key="k1")
     b = await repo.create(preset_id="y", display_name="B", base_url="u", api_key="k2")
     await async_session.flush()
@@ -58,7 +62,7 @@ async def test_set_active_makes_others_inactive(async_session) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_active_raises(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     a = await repo.create(preset_id="x", display_name="A", base_url="u", api_key="k")
     await async_session.flush()
     await repo.set_active(a.id)
@@ -69,7 +73,7 @@ async def test_delete_active_raises(async_session) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_inactive_works(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     a = await repo.create(preset_id="x", display_name="A", base_url="u", api_key="k")
     await async_session.flush()
     assert await repo.delete(a.id) is True
@@ -79,20 +83,20 @@ async def test_delete_inactive_works(async_session) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_nonexistent_returns_false(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     assert await repo.delete(9999) is False
 
 
 @pytest.mark.asyncio
 async def test_set_active_unknown_id_raises(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     with pytest.raises(ValueError, match="not found"):
         await repo.set_active(9999)
 
 
 @pytest.mark.asyncio
 async def test_update_partial(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     a = await repo.create(preset_id="x", display_name="A", base_url="u", api_key="k")
     await async_session.flush()
     updated = await repo.update(a.id, display_name="A2", model="m1")
@@ -104,5 +108,5 @@ async def test_update_partial(async_session) -> None:
 
 @pytest.mark.asyncio
 async def test_get_active_when_none(async_session) -> None:
-    repo = AgentCredentialRepository(async_session)
+    repo = _repo(async_session)
     assert await repo.get_active() is None

@@ -113,6 +113,10 @@ class DbSessionStore:
         async with self._session_factory() as session:
             session.info["tenant_id"] = tenant_id
             session.info["user_id"] = self._user_id
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))"),
+                {"lock_key": f"{tenant_id}|{project_key}|{session_id}|{subpath}"},
+            )
             seq_start_row = await session.execute(
                 select(func.coalesce(func.max(AgentSessionEntry.seq), -1) + 1).where(
                     AgentSessionEntry.tenant_id == tenant_id,

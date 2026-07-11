@@ -211,7 +211,7 @@ async def test_camel_bootstrap_without_selected_tenant_writes_personal_tenant(as
             "success": True,
             "tokens": [
                 {"media": media, "name": f"camel-arcreel-owner-{media}", "key": f"sk-{media}"}
-                for media in ("image", "text", "video", "audio")
+                for media in ("image", "text", "video", "audio", "anthropic")
             ],
         }
 
@@ -265,7 +265,7 @@ async def test_camel_bootstrap_with_selected_tenant_writes_selected_tenant(async
             "success": True,
             "tokens": [
                 {"media": media, "name": f"camel-arcreel-owner-{media}", "key": f"sk-{media}"}
-                for media in ("image", "text", "video", "audio")
+                for media in ("image", "text", "video", "audio", "anthropic")
             ],
         }
 
