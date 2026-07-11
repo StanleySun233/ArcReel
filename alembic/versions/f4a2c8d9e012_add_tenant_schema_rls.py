@@ -245,9 +245,7 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running', 'cancelling')"),
     )
-    op.create_index(
-        "idx_task_events_tenant_project_id", "task_events", ["tenant_id", "project_id", "id"], unique=False
-    )
+    op.create_index("idx_task_events_tenant_project_id", "task_events", ["tenant_id", "project_id", "id"], unique=False)
     op.create_index("idx_api_calls_tenant_project_id", "api_calls", ["tenant_id", "project_id"], unique=False)
     op.create_index("idx_api_calls_tenant_started_at", "api_calls", ["tenant_id", "started_at"], unique=False)
 
@@ -366,12 +364,27 @@ def downgrade() -> None:
     op.drop_index("idx_tasks_dedupe_active", table_name="tasks")
     op.drop_index("idx_tasks_tenant_project_updated_at", table_name="tasks")
     op.drop_index("idx_tasks_tenant_status_queued_at", table_name="tasks")
-    op.create_index(
-        "idx_tasks_dedupe_active",
-        "tasks",
-        ["project_id", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
-        unique=True,
-        postgresql_where=sa.text("status IN ('queued', 'running', 'cancelling')"),
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'tasks' AND column_name = 'project_id'
+            ) THEN
+                CREATE UNIQUE INDEX idx_tasks_dedupe_active
+                ON tasks (project_id, task_type, resource_id, COALESCE(script_file, ''))
+                WHERE status IN ('queued', 'running', 'cancelling');
+            ELSIF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'tasks' AND column_name = 'project_name'
+            ) THEN
+                CREATE UNIQUE INDEX idx_tasks_dedupe_active
+                ON tasks (project_name, task_type, resource_id, COALESCE(script_file, ''))
+                WHERE status IN ('queued', 'running', 'cancelling');
+            END IF;
+        END $$;
+        """
     )
 
     for table_name, fk_name in reversed(TENANT_COLUMN_TABLES):

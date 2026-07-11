@@ -81,7 +81,8 @@ def get_video_capabilities_tool(ctx: ToolContext):
     )
     async def _handler(_args: dict[str, Any]) -> dict[str, Any]:
         try:
-            payload = await _resolve_video_capabilities(ctx.project_name)
+            with ctx.identity_scope():
+                payload = await _resolve_video_capabilities(ctx.project_name)
             return {"content": [{"type": "text", "text": json.dumps(payload, ensure_ascii=False, indent=2)}]}
         except FileNotFoundError as exc:
             return {
@@ -150,52 +151,53 @@ def generate_episode_script_tool(ctx: ToolContext):
     )
     async def _handler(args: dict[str, Any]) -> dict[str, Any]:
         try:
-            episode = int(args["episode"])
-            dry_run = bool(args.get("dry_run"))
+            with ctx.identity_scope():
+                episode = int(args["episode"])
+                dry_run = bool(args.get("dry_run"))
 
-            project_path = ctx.project_path
-            try:
-                project_data = json.loads((project_path / "project.json").read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                project_data = {}
+                project_path = ctx.project_path
+                try:
+                    project_data = json.loads((project_path / "project.json").read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    project_data = {}
 
-            step1 = _resolve_step1_path(project_path, episode, project_data)
-            if step1 is not None:
-                step1_path, hint = step1
-                if not step1_path.exists():
+                step1 = _resolve_step1_path(project_path, episode, project_data)
+                if step1 is not None:
+                    step1_path, hint = step1
+                    if not step1_path.exists():
+                        return {
+                            "content": [
+                                {"type": "text", "text": f"❌ 未找到 Step 1 文件: {step1_path}\n   请先完成 {hint}"}
+                            ],
+                            "is_error": True,
+                        }
+
+                if dry_run:
+                    generator = ScriptGenerator(project_path)
+                    prompt = await generator.build_prompt(episode)
+                    return {
+                        "content": [{"type": "text", "text": f"DRY RUN — 以下是将发送给文本模型的 Prompt:\n\n{prompt}"}]
+                    }
+
+                # step1→step2 审核 gate：drama / narration 的结构化 step1 中间态须经 web 显式确认才放行
+                # step2 视觉生成；未确认（或确认后内容又被改）时阻塞，引导用户先在 Web 端审阅确认。
+                # ad（无 step1）/ reference_video（step1 为自由文本 md）不适用，gate 自动放行。
+                if script_review.gate_blocks_step2(project_path, project_data, episode):
                     return {
                         "content": [
-                            {"type": "text", "text": f"❌ 未找到 Step 1 文件: {step1_path}\n   请先完成 {hint}"}
+                            {
+                                "type": "text",
+                                "text": (
+                                    "⏸️ step1 结构化中间态尚未经 web 审核确认，step2 视觉生成被 gate 阻塞。"
+                                    "请在 Web 端审阅并确认本集 step1 内容后再生成剧本。"
+                                ),
+                            }
                         ],
                         "is_error": True,
                     }
 
-            if dry_run:
-                generator = ScriptGenerator(project_path)
-                prompt = await generator.build_prompt(episode)
-                return {
-                    "content": [{"type": "text", "text": f"DRY RUN — 以下是将发送给文本模型的 Prompt:\n\n{prompt}"}]
-                }
-
-            # step1→step2 审核 gate：drama / narration 的结构化 step1 中间态须经 web 显式确认才放行
-            # step2 视觉生成；未确认（或确认后内容又被改）时阻塞，引导用户先在 Web 端审阅确认。
-            # ad（无 step1）/ reference_video（step1 为自由文本 md）不适用，gate 自动放行。
-            if script_review.gate_blocks_step2(project_path, project_data, episode):
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": (
-                                "⏸️ step1 结构化中间态尚未经 web 审核确认，step2 视觉生成被 gate 阻塞。"
-                                "请在 Web 端审阅并确认本集 step1 内容后再生成剧本。"
-                            ),
-                        }
-                    ],
-                    "is_error": True,
-                }
-
-            generator = await ScriptGenerator.create(project_path)
-            result_path = await generator.generate(episode=episode)
+                generator = await ScriptGenerator.create(project_path)
+                result_path = await generator.generate(episode=episode)
             return {"content": [{"type": "text", "text": f"✅ 剧本生成完成: {result_path}"}]}
         except FileNotFoundError as exc:
             return {"content": [{"type": "text", "text": f"❌ 文件错误: {exc}"}], "is_error": True}
@@ -298,91 +300,92 @@ def normalize_drama_script_tool(ctx: ToolContext):
     )
     async def _handler(args: dict[str, Any]) -> dict[str, Any]:
         try:
-            episode = int(args["episode"])
-            source = args.get("source")
-            dry_run = bool(args.get("dry_run"))
+            with ctx.identity_scope():
+                episode = int(args["episode"])
+                source = args.get("source")
+                dry_run = bool(args.get("dry_run"))
 
-            project_path = ctx.project_path
-            project = ctx.pm.load_project(ctx.project_name)
+                project_path = ctx.project_path
+                project = ctx.pm.load_project(ctx.project_name)
 
-            if source:
-                source_path = (project_path / source).resolve()
-                if not source_path.is_relative_to(project_path.resolve()):
-                    return {
-                        "content": [{"type": "text", "text": f"❌ 路径超出项目目录: {source_path}"}],
-                        "is_error": True,
-                    }
-                if not source_path.exists():
-                    return {
-                        "content": [{"type": "text", "text": f"❌ 未找到源文件: {source_path}"}],
-                        "is_error": True,
-                    }
-                novel_text = source_path.read_text(encoding="utf-8")
-            else:
-                source_dir = project_path / "source"
-                if not source_dir.exists() or not any(source_dir.iterdir()):
-                    return {
-                        "content": [{"type": "text", "text": f"❌ source/ 目录为空或不存在: {source_dir}"}],
-                        "is_error": True,
-                    }
-                texts = [
-                    f.read_text(encoding="utf-8")
-                    for f in sorted(source_dir.iterdir())
-                    if f.suffix in (".txt", ".md", ".text")
-                ]
-                novel_text = "\n\n".join(texts)
-
-            if not novel_text.strip():
-                return {"content": [{"type": "text", "text": "❌ 小说原文为空"}], "is_error": True}
-
-            default_duration, supported_durations = await _fetch_caps_with_fallback(project)
-            # 分集大纲（故事节点 / 钩子）随内容抽取前移到 step1，驱动内容覆盖与末场落地（见 ADR 0041）。
-            episode_outline, next_episode_outline = episode_outline_context(project, episode)
-            prompt = build_normalize_prompt(
-                novel_text=novel_text,
-                project_overview=project.get("overview", {}),
-                style=project.get("style", ""),
-                characters=project.get("characters", {}),
-                scenes=project.get("scenes", {}),
-                props=project.get("props", {}),
-                default_duration=default_duration,
-                supported_durations=supported_durations,
-                episode=episode,
-                source_kind=project.get("source_kind") or DEFAULT_SOURCE_KIND,
-                episode_outline=episode_outline,
-                next_episode_outline=next_episode_outline,
-                # 输出语言取项目 source_language（生成内容语言的唯一真相源）；缺省回退默认中文，
-                # 非中文项目的 step1 内容据此用目标语言产出，而非默认中文。
-                target_language=project.get("source_language") or "中文",
-                # source_language（zh / en / vi 或 None）另供时长下界软指引取语速：drama step1 引导模型为
-                # 每场选不低于该场 utterances 口播时长的档位，语速按此从 lib.speech_rate 单一真相源注入。
-                source_language=project.get("source_language"),
-            )
-
-            if dry_run:
-                return {
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"DRY RUN — 以下是将发送给文本模型的 Prompt:\n\n{prompt}\n\nPrompt 长度: {len(prompt)} 字符",
+                if source:
+                    source_path = (project_path / source).resolve()
+                    if not source_path.is_relative_to(project_path.resolve()):
+                        return {
+                            "content": [{"type": "text", "text": f"❌ 路径超出项目目录: {source_path}"}],
+                            "is_error": True,
                         }
+                    if not source_path.exists():
+                        return {
+                            "content": [{"type": "text", "text": f"❌ 未找到源文件: {source_path}"}],
+                            "is_error": True,
+                        }
+                    novel_text = source_path.read_text(encoding="utf-8")
+                else:
+                    source_dir = project_path / "source"
+                    if not source_dir.exists() or not any(source_dir.iterdir()):
+                        return {
+                            "content": [{"type": "text", "text": f"❌ source/ 目录为空或不存在: {source_dir}"}],
+                            "is_error": True,
+                        }
+                    texts = [
+                        f.read_text(encoding="utf-8")
+                        for f in sorted(source_dir.iterdir())
+                        if f.suffix in (".txt", ".md", ".text")
                     ]
-                }
+                    novel_text = "\n\n".join(texts)
 
-            # 结构化输出：response_schema 约束为 duration 枚举硬约束的规范化剧本模型（按
-            # supported_durations 动态构造），直接产出 utterances + source_text + 视觉描述，
-            # 消除「结构→自由文本→结构」双重转写。本地解析复用同一 schema 保持同口径校验。
-            schema = build_drama_normalized_script_model(supported_durations)
-            generator = await TextGenerator.create(TextTaskType.SCRIPT, project_name=ctx.project_name)
-            result = await generator.generate(
-                TextGenerationRequest(
-                    prompt=prompt,
-                    response_schema=schema,
-                    max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
-                ),
-                project_name=ctx.project_name,
-            )
-            content = _parse_normalized_content(result.text, schema)
+                if not novel_text.strip():
+                    return {"content": [{"type": "text", "text": "❌ 小说原文为空"}], "is_error": True}
+
+                default_duration, supported_durations = await _fetch_caps_with_fallback(project)
+                # 分集大纲（故事节点 / 钩子）随内容抽取前移到 step1，驱动内容覆盖与末场落地（见 ADR 0041）。
+                episode_outline, next_episode_outline = episode_outline_context(project, episode)
+                prompt = build_normalize_prompt(
+                    novel_text=novel_text,
+                    project_overview=project.get("overview", {}),
+                    style=project.get("style", ""),
+                    characters=project.get("characters", {}),
+                    scenes=project.get("scenes", {}),
+                    props=project.get("props", {}),
+                    default_duration=default_duration,
+                    supported_durations=supported_durations,
+                    episode=episode,
+                    source_kind=project.get("source_kind") or DEFAULT_SOURCE_KIND,
+                    episode_outline=episode_outline,
+                    next_episode_outline=next_episode_outline,
+                    # 输出语言取项目 source_language（生成内容语言的唯一真相源）；缺省回退默认中文，
+                    # 非中文项目的 step1 内容据此用目标语言产出，而非默认中文。
+                    target_language=project.get("source_language") or "中文",
+                    # source_language（zh / en / vi 或 None）另供时长下界软指引取语速：drama step1 引导模型为
+                    # 每场选不低于该场 utterances 口播时长的档位，语速按此从 lib.speech_rate 单一真相源注入。
+                    source_language=project.get("source_language"),
+                )
+
+                if dry_run:
+                    return {
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": f"DRY RUN — 以下是将发送给文本模型的 Prompt:\n\n{prompt}\n\nPrompt 长度: {len(prompt)} 字符",
+                            }
+                        ]
+                    }
+
+                # 结构化输出：response_schema 约束为 duration 枚举硬约束的规范化剧本模型（按
+                # supported_durations 动态构造），直接产出 utterances + source_text + 视觉描述，
+                # 消除「结构→自由文本→结构」双重转写。本地解析复用同一 schema 保持同口径校验。
+                schema = build_drama_normalized_script_model(supported_durations)
+                generator = await TextGenerator.create(TextTaskType.SCRIPT, project_name=ctx.project_name)
+                result = await generator.generate(
+                    TextGenerationRequest(
+                        prompt=prompt,
+                        response_schema=schema,
+                        max_output_tokens=DEFAULT_MAX_OUTPUT_TOKENS,
+                    ),
+                    project_name=ctx.project_name,
+                )
+                content = _parse_normalized_content(result.text, schema)
 
             # 与 _load_drama_step1_content 的读取契约同口径：scenes 须为非空列表，避免把空 / 形状坏的
             # step1 当成功产物写盘、拖到 step2 / 最终生成才必然失败。

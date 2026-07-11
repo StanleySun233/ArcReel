@@ -854,6 +854,32 @@ async def test_get_video_capabilities_happy(fake_ctx: ToolContext, monkeypatch) 
     assert json.loads(out["content"][0]["text"])["provider_id"] == "fake"
 
 
+async def test_get_video_capabilities_uses_tool_context_identity(tmp_path: Path, monkeypatch) -> None:
+    from lib.user_scope import get_current_tenant_id, get_current_user_id
+    from server.agent_runtime.sdk_tools import text_generation as mod
+
+    project_dir = tmp_path / "demo"
+    project_dir.mkdir()
+    ctx = ToolContext(
+        project_name="demo",
+        projects_root=tmp_path,
+        pm=_FakePM("demo", project_dir),  # type: ignore[arg-type]
+        tenant_id="ten_tool",
+        user_id="camel:tool",
+    )
+
+    async def fake_resolve(_project):
+        return {
+            "tenant_id": get_current_tenant_id(),
+            "user_id": get_current_user_id(),
+        }
+
+    monkeypatch.setattr(mod, "_resolve_video_capabilities", fake_resolve)
+    out = await _call(get_video_capabilities_tool(ctx), {})
+    payload = json.loads(out["content"][0]["text"])
+    assert payload == {"tenant_id": "ten_tool", "user_id": "camel:tool"}
+
+
 async def test_get_video_capabilities_error(fake_ctx: ToolContext, monkeypatch) -> None:
     from server.agent_runtime.sdk_tools import text_generation as mod
 
@@ -1280,6 +1306,43 @@ async def test_plan_episodes_happy(fake_ctx: ToolContext, monkeypatch) -> None:
     assert "城门遇袭" in text
     assert captured["project_path"] == fake_ctx.project_path
     assert captured["plan_instructions"] is None  # 不传时透传 None
+
+
+async def test_plan_episodes_uses_tool_context_identity(tmp_path: Path, monkeypatch) -> None:
+    from lib.episode_planner import PlanResult
+    from lib.user_scope import get_current_tenant_id, get_current_user_id
+    from server.agent_runtime.sdk_tools import episode_planning as mod
+
+    project_dir = tmp_path / "demo"
+    project_dir.mkdir()
+    ctx = ToolContext(
+        project_name="demo",
+        projects_root=tmp_path,
+        pm=_FakePM("demo", project_dir),  # type: ignore[arg-type]
+        tenant_id="ten_plan",
+        user_id="camel:plan",
+    )
+    captured: dict[str, Any] = {}
+
+    class _Planner:
+        @classmethod
+        async def create(cls, project_path):
+            captured["project_path"] = project_path
+            captured["tenant_id"] = get_current_tenant_id()
+            captured["user_id"] = get_current_user_id()
+            return cls()
+
+        async def plan(self, instructions=None):
+            return PlanResult(episodes=[], cursor=None, source_exhausted=True)
+
+    monkeypatch.setattr(mod, "EpisodePlanner", _Planner)
+    out = await _call(mod.plan_episodes_tool(ctx), {})
+    assert out.get("is_error") is not True
+    assert captured == {
+        "project_path": ctx.project_path,
+        "tenant_id": "ten_plan",
+        "user_id": "camel:plan",
+    }
 
 
 async def test_plan_episodes_forwards_instructions(fake_ctx: ToolContext, monkeypatch) -> None:

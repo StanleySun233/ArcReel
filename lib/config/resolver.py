@@ -37,7 +37,7 @@ from lib.db.repositories.credential_repository import CredentialRepository
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 from lib.project_manager import ProjectManager
 from lib.text_backends.base import TextTaskType
-from lib.user_scope import current_identity_scope, get_current_tenant_id
+from lib.user_scope import current_identity_scope, get_current_tenant_id, get_current_user_id
 
 _project_manager: ProjectManager | None = None
 
@@ -187,8 +187,8 @@ class ConfigResolver:
     ) -> None:
         self._session_factory = session_factory
         self._bound_session = _bound_session
-        self._user_id = user_id
-        self._tenant_id = tenant_id
+        self._user_id = user_id if user_id is not None else get_current_user_id()
+        self._tenant_id = tenant_id if tenant_id is not None else get_current_tenant_id()
         if self._bound_session is not None and user_id is not None:
             self._bound_session.info["user_id"] = user_id
         if self._bound_session is not None and tenant_id is not None:

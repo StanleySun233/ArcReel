@@ -1177,9 +1177,12 @@ class SessionManager:
 
     async def _get_cleanup_delay(self) -> int:
         """返回会话清理延迟秒数，默认 300（5 分钟）。"""
+        tenant_id = get_current_tenant_id()
+        if tenant_id is None:
+            return 300
         try:
             async with async_session_factory() as session:
-                svc = ConfigService(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
+                svc = ConfigService(session, user_id=get_current_user_id(), tenant_id=tenant_id)
                 val = await svc.get_setting("agent_session_cleanup_delay_seconds", "300")
             return max(int(val), 10)
         except Exception:
@@ -1188,9 +1191,12 @@ class SessionManager:
 
     async def _get_max_concurrent(self) -> int:
         """返回最大并发会话数，默认 5。"""
+        tenant_id = get_current_tenant_id()
+        if tenant_id is None:
+            return 5
         try:
             async with async_session_factory() as session:
-                svc = ConfigService(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
+                svc = ConfigService(session, user_id=get_current_user_id(), tenant_id=tenant_id)
                 val = await svc.get_setting("agent_max_concurrent_sessions", "5")
             return max(int(val), 1)
         except Exception:
