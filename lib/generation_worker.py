@@ -344,6 +344,13 @@ async def _extract_provider(task: dict[str, Any]) -> str:
     # 以 media lane 区分 video / audio / image：reference_video 等 task_type 同属 video lane。
     is_video = task.get("media_type") == "video" or task.get("task_type") in ("video", "reference_video")
     is_audio = task.get("media_type") == "audio" or task.get("task_type") == "tts"
+    if is_audio and isinstance(payload.get("audio_provider"), str) and payload["audio_provider"].strip():
+        from lib.config.registry import PROVIDER_REGISTRY
+        from lib.custom_provider import is_custom_provider
+
+        audio_provider = payload["audio_provider"].strip()
+        if audio_provider in PROVIDER_REGISTRY or is_custom_provider(audio_provider):
+            return audio_provider
 
     # 整体兜底：含项目加载（队列里可能有指向已删除/不可读项目的历史任务，load_project 会抛
     # FileNotFoundError）在内的任何失败都回退 DEFAULT_PROVIDER，绝不冒泡阻断认领循环（见 docstring）。

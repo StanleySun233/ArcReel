@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.db.models import Asset, AssetLibraryBinding, File, FileLink, Tenant, TenantMembership, User
@@ -22,9 +23,10 @@ async def assets_env(monkeypatch):
             [
                 User(id="usr_1", username="alice", provider="camel", provider_subject="alice"),
                 User(id="usr_2", username="bob", provider="camel", provider_subject="bob"),
-                Tenant(id="ten_1", name="Tenant", owner_user_id="usr_1", created_by_user_id="usr_1"),
             ]
         )
+        await session.flush()
+        session.add(Tenant(id="ten_1", name="Tenant", owner_user_id="usr_1", created_by_user_id="usr_1"))
         await session.flush()
         session.add_all(
             [
@@ -143,7 +145,14 @@ async def test_manual_sync_requires_confirmation_and_source_read_permission(asse
     assert synced.json()["asset"]["description"] == "v2"
 
     async with factory() as session:
-        membership = await session.get(TenantMembership, 1)
+        membership = (
+            await session.execute(
+                select(TenantMembership).where(
+                    TenantMembership.tenant_id == "ten_1",
+                    TenantMembership.user_id == "usr_1",
+                )
+            )
+        ).scalar_one()
         await session.delete(membership)
         await session.commit()
 

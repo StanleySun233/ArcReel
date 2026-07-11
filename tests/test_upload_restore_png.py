@@ -6,6 +6,7 @@ import server.routers.versions as versions_router
 from lib.image_utils import convert_image_bytes_to_png
 from lib.project_manager import ProjectManager
 from lib.version_manager import VersionManager
+from server.auth import CurrentUserInfo
 
 
 class TestUploadRestorePng:
@@ -42,9 +43,25 @@ class TestUploadRestorePng:
         # Patch router project manager to the temp projects root.
         monkeypatch.setattr(versions_router, "pm", pm)
 
+        async def _project_manager(*_args, **_kwargs):
+            return pm
+
+        monkeypatch.setattr(versions_router, "_require_project_manager", _project_manager)
+
         # Switch back to v1 without creating a synthetic new version.
         result = await versions_router.restore_version(
-            project_name, "characters", char_name, 1, _user={"sub": "testuser"}, _t=lambda key, **kw: key
+            project_name,
+            "characters",
+            char_name,
+            1,
+            _user=CurrentUserInfo(
+                id="default",
+                sub="testuser",
+                role="admin",
+                tenant_id="ten_default",
+                tenant_role="admin",
+            ),
+            _t=lambda key, **kw: key,
         )
 
         assert result["success"]

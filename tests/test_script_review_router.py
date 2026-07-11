@@ -42,10 +42,19 @@ def _client(monkeypatch, tmp_path: Path) -> tuple[TestClient, ProjectManager]:
     pm.add_character("demo", "阿离", "少女")
     pm.add_episode("demo", 1, "第一集", "scripts/episode_1.json")
 
-    monkeypatch.setattr(router_mod, "get_project_manager", lambda: pm)
+    async def _service(*_args, **_kwargs):
+        return router_mod.ScriptReviewService(pm)
+
+    monkeypatch.setattr(router_mod, "_script_review_service", _service)
 
     app = FastAPI()
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_default",
+        tenant_role="admin",
+    )
     app.include_router(router_mod.router, prefix="/api/v1")
     return TestClient(app), pm
 

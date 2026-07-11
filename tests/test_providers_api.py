@@ -18,21 +18,25 @@ from fastapi.testclient import TestClient
 
 from lib.config.service import ConfigService, ProviderStatus
 from lib.db import get_async_session
+from lib.db.models import Tenant, TenantMembership, User
 from lib.db.models.credential import ProviderCredential
 from lib.db.repositories.credential_repository import CredentialRepository
 from lib.i18n import get_translator
 from server.auth import CurrentUserInfo, get_current_user
 from server.dependencies import get_config_service
 from server.routers import providers
+from server.services.tenant_auth import TenantAccess
 from tests.conftest import make_translator
 from tests.pg_utils import create_pg_test_engine_with_cleanup
 
-_FAKE_USER = CurrentUserInfo(id="test-user", sub="testuser", role="admin")
+_FAKE_USER = CurrentUserInfo(id="test-user", sub="testuser", role="admin", tenant_id="ten_test", tenant_role="admin")
+_FAKE_ACCESS = TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
 
 
 def _scoped_factory(instance):
-    def _factory(_session, *, user_id=None):
+    def _factory(_session, *, user_id=None, tenant_id=None):
         assert user_id == _FAKE_USER.id
+        assert tenant_id == _FAKE_USER.tenant_id
         return instance
 
     return _factory
@@ -44,6 +48,15 @@ def _patch_config_service(mock_svc):
 
 def _patch_credential_repository(mock_repo):
     return patch("server.routers.providers.CredentialRepository", side_effect=_scoped_factory(mock_repo))
+
+
+def _patch_tenant_access():
+    return patch("server.routers.providers.require_tenant_access", new=AsyncMock(return_value=_FAKE_ACCESS))
+
+
+@pytest.fixture(autouse=True)
+def _tenant_access_override(monkeypatch):
+    monkeypatch.setattr(providers, "require_tenant_access", AsyncMock(return_value=_FAKE_ACCESS))
 
 
 # ---------------------------------------------------------------------------
@@ -70,7 +83,7 @@ def _make_app(mock_svc: ConfigService) -> FastAPI:
 
 @contextmanager
 def _make_client(mock_svc: ConfigService) -> Iterator[TestClient]:
-    with _patch_config_service(mock_svc), TestClient(_make_app(mock_svc)) as client:
+    with _patch_config_service(mock_svc), _patch_tenant_access(), TestClient(_make_app(mock_svc)) as client:
         yield client
 
 
@@ -446,7 +459,7 @@ def _make_patch_app(mock_svc_instance: ConfigService) -> FastAPI:
     app.dependency_overrides[get_async_session] = _override_session
     app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
 
-    with _patch_config_service(mock_svc_instance):
+    with _patch_config_service(mock_svc_instance), _patch_tenant_access():
         app.include_router(providers.router, prefix="/api/v1")
 
     return app
@@ -568,6 +581,34 @@ class TestPatchProviderConfigMaxWorkersValidation:
             engine = await create_pg_test_engine_with_cleanup()
             state["engine"] = engine
             state["sm"] = async_sessionmaker(engine, expire_on_commit=False)
+            async with state["sm"]() as session:
+                session.add(
+                    User(
+                        id=_FAKE_USER.id,
+                        username=_FAKE_USER.sub,
+                        provider="camel",
+                        provider_subject=_FAKE_USER.sub,
+                    )
+                )
+                await session.flush()
+                session.add(
+                    Tenant(
+                        id=_FAKE_ACCESS.id,
+                        name=_FAKE_ACCESS.name,
+                        owner_user_id=_FAKE_USER.id,
+                        created_by_user_id=_FAKE_USER.id,
+                    )
+                )
+                await session.flush()
+                session.add(
+                    TenantMembership(
+                        tenant_id=_FAKE_ACCESS.id,
+                        user_id=_FAKE_USER.id,
+                        role=_FAKE_ACCESS.role,
+                        created_by_user_id=_FAKE_USER.id,
+                    )
+                )
+                await session.commit()
             try:
                 yield
             finally:

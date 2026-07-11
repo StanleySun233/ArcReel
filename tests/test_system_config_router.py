@@ -16,12 +16,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.config.service import ConfigService
 from lib.db import get_async_session
+from lib.db.models import Tenant, TenantMembership, User
 from lib.db.repositories.credential_repository import CredentialRepository
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import system_config as system_config_router
 from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 TEST_USER_ID = "system-test"
+TEST_TENANT_ID = "ten_system"
 
 
 @dataclass
@@ -45,11 +47,27 @@ async def db_session():
 
 
 async def _seed_system_config(session, seed: _SystemConfigSeed) -> None:
-    svc = ConfigService(session, user_id=TEST_USER_ID)
+    session.add(User(id=TEST_USER_ID, username="testuser", provider="camel", provider_subject=TEST_USER_ID))
+    await session.flush()
+    session.add(
+        Tenant(id=TEST_TENANT_ID, name="System Tenant", owner_user_id=TEST_USER_ID, created_by_user_id=TEST_USER_ID)
+    )
+    await session.flush()
+    session.add(
+        TenantMembership(
+            tenant_id=TEST_TENANT_ID,
+            user_id=TEST_USER_ID,
+            role="admin",
+            created_by_user_id=TEST_USER_ID,
+        )
+    )
+    await session.flush()
+
+    svc = ConfigService(session, user_id=TEST_USER_ID, tenant_id=TEST_TENANT_ID)
     for key, value in seed.settings.items():
         await svc.set_setting(key, value)
 
-    cred_repo = CredentialRepository(session, user_id=TEST_USER_ID)
+    cred_repo = CredentialRepository(session, user_id=TEST_USER_ID, tenant_id=TEST_TENANT_ID)
     for provider in seed.ready_providers:
         await cred_repo.create(provider=provider, name=f"{provider} credential", api_key=f"{provider}-key")
 
@@ -75,7 +93,13 @@ def _make_app_with_mock(seed: _SystemConfigSeed) -> FastAPI:
             await state["engine"].dispose()
 
     app = FastAPI(lifespan=_lifespan)
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=TEST_USER_ID, sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id=TEST_USER_ID,
+        sub="testuser",
+        role="admin",
+        tenant_id=TEST_TENANT_ID,
+        tenant_role="admin",
+    )
 
     async def _override_session():
         async with state["factory"]() as session:

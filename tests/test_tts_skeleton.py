@@ -121,6 +121,7 @@ def _build_generator(tmp_path: Path) -> MediaGenerator:
     gen._video_backend = None
     gen._audio_backend = _FakeAudioBackend()
     gen._user_id = "default"
+    gen._tenant_id = "ten_default"
     gen._config = None
     gen.versions = _FakeVersions()
     gen.usage_tracker = _FakeUsage()
@@ -321,11 +322,11 @@ class TestOrphanAudioRestartLost:
                     }
                 ]
 
-            async def mark_task_failed(self, task_id, error):
+            async def mark_task_failed(self, task_id, error, **_kwargs):
                 self.failed.append((task_id, error))
                 return 1
 
-            async def mark_task_cancelled(self, task_id, cancelled_by="user"):
+            async def mark_task_cancelled(self, task_id, cancelled_by="user", **_kwargs):
                 self.cancelled.append(task_id)
 
         q = _Q()
@@ -344,7 +345,7 @@ class TestDeriveProviderIdForEnqueueAudio:
         from lib.config.resolver import ProviderModel
 
         class _FakeResolver:
-            def __init__(self, factory):
+            def __init__(self, *args, **kwargs):
                 pass
 
             async def resolve_audio_backend(self, project, payload):
@@ -352,6 +353,11 @@ class TestDeriveProviderIdForEnqueueAudio:
 
         monkeypatch.setattr("lib.config.resolver.ConfigResolver", _FakeResolver)
         pid = await gq._derive_provider_id_for_enqueue(
-            project_name=None, payload={}, task_type="tts", media_type="audio"
+            project_name=None,
+            payload={},
+            task_type="tts",
+            media_type="audio",
+            user_id="default",
+            tenant_id="ten_default",
         )
         assert pid == "dashscope"
