@@ -459,6 +459,31 @@ class TestGenerationQueue:
         assert task is not None
         assert task["provider_job_id"] == "job-abc-123"
 
+    async def test_persist_provider_job_id_wrapper_preserves_tenant_scope(self, queue):
+        enqueued = await queue.enqueue_task(
+            project_name="demo",
+            task_type="video",
+            media_type="video",
+            resource_id="r1",
+            payload={},
+            script_file="ep1.json",
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+        await queue.persist_provider_job_id(
+            enqueued["task_id"],
+            "job-tenant-123",
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+        task = await queue.get_task(
+            enqueued["task_id"],
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+        assert task is not None
+        assert task["provider_job_id"] == "job-tenant-123"
+
     async def test_mark_task_cancelled_wrapper(self, queue):
         """mark_task_cancelled wrapper → repo.finalize_cancelled,SQL 守卫接住 queued/cancelling/running。"""
         enqueued = await queue.enqueue_task(

@@ -205,16 +205,30 @@ class GenerationQueue:
             repo = TaskRepository(session)
             return await repo.list_orphan_tasks_on_start()
 
-    async def persist_provider_job_id(self, task_id: str, job_id: str) -> None:
+    async def persist_provider_job_id(
+        self,
+        task_id: str,
+        job_id: str,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> None:
         async with self._session_factory() as session:
-            await _prepare_task_session(session, tenant_id=None, user_id=None)
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             await repo.persist_provider_job_id(task_id, job_id)
 
-    async def persist_api_call_id(self, task_id: str, call_id: int) -> None:
+    async def persist_api_call_id(
+        self,
+        task_id: str,
+        call_id: int,
+        *,
+        tenant_id: str | None = None,
+        requested_by_user_id: str | None = None,
+    ) -> None:
         async with self._session_factory() as session:
-            await _prepare_task_session(session, tenant_id=None, user_id=None)
-            repo = TaskRepository(session)
+            await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
+            repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
             await repo.persist_api_call_id(task_id, call_id)
 
     async def mark_task_succeeded(

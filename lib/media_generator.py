@@ -628,7 +628,12 @@ class MediaGenerator:
             if task_id is not None:
                 from lib.video_backends.base import persist_api_call_id
 
-                await persist_api_call_id(task_id, call_id)
+                await persist_api_call_id(
+                    task_id,
+                    call_id,
+                    tenant_id=self._tenant_id,
+                    requested_by_user_id=self._user_id,
+                )
 
             from lib.video_backends.base import VideoGenerationRequest
 
@@ -699,6 +704,8 @@ class MediaGenerator:
                         generate_audio=effective_generate_audio,
                         project_name=self.project_name,
                         task_id=task_id,
+                        tenant_id=self._tenant_id,
+                        user_id=self._user_id,
                         service_tier=version_metadata.get("service_tier", "default"),
                         seed=version_metadata.get("seed"),
                     )

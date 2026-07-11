@@ -52,6 +52,8 @@ class TestVideoGenerationRequest:
         assert req.duration_seconds == 5
         assert req.resolution is None
         assert req.start_image is None
+        assert req.tenant_id is None
+        assert req.user_id is None
         assert req.generate_audio is True
         assert req.service_tier == "default"
         assert req.seed is None
@@ -65,10 +67,14 @@ class TestVideoGenerationRequest:
             resolution="720p",
             start_image=Path("/tmp/frame.png"),
             generate_audio=False,
+            tenant_id="ten_1",
+            user_id="usr_1",
             service_tier="flex",
             seed=42,
         )
         assert req.duration_seconds == 8
+        assert req.tenant_id == "ten_1"
+        assert req.user_id == "usr_1"
         assert req.seed == 42
         assert req.service_tier == "flex"
 
@@ -584,6 +590,24 @@ class TestProviderJobIdPersistenceMixin:
                 self._request(task_id="local-task-1"), "job-1", provider="ark"
             )
         persist.assert_awaited_once_with("local-task-1", "job-1", provider="ark")
+
+    async def test_worker_path_forwards_tenant_scope(self):
+        request = VideoGenerationRequest(
+            prompt="p",
+            output_path=Path("/tmp/out.mp4"),
+            task_id="tenant-task-1",
+            tenant_id="ten_1",
+            user_id="usr_1",
+        )
+        with patch("lib.video_backends.base.persist_provider_job_id", new=AsyncMock()) as persist:
+            await self._backend()._persist_provider_job_id(request, "job-1", provider="ark")
+        persist.assert_awaited_once_with(
+            "tenant-task-1",
+            "job-1",
+            provider="ark",
+            tenant_id="ten_1",
+            requested_by_user_id="usr_1",
+        )
 
     async def test_non_worker_path_skips_persist(self):
         """非 worker 路径（grid / 直生 / 测试，task_id=None）跳过持久化，不触碰 DB。"""

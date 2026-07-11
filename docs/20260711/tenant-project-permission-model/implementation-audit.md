@@ -374,6 +374,40 @@ Additional focused regression:
 - `DATABASE_URL=postgresql+asyncpg://... ruff check tests/config/test_anthropic_env_dict.py`
   - Result: passed
 
+### Video submit persistence keeps tenant scope without real provider calls
+
+Paid video generation was audited without invoking real video providers. The submit-time persistence path now carries tenant/user scope from the task into the backend request and back into the queue write boundary.
+
+Evidence:
+
+- `lib/media_generator.py` passes `self._tenant_id` and `self._user_id` into `VideoGenerationRequest`.
+- `lib/media_generator.py` passes the same scope when persisting `api_call_id` after `UsageTracker.start_call()`.
+- `lib/video_backends/base.py` forwards request `tenant_id/user_id` from `ProviderJobIdPersistenceMixin._persist_provider_job_id()` into `persist_provider_job_id()`.
+- `lib/generation_queue.py` accepts explicit tenant/user scope for `persist_provider_job_id()` and `persist_api_call_id()` and prepares the PostgreSQL tenant context before writing task rows.
+- `tests/test_video_backend_base.py::TestProviderJobIdPersistenceMixin::test_worker_path_forwards_tenant_scope`.
+- `tests/test_generation_queue.py::TestGenerationQueue::test_persist_provider_job_id_wrapper_preserves_tenant_scope`.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_video_backend_base.py tests/test_generation_queue.py -q`
+  - Result: 67 passed
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_video_backend_base.py tests/test_generation_queue.py tests/test_task_repo.py -k "api_call_id or provider_job_id or VideoGenerationRequest or ProviderJobIdPersistenceMixin or PersistApiCallIdRetry" -q`
+  - Result: 13 passed, 84 deselected
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/server/test_reference_video_tasks.py tests/server/agent_runtime/test_sdk_tools.py tests/test_generation_tasks_service.py -k "video or reference or tenant or task" -q`
+  - Result: 92 passed, 62 deselected
+- `ruff check lib/video_backends/base.py lib/media_generator.py lib/generation_queue.py tests/test_video_backend_base.py tests/test_generation_queue.py tests/test_agent_config_router.py tests/test_credential_api.py`
+  - Result: passed
+
+### Legacy agent/provider credential route tests now model tenant access
+
+Old route tests that created `CurrentUserInfo` without tenant context were failing with `403`. The production behavior was correct because provider credentials and agent credentials are tenant settings and must call `require_tenant_access()` before repository access.
+
+Evidence:
+
+- `tests/test_agent_config_router.py` now authenticates as `default` in seeded `ten_default` with admin membership.
+- `tests/test_credential_api.py` now mocks `require_tenant_access()` at the route-service boundary and asserts `CredentialRepository` is constructed after `session.info["tenant_id"]` is populated.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_agent_config_router.py tests/test_credential_api.py -q`
+  - Result: 27 passed, 1 warning
+- `ruff check tests/test_agent_config_router.py tests/test_credential_api.py`
+  - Result: passed
+
 ## Remote real model scenario
 
 Remote environment:

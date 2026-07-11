@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -13,26 +14,50 @@ from lib.db.models.credential import ProviderCredential
 from lib.db.repositories.credential_repository import CredentialRepository
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import providers
+from server.services.tenant_auth import TenantAccess
 
-_FAKE_USER = CurrentUserInfo(id="test-user", sub="testuser", role="admin")
+_FAKE_USER = CurrentUserInfo(
+    id="test-user",
+    sub="testuser",
+    role="admin",
+    tenant_id="ten_test",
+    tenant_role="admin",
+)
 
 
 def _scoped_factory(instance):
     def _factory(_session, *, user_id=None):
         assert user_id == _FAKE_USER.id
+        assert _session.info["tenant_id"] == _FAKE_USER.tenant_id
         return instance
 
     return _factory
 
 
+@contextmanager
 def _patch_credential_repository(mock_repo):
-    return patch("server.routers.providers.CredentialRepository", side_effect=_scoped_factory(mock_repo))
+    async def _require_tenant_access(_session, user, *, minimum_role):
+        assert user == _FAKE_USER
+        assert minimum_role in {"admin", "view"}
+        return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=False)
+
+    async def _set_tenant_context(session, *, user_id, tenant_id):
+        session.info["user_id"] = user_id
+        session.info["tenant_id"] = tenant_id
+
+    with (
+        patch("server.routers.providers.CredentialRepository", side_effect=_scoped_factory(mock_repo)),
+        patch("server.routers.providers.require_tenant_access", side_effect=_require_tenant_access),
+        patch("server.routers.providers.set_tenant_context", side_effect=_set_tenant_context),
+    ):
+        yield
 
 
 def _make_app() -> tuple[FastAPI, MagicMock]:
     app = FastAPI()
     mock_session = AsyncMock()
     mock_session.commit = AsyncMock()
+    mock_session.info = {}
 
     async def _override():
         yield mock_session

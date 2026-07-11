@@ -38,7 +38,13 @@ async def _session_factory():
 @pytest_asyncio.fixture
 async def authed_client(_session_factory):
     app = _make_app(_session_factory)
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id="default", sub="testuser", role="admin")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id="default",
+        sub="testuser",
+        role="admin",
+        tenant_id="ten_default",
+        tenant_role="admin",
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
