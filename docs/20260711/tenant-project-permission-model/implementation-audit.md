@@ -19,6 +19,8 @@ Evidence:
   - `tests/test_api_keys_router.py`
   - `tests/test_auth_api_key.py`
   - `tests/test_agent_chat_router.py`
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role -q`
+  - Result: 18 passed, 1 warning
 
 ### Project identity is now route-id based on the main workspace path
 
@@ -223,6 +225,8 @@ Evidence:
 
 Backend:
 
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_session_manager_project_scope.py tests/agent_session_store/test_conformance.py tests/agent_runtime/test_event_log.py tests/test_assistant_routes.py tests/test_assistant_router_full.py tests/test_assistant_service_more.py tests/test_agent_chat_router.py tests/test_session_manager_sdk_session_id.py tests/agent_runtime/test_entry_stream.py tests/agent_runtime/test_agent_startup_error.py tests/test_task_repo.py tests/test_task_repo_state_machine.py tests/test_generation_queue.py tests/test_generation_worker_module.py tests/test_tasks_router_more.py tests/test_usage_repo.py tests/test_usage_tracker.py tests/test_usage_router.py -q`
+  - Result: 370 passed, 1 warning
 - `python -m pytest tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_agent_chat_router.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_files_api_minio.py tests/test_characters_router.py tests/test_scenes_router.py tests/test_props_router.py tests/test_products_router.py tests/test_asset_router_factory.py tests/test_generate_router.py tests/test_generate_router_tts.py tests/test_generation_queue.py tests/test_tasks_router_more.py tests/test_task_cancel_router.py tests/test_projects_router.py::TestProjectsRouter tests/test_projects_router.py::TestUnexpectedErrorsDoNotLeak tests/test_cost_estimation_router.py tests/test_shot_uploads_router.py tests/test_shot_uploads_minio.py tests/test_script_review.py tests/test_versions_router.py tests/test_grids_router.py tests/test_grid_router.py tests/server/test_reference_videos_router.py tests/server/test_reference_videos_router_ad.py tests/server/test_reference_video_e2e_backend.py tests/integration/test_reference_video_e2e.py tests/test_projects_archive_routes.py tests/test_jianying_draft_routes.py tests/test_usage_router.py tests/test_usage_repo.py tests/test_usage_tracker.py -q`
   - Result: 426 passed
 - `python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_agent_session_user_scope.py tests/agent_runtime/test_event_log.py tests/agent_session_store tests/test_generation_queue.py tests/test_generation_worker_module.py tests/test_resume_executor.py -q`
