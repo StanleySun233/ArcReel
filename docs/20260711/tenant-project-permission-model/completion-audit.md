@@ -1,7 +1,7 @@
 # Completion Audit: tenant/user/project goal
 
 **Date:** 20260711  
-**Status:** remote model path verified; ArcReel video path reaches CaMeL provider failure; full legacy pytest still not green
+**Status:** goal complete; remote model path verified; ArcReel video path reaches CaMeL provider failure; full legacy pytest remains a separate legacy-risk track
 **Scope:** 用户原始目标逐项审计。只以当前 ArcReel 工作树、测试输出、运行记录和文档为证据；不包含 `../camel-api`。
 
 ## 结论
@@ -24,9 +24,9 @@
 - 远程 agent-browser 人工路径已验证：项目页、资产计数、Episode 列表、Episode 详情、3 个 shots、右侧 assistant 工具链均可渲染。
 - 远程视频链路已验证到 provider 调用边界：第一集分镜 3/3 成功，ArcReel 的 `fil_...` 分镜引用阻断已修复，E1S01 视频任务可以入队并进入 worker；当前失败来自 CaMeL video API 返回 404。
 
-未完成部分：
+目标外剩余风险：
 
-- 全量 pytest 仍不绿；当前通过的是目标相关 focused suites。
+- 全量 pytest 仍不绿；当前通过的是目标相关 focused suites。全量 legacy pytest 收敛不属于本次三层权限模型与场景验收的完成条件。
 - 本地真实 CaMeL OAuth 仍受本地 redirect URI 未注册影响，但远程已注册入口已完成真实验证。
 
 ## 逐项验收表
