@@ -295,6 +295,10 @@ class TaskRepository(BaseRepository):
         # Reload task
         result = await self.session.execute(select(Task).where(Task.task_id == target_task_id))
         running_task = result.scalar_one()
+        self.tenant_id = running_task.tenant_id
+        self.requested_by_user_id = running_task.user_id
+        self.session.info["tenant_id"] = running_task.tenant_id
+        self.session.info["user_id"] = running_task.user_id
         task_data = _task_to_dict(running_task)
 
         await self._append_event(

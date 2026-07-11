@@ -71,9 +71,7 @@ class TestTaskRepository:
             resource_id="E1S01",
         )
 
-        task_row = (
-            await db_session.execute(select(Task).where(Task.task_id == created["task_id"]))
-        ).scalar_one()
+        task_row = (await db_session.execute(select(Task).where(Task.task_id == created["task_id"]))).scalar_one()
         event_row = (
             await db_session.execute(select(TaskEvent).where(TaskEvent.task_id == created["task_id"]))
         ).scalar_one()
@@ -99,6 +97,30 @@ class TestTaskRepository:
         assert len(events) >= 3
         types = [e["event_type"] for e in events]
         assert types == ["queued", "running", "failed"]
+
+    async def test_claim_next_running_event_uses_claimed_task_tenant(self, db_session):
+        tenant_repo = TaskRepository(db_session, tenant_id="ten_team", requested_by_user_id="camel:alice")
+        task = await tenant_repo.enqueue(
+            project_name="demo",
+            task_type="storyboard",
+            media_type="image",
+            resource_id="E1S01",
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+
+        worker_repo = TaskRepository(db_session)
+        claimed = await worker_repo.claim_next("image")
+
+        assert claimed["task_id"] == task["task_id"]
+        rows = (
+            await db_session.execute(
+                select(TaskEvent.event_type, TaskEvent.tenant_id)
+                .where(TaskEvent.task_id == task["task_id"])
+                .order_by(TaskEvent.id.asc())
+            )
+        ).all()
+        assert rows == [("queued", "ten_team"), ("running", "ten_team")]
 
     async def test_dependency_cascade_failure(self, db_session):
         repo = TaskRepository(db_session)
