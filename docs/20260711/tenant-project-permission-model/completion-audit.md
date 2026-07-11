@@ -100,16 +100,19 @@ eslint passed
 Remote real scenario:
 
 ```text
-Commit: b10249b fix(text): handle compatible string responses
-CI: Private Docker Deploy 29145494000 passed
+Commit: 4754006 test(config): seed tenant scope in legacy config tests
+CI: Private Docker Deploy 29149561397 passed; CodeQL 29149561387 passed; Tests 29149561392 has frontend-tests and postgres-compat passed, backend-tests still running coverage at the latest check
 Remote deploy: /home/sijin/ArcReel/deploy/arcreel pulled registry.kr777.top/arcreel/arcreel:latest and app health became healthy
 Project: proj-c56f473025444b8d
 Session: 15883284-93f5-461c-a5bd-e6fb1d2b79e4
 Script: scripts/episode_1.json
 Title: 思特里克兰德的名字与画作
 Segments: 3
-Episode status: scripted
+Episode status: in_production
 Script status: generated
+Storyboards: 3/3 completed
+Video retest task: d73f34e29d2a4ad1ada287201f937a3b
+Video retest result: failed after ArcReel worker called CaMeL /v1/videos with model doubao-seedance-1-5-pro-251215 and input_reference scene_E1S01.png; CaMeL returned 404 fail_to_fetch_task
 ```
 
 ## 剩余风险

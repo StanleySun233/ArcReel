@@ -386,6 +386,8 @@ Additional focused regression:
   - `newapi-video` failed at `POST https://api.camel-hub.com/v1/video/generations` with `404 {"code":"fail_to_fetch_task","message":"404 page not found"}`.
   - `openai-video` failed at `POST https://api.camel-hub.com/v1/videos` with `404 {"code":"fail_to_fetch_task","message":"404 page not found"}`.
   - ArcReel bootstrap default was changed from `ark-seedance` to `openai-video` for CaMeL video because CaMeL does not expose the Ark native `/api/v3` path.
+  - 2026-07-11 18:46 +08 retest submitted `E1S01` task `d73f34e29d2a4ad1ada287201f937a3b` through the browser-authenticated API. The task entered worker as `provider=custom-3`; logs show `model=doubao-seedance-1-5-pro-251215`, `seconds=4`, `size=720x1280`, and `input_reference=["scene_E1S01.png", "<bytes:1923002>", "image/png"]`.
+  - The retest failed at `POST https://api.camel-hub.com/v1/videos` with `404 {"code":"fail_to_fetch_task","message":"404 page not found"}`. The persisted task status is `failed`; first-episode video completion remains `0/3`.
   - Conclusion: ArcReel's tenant/project/file-id video path now reaches provider invocation; current remaining failure is CaMeL video API task creation/fetch returning 404.
 
 ### Video submit persistence keeps tenant scope without real provider calls
