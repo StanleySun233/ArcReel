@@ -150,7 +150,21 @@ class OpenAITextBackend:
                 return None
             raise
 
-        usage = response.usage
+        if isinstance(response, str):
+            check_truncation(
+                None,
+                provider=self._provider_name,
+                model=self._model,
+                output_tokens=None,
+                structured=bool(request.response_schema),
+            )
+            return TextGenerationResult(
+                text=response,
+                provider=self._provider_name,
+                model=self._model,
+            )
+
+        usage = getattr(response, "usage", None)
         choice = response.choices[0]
         output_tokens = usage.completion_tokens if usage else None
         text = choice.message.content or ""

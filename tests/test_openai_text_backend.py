@@ -168,6 +168,41 @@ class TestOpenAITextBackend:
         assert result.input_tokens is None
         assert result.output_tokens is None
 
+    async def test_generate_tolerates_string_response_from_compatible_endpoint(self):
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value="raw text")
+
+        with patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="test-key", base_url="https://compatible.example.com/v1")
+            request = TextGenerationRequest(prompt="Hi")
+            result = await backend.generate(request)
+
+        assert result.text == "raw text"
+        assert result.input_tokens is None
+        assert result.output_tokens is None
+
+    async def test_generate_structured_output_tolerates_json_string_response(self):
+        schema_response = json.dumps({"name": "Alice", "age": 30})
+        mock_client = AsyncMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=schema_response)
+
+        with (
+            patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client),
+            patch("lib.text_backends.openai._instructor_fallback") as mock_fallback,
+        ):
+            from lib.text_backends.openai import OpenAITextBackend
+
+            backend = OpenAITextBackend(api_key="test-key", base_url="https://compatible.example.com/v1")
+            request = TextGenerationRequest(prompt="Extract info", response_schema=_PersonSchema)
+            result = await backend.generate(request)
+
+        assert result.text == schema_response
+        assert result.input_tokens is None
+        assert result.output_tokens is None
+        mock_fallback.assert_not_called()
+
 
 def _make_bad_request_error(message: str = "Invalid schema") -> BadRequestError:
     """构造 OpenAI BadRequestError。"""
