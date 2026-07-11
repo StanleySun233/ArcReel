@@ -206,7 +206,7 @@ class UsageRepository(BaseRepository):
             if is_custom_provider(effective_provider):
                 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 
-                repo = CustomProviderRepository(self.session)
+                repo = CustomProviderRepository(self.session, user_id=row.user_id, tenant_id=row.tenant_id)
                 price_model = await repo.get_model_by_ids(parse_provider_id(effective_provider), row.model or "")
                 if price_model:
                     custom_price_input = price_model.price_input
@@ -307,7 +307,7 @@ class UsageRepository(BaseRepository):
         if status == "success" and is_custom_provider(effective_provider):
             from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 
-            repo = CustomProviderRepository(self.session)
+            repo = CustomProviderRepository(self.session, user_id=row.user_id, tenant_id=row.tenant_id)
             price_model = await repo.get_model_by_ids(parse_provider_id(effective_provider), row.model or "")
             if price_model:
                 custom_price_input = price_model.price_input

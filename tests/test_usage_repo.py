@@ -1,5 +1,7 @@
 """Tests for UsageRepository."""
 
+from types import SimpleNamespace
+
 import pytest
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -48,6 +50,66 @@ class TestUsageRepository:
         assert calls["total"] == 1
         assert calls["items"][0]["project_id"] == "demo"
         assert calls["items"][0]["status"] == "success"
+
+    async def test_custom_provider_finish_uses_call_tenant(self, db_session, monkeypatch):
+        captured = []
+
+        class FakeCustomProviderRepository:
+            def __init__(self, session, user_id=None, tenant_id=None):
+                captured.append((user_id, tenant_id))
+
+            async def get_model_by_ids(self, provider_id, model_id):
+                return SimpleNamespace(price_input=0.0, price_output=0.0, currency="USD")
+
+        monkeypatch.setattr(
+            "lib.db.repositories.custom_provider_repo.CustomProviderRepository",
+            FakeCustomProviderRepository,
+        )
+
+        starter = UsageRepository(db_session, tenant_id="ten_team")
+        call_id = await starter.start_call(
+            project_name="demo",
+            call_type="image",
+            model="gpt-image-2",
+            provider="custom-1",
+            tenant_id="ten_team",
+            user_id="camel:alice",
+        )
+
+        finisher = UsageRepository(db_session)
+        await finisher.finish_call(call_id, status="success", input_tokens=1, output_tokens=1)
+
+        assert captured == [("camel:alice", "ten_team")]
+
+    async def test_custom_provider_finalize_pending_uses_call_tenant(self, db_session, monkeypatch):
+        captured = []
+
+        class FakeCustomProviderRepository:
+            def __init__(self, session, user_id=None, tenant_id=None):
+                captured.append((user_id, tenant_id))
+
+            async def get_model_by_ids(self, provider_id, model_id):
+                return SimpleNamespace(price_input=0.0, price_output=0.0, currency="USD")
+
+        monkeypatch.setattr(
+            "lib.db.repositories.custom_provider_repo.CustomProviderRepository",
+            FakeCustomProviderRepository,
+        )
+
+        starter = UsageRepository(db_session, tenant_id="ten_team")
+        call_id = await starter.start_call(
+            project_name="demo",
+            call_type="image",
+            model="gpt-image-2",
+            provider="custom-1",
+            tenant_id="ten_team",
+            user_id="camel:alice",
+        )
+
+        finisher = UsageRepository(db_session)
+        await finisher.finalize_pending_by_call_id(call_id=call_id, usage_tokens=2)
+
+        assert captured == [("camel:alice", "ten_team")]
 
     async def test_usage_storage_uses_project_id_column(self, db_session):
         repo = UsageRepository(db_session)
