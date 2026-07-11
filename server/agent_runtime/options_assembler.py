@@ -295,6 +295,7 @@ class OptionsAssembler:
             session_store_flush=session_store_flush_mode(),
             sandbox=sandbox_typed,  # type: ignore[arg-type]
             env=provider_env,
+            thinking={"type": "disabled"},
             stderr=stderr,
         )
 

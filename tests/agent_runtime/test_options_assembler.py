@@ -117,6 +117,7 @@ async def test_build_threads_injected_deps_into_options(tmp_path: Path) -> None:
     assert options.cwd == str(projects_root / "demo")
     assert options.env == {"ANTHROPIC_API_KEY": "sk"}
     assert options.max_turns == 7
+    assert options.thinking == {"type": "disabled"}
     assert list(options.setting_sources) == _SETTING_SOURCES
     # file access hook 恒注册
     assert "PreToolUse" in options.hooks
