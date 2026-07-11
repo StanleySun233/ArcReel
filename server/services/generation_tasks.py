@@ -105,6 +105,14 @@ def get_project_manager() -> ProjectManager:
     return pm
 
 
+def resolve_storyboard_file(project_path: Path, resource_id: str, item: dict[str, Any]) -> Path:
+    assets = item.get("generated_assets", {})
+    storyboard_ref = assets.get("storyboard_image") if isinstance(assets, dict) else None
+    if isinstance(storyboard_ref, str) and storyboard_ref and not storyboard_ref.startswith("fil_"):
+        return project_path / storyboard_ref
+    return project_path / "storyboards" / f"scene_{resource_id}.png"
+
+
 def invalidate_backend_cache() -> None:
     """清空 VideoBackend 实例缓存。在配置变更后调用。"""
     _backend_cache.clear()
@@ -1089,14 +1097,7 @@ async def execute_video_task(
     project, project_path, item = await asyncio.to_thread(_load)
     generator = await get_media_generator(project_name, payload=payload, user_id=user_id, tenant_id=tenant_id)
 
-    # 优先读取 generated_assets.storyboard_image，回退默认路径。
-    # 旧宫格项目 storyboard_image 指向 scene_{id}_first.png，仍可正常解析。
-    assets = item.get("generated_assets", {})
-    storyboard_rel = assets.get("storyboard_image") if isinstance(assets, dict) else None
-    if storyboard_rel:
-        storyboard_file = project_path / storyboard_rel
-    else:
-        storyboard_file = project_path / "storyboards" / f"scene_{resource_id}.png"
+    storyboard_file = resolve_storyboard_file(project_path, resource_id, item)
     if not storyboard_file.exists():
         raise ValueError(f"storyboard not found: {storyboard_file.name}")
 

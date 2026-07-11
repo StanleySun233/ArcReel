@@ -988,6 +988,25 @@ class TestGenerationTasks:
         with pytest.raises(ValueError):
             await generation_tasks.execute_prop_task("demo", "玉佩", {"prompt": ""})
 
+    async def test_execute_video_task_uses_canonical_storyboard_when_asset_is_file_id(self, tmp_path, monkeypatch):
+        project_path = _prepare_files(tmp_path)
+        fake_pm = _FakePM(project_path)
+        fake_pm.script["segments"][0]["generated_assets"] = {
+            "storyboard_image": "fil_storyboard_image_scene_E1S01",
+            "storyboard_image_file_id": "fil_storyboard_image_scene_E1S01",
+        }
+        fake_generator = _FakeGenerator()
+        monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: fake_pm)
+        monkeypatch.setattr(generation_tasks, "get_media_generator", _async_return(fake_generator))
+
+        await generation_tasks.execute_video_task(
+            "demo",
+            "E1S01",
+            {"script_file": "episode_1.json", "prompt": {"action": "跑", "camera_motion": "Static", "dialogue": []}},
+        )
+
+        assert fake_generator.video_calls[0]["start_image"] == project_path / "storyboards" / "scene_E1S01.png"
+
 
 from server.services.generation_tasks import _resolve_effective_image_backend
 

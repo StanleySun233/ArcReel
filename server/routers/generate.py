@@ -29,6 +29,7 @@ from lib.storyboard_sequence import (
     get_storyboard_items,
 )
 from server.auth import CurrentUser
+from server.services.generation_tasks import resolve_storyboard_file
 from server.services.tenant_auth import ROLE_MEMBER, require_tenant_access
 
 router = APIRouter()
@@ -180,17 +181,13 @@ async def generate_video(
             pm_local.load_project(project_id)
             project_path = pm_local.get_project_path(project_id)
 
-            # 与 worker 一致：优先读取 generated_assets.storyboard_image，回退默认路径。
-            # 旧宫格项目 storyboard_image 指向 scene_{id}_first.png，仍可正常解析。
-            storyboard_rel: str | None = None
+            storyboard_item: dict | None = None
             try:
                 script = pm_local.load_script(project_id, req.script_file)
                 items, id_field, _, _, _ = get_storyboard_items(script)
                 resolved = find_storyboard_item(items, id_field, segment_id)
                 if resolved:
-                    assets = resolved[0].get("generated_assets") or {}
-                    if isinstance(assets, dict):
-                        storyboard_rel = assets.get("storyboard_image")
+                    storyboard_item = resolved[0]
             except FileNotFoundError:
                 # 脚本不存在交由后续流程报错；此处只负责存在性检查
                 pass
@@ -204,11 +201,7 @@ async def generate_video(
                     detail=_t("script_data_corrupted", reason=str(exc)),
                 )
 
-            storyboard_file = (
-                project_path / storyboard_rel
-                if storyboard_rel
-                else project_path / "storyboards" / f"scene_{segment_id}.png"
-            )
+            storyboard_file = resolve_storyboard_file(project_path, segment_id, storyboard_item or {})
             if not storyboard_file.exists():
                 raise HTTPException(status_code=400, detail=_t("generate_storyboard_first", segment_id=segment_id))
 
