@@ -1,7 +1,7 @@
 # Tenant Project Permission Implementation Audit
 
 **Date:** 20260711
-**Status:** current; remote video preflight complete; full legacy pytest still not green
+**Status:** current; remote video chain audited through provider failure; full legacy pytest still not green
 
 ## Verified in this pass
 
@@ -373,14 +373,20 @@ Additional focused regression:
   - Result: 4 passed
 - `DATABASE_URL=postgresql+asyncpg://... ruff check tests/config/test_anthropic_env_dict.py`
   - Result: passed
-- Remote video provider preflight was run without starting paid video generation.
-  - Remote deploy was updated from CI image `registry.kr777.top/arcreel/arcreel:latest` for commit `4aa7274`; container health became `healthy`.
+- Remote video provider chain was run through first paid provider submission and failed at CaMeL video API.
+  - Remote deploy was updated from CI image `registry.kr777.top/arcreel/arcreel:latest` for commit `8f8a438`; container health became `healthy`.
   - Browser login through CaMeL as `passbygrocer` succeeded and current tenant remained `ten_9979b6290cd14993a42f3cb909409827`.
   - Custom provider `CaMeL Video` was switched to model `doubao-seedance-1-5-pro-251215`.
   - `GET /api/v1/projects/proj-c56f473025444b8d/video-capabilities` returned `provider_id=custom-3`, `model=doubao-seedance-1-5-pro-251215`, `supported_durations=4..15`, `source=custom`.
-  - `GET /api/v1/projects/proj-c56f473025444b8d/files` returned empty `storyboards` and empty `videos`.
-  - `POST /api/v1/projects/proj-c56f473025444b8d/generate/video/E1S01` returned `400 {"detail":"请先生成分镜图 scene_E1S01.png"}`.
-  - Conclusion: the requested video model resolves correctly, and the route blocks before provider invocation when first-frame storyboard files are missing. No paid video provider call was made in this preflight.
+  - First episode storyboard generation completed: `E1S01`, `E1S02`, and `E1S03` storyboard tasks succeeded; project episode summary reported `storyboards.completed=3`.
+  - `POST /api/v1/projects/proj-c56f473025444b8d/generate/video/E1S01` initially returned `400` even though `/app/projects/_tenants/.../storyboards/scene_E1S01.png` existed. Root cause: `generated_assets.storyboard_image` had been migrated to `fil_...`, and the video route/worker treated that file id as a local path.
+  - Fix shipped in `8f8a438 fix(video): resolve storyboard file ids for video generation`. `tests/test_generation_tasks_service.py::TestGenerationTasks::test_execute_video_task_uses_canonical_storyboard_when_asset_is_file_id` covers the worker path.
+  - After the fix, E1S01 video tasks successfully passed ArcReel route validation and entered the worker.
+  - `ark-seedance` failed with `Invalid URL (POST /api/v3/contents/generations/tasks)`.
+  - `newapi-video` failed at `POST https://api.camel-hub.com/v1/video/generations` with `404 {"code":"fail_to_fetch_task","message":"404 page not found"}`.
+  - `openai-video` failed at `POST https://api.camel-hub.com/v1/videos` with `404 {"code":"fail_to_fetch_task","message":"404 page not found"}`.
+  - ArcReel bootstrap default was changed from `ark-seedance` to `openai-video` for CaMeL video because CaMeL does not expose the Ark native `/api/v3` path.
+  - Conclusion: ArcReel's tenant/project/file-id video path now reaches provider invocation; current remaining failure is CaMeL video API task creation/fetch returning 404.
 
 ### Video submit persistence keeps tenant scope without real provider calls
 
