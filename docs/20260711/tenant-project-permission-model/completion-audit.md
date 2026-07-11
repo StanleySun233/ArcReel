@@ -100,8 +100,10 @@ eslint passed
 Remote real scenario:
 
 ```text
-Commit: 4754006 test(config): seed tenant scope in legacy config tests
-CI: Private Docker Deploy 29149561397 passed; CodeQL 29149561387 passed; Tests 29149561392 has frontend-tests and postgres-compat passed, backend-tests still running coverage at the latest check
+Code commit: 4754006 test(config): seed tenant scope in legacy config tests
+Code CI: Private Docker Deploy 29149561397 passed; CodeQL 29149561387 passed; Tests 29149561392 has frontend-tests and postgres-compat passed, backend-tests still running coverage at the latest check
+Docs evidence commit: 2dc405e docs(tenant): record video provider retest evidence
+Docs CI: Private Docker Deploy 29149965364 passed; CodeQL 29149965404 passed; Tests 29149965356 is pending behind the previous Tests run and should skip code jobs because the commit is docs-only
 Remote deploy: /home/sijin/ArcReel/deploy/arcreel pulled registry.kr777.top/arcreel/arcreel:latest and app health became healthy
 Project: proj-c56f473025444b8d
 Session: 15883284-93f5-461c-a5bd-e6fb1d2b79e4
