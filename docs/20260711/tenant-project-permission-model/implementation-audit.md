@@ -405,7 +405,7 @@ Evidence:
 - GitHub Actions for commit `097a592 fix(video): type sdk tenant duration lookup`:
   - `Private Docker Deploy` run `29148215374`: passed.
   - `CodeQL` run `29148215357`: passed.
-  - `Tests` run `29148215395`: frontend and postgres compatibility jobs passed; backend coverage job was still running at the latest audit check.
+  - `Tests` run `29148215395`: frontend and postgres compatibility jobs passed; backend coverage failed with `335 failed, 5510 passed, 34 errors`.
   - `release-please` remains a known unrelated failure.
 
 ### Legacy agent/provider credential route tests now model tenant access
@@ -492,6 +492,8 @@ Latest evidence:
 
 - `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest -q`
   - Result: 5367 passed, 446 failed, 34 errors
+- GitHub Actions run `29148215395`
+  - Result: frontend passed, postgres compatibility passed, backend coverage failed with `335 failed, 5510 passed, 34 errors`
 
 Dominant failure classes:
 
