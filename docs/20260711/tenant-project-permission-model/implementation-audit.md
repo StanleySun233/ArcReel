@@ -174,6 +174,33 @@ Evidence:
 - `frontend/src/components/pages/ApiKeysTab.tsx` keeps the UI structure and disables actions.
 - `tests/test_api_keys_router.py` includes a business-path-retained test with the flag enabled.
 
+### Tenant role matrix is covered by route tests
+
+The tenant membership API covers the product role constraints:
+
+- owner can add admin.
+- admin can add member and viewer but cannot add admin.
+- member can add viewer but cannot add member.
+- viewer can list members but cannot add members.
+
+Evidence:
+
+- `tests/test_tenant_auth_router.py`
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py -q`
+  - Result: 12 passed
+
+### Multi-project Agent session isolation is verified at tenant/project boundaries
+
+Agent session metadata and transcript storage are scoped by tenant/user and project key. Route-level ownership checks compare the stored session project key with the requested `project_id`, while transcript mirror rows include `tenant_id + project_key + session_id` in their primary key.
+
+Evidence:
+
+- `lib/db/repositories/session_repo.py` scopes `get/list/update/delete` by `tenant_id` and `user_id`.
+- `server/routers/assistant.py` rejects session operations when the stored session project key differs from the route `project_id`.
+- `lib/agent_session_store/models.py` keys transcript entries by `tenant_id + project_key + session_id + subpath + seq`.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_session_manager_project_scope.py tests/agent_session_store/test_conformance.py tests/agent_runtime/test_event_log.py -q`
+  - Result: 87 passed
+
 ## Verification completed
 
 Backend:
@@ -201,6 +228,22 @@ Frontend:
   - Result: 51 passed
 
 ## Remaining gaps
+
+### Full pytest suite is not green yet
+
+The PostgreSQL-only conversion is validated by focused PG suites, but the full legacy test suite still contains tests that assume global config, missing tenant context, old route authorization defaults, or pre-tenant fixture ordering.
+
+Latest evidence:
+
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest -q`
+  - Result: 5367 passed, 446 failed, 34 errors
+
+Dominant failure classes:
+
+- `tenant_id is required` in config/model resolver tests that still instantiate services without tenant context.
+- `403` responses in route tests that do not provide current tenant membership.
+- PostgreSQL foreign-key failures in fixtures that insert tenant rows before user rows.
+- Remaining tests that assert `project_name` field names while the target contract is `project_id`.
 
 ### Full API scenario test is not complete
 
