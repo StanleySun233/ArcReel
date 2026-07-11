@@ -48,6 +48,25 @@ class TestSessionRepository:
         results = await repo.list(project_id="project_b")
         assert len(results) == 1
 
+    async def test_list_filters_by_tenant_user_and_project_id(self, db_session):
+        alice = SessionRepository(db_session, user_id="camel:alice", tenant_id="ten_team")
+        await alice.create("proj-alpha", "sdk-alpha", "Alpha")
+        await alice.create("proj-beta", "sdk-beta", "Beta")
+
+        bob = SessionRepository(db_session, user_id="camel:bob", tenant_id="ten_team")
+        await bob.create("proj-alpha", "sdk-bob-alpha", "Bob Alpha")
+
+        other_tenant = SessionRepository(db_session, user_id="camel:alice", tenant_id="ten_other")
+        await other_tenant.create("proj-alpha", "sdk-other-alpha", "Other Alpha")
+
+        alpha_sessions = await alice.list(project_id="proj-alpha")
+        beta_sessions = await alice.list(project_id="proj-beta")
+
+        assert [session["sdk_session_id"] for session in alpha_sessions] == ["sdk-alpha"]
+        assert [session["sdk_session_id"] for session in beta_sessions] == ["sdk-beta"]
+        assert await alice.get("sdk-bob-alpha") is None
+        assert await alice.get("sdk-other-alpha") is None
+
     async def test_update_status(self, db_session):
         repo = SessionRepository(db_session)
         await repo.create("demo", "sdk-002", "Test")

@@ -296,6 +296,16 @@ Additional focused regression:
 
 - `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_task_repo.py tests/test_usage_repo.py tests/test_session_repo.py -q`
   - Result: 139 passed, 1 warning
+- Added `tests/test_task_repo.py::TestTaskRepository::test_cancel_all_queued_is_scoped_by_project_id`.
+  - Evidence: cancelling queued tasks for `proj-alpha` leaves same-tenant `proj-beta` queued and project-filtered events do not mix.
+- Added `tests/test_session_repo.py::TestSessionRepository::test_list_filters_by_tenant_user_and_project_id`.
+  - Evidence: same-tenant multi-project sessions list by `project_id`; same-tenant other-user and other-tenant sessions are invisible.
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_session_repo.py tests/test_task_repo.py -q`
+  - Result: 36 passed
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_session_manager_project_scope.py tests/test_assistant_routes.py tests/test_assistant_router_full.py tests/test_task_repo.py tests/test_generation_queue.py tests/test_generation_worker_module.py -q`
+  - Result: 162 passed, 1 warning
+- `python -m ruff check tests/test_session_repo.py tests/test_task_repo.py`
+  - Result: passed
 
 ## Remaining gaps
 

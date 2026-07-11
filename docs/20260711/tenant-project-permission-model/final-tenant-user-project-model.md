@@ -261,6 +261,7 @@ Agent 规则：
 - PostgreSQL-only schema 和迁移路径。
 - SQLite 旧文档已删除或收敛为审计记录。
 - session/task/usage 存储列使用 `project_id`。
+- 同一租户内多 project 的 session list、task cancel-all、task events 均按 `project_id` 隔离。
 - Issued Tokens 后台 403、前端 disabled。
 - tenant role stale refresh。
 - owner/admin/member/view 权限矩阵关键路径。

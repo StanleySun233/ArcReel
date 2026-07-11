@@ -213,6 +213,41 @@ class TestTaskRepository:
         result = await repo.list_tasks()
         assert result["total"] == 2
 
+    async def test_cancel_all_queued_is_scoped_by_project_id(self, db_session):
+        repo = TaskRepository(db_session, tenant_id="ten_team", requested_by_user_id="camel:alice")
+
+        alpha = await repo.enqueue(
+            project_name="proj-alpha",
+            task_type="character",
+            media_type="image",
+            resource_id="Alice",
+            payload={},
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+        beta = await repo.enqueue(
+            project_name="proj-beta",
+            task_type="character",
+            media_type="image",
+            resource_id="Alice",
+            payload={},
+            tenant_id="ten_team",
+            requested_by_user_id="camel:alice",
+        )
+
+        result = await repo.cancel_all_queued("proj-alpha")
+
+        assert result == {"cancelled_count": 1, "skipped_running_count": 0}
+        assert (await repo.get(alpha["task_id"]))["status"] == "cancelled"
+        assert (await repo.get(beta["task_id"]))["status"] == "queued"
+        assert (await repo.list_tasks(project_name="proj-alpha"))["total"] == 1
+        assert (await repo.list_tasks(project_name="proj-beta"))["total"] == 1
+
+        alpha_events = await repo.get_events_since(last_event_id=0, project_name="proj-alpha")
+        beta_events = await repo.get_events_since(last_event_id=0, project_name="proj-beta")
+        assert [event["event_type"] for event in alpha_events] == ["queued", "cancelled"]
+        assert [event["event_type"] for event in beta_events] == ["queued"]
+
     async def test_tenant_snapshot_and_scoped_queries(self, db_session):
         alpha = TaskRepository(db_session, tenant_id="ten_alpha", requested_by_user_id="camel:alice")
         first = await alpha.enqueue(
