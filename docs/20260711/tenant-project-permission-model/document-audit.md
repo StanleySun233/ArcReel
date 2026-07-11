@@ -8,6 +8,7 @@
 当前三层权限模型只以本目录下文档为准：
 
 - [final-tenant-user-project-model.md](./final-tenant-user-project-model.md)
+- [completion-audit.md](./completion-audit.md)
 - [permission-model-design.md](./permission-model-design.md)
 - [api-contract.md](./api-contract.md)
 - [sprint-backlog.md](./sprint-backlog.md)
