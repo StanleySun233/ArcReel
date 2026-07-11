@@ -339,6 +339,76 @@ Additional focused regression:
   - Result: 3 files passed, 70 tests passed
 - `pnpm exec eslint src/hooks/useAssistantSession.test.tsx --quiet`
   - Result: passed
+- Added OpenAI-compatible text response regression.
+  - Root cause: the remote CaMeL text path called `lib.text_backends.openai` with `gpt-5.5`; the compatible endpoint could return a raw JSON string while the adapter assumed an SDK object and accessed `response.usage`.
+  - Fix: `OpenAITextBackend._generate_native()` now treats string responses as valid text payloads with unknown token usage.
+  - Evidence: `tests/test_openai_text_backend.py::TestOpenAITextBackend::test_generate_tolerates_string_response_from_compatible_endpoint`.
+  - Evidence: `tests/test_openai_text_backend.py::TestOpenAITextBackend::test_generate_structured_output_tolerates_json_string_response`.
+- `DATABASE_URL=postgresql+asyncpg://... python -m pytest tests/test_openai_text_backend.py tests/test_text_backends/test_instructor_support.py -q`
+  - Result: 53 passed
+- `DATABASE_URL=postgresql+asyncpg://... ruff check lib/text_backends/openai.py tests/test_openai_text_backend.py`
+  - Result: passed
+
+## Remote real model scenario
+
+Remote environment:
+
+- URL: `https://dream.camel-hub.com/`
+- ArcReel deploy path: `/home/sijin/ArcReel/deploy/arcreel`
+- Image source: `registry.kr777.top/arcreel/arcreel:latest`
+- Commit: `b10249b fix(text): handle compatible string responses`
+- CI: GitHub Action `Private Docker Deploy` run `29145494000`, result passed
+- Remote deploy: `docker compose pull app && docker compose up -d app`, app health became `healthy`
+
+Authentication and tenant:
+
+- `/api/v1/auth/me` returned CaMeL user `camel:16`, username `passbygrocer`.
+- Current tenant: `ten_9979b6290cd14993a42f3cb909409827`.
+- Current role: `admin`.
+
+Project scenario:
+
+- Project id: `proj-c56f473025444b8d`.
+- Project title: `月亮与六便士第一章 2资产测试`.
+- Content mode: narration.
+- Existing generated assets verified from project detail and project files:
+  - 2 characters with completed image files.
+  - 2 scenes with completed image files.
+  - 2 props with completed image files.
+- Step1 review was written through `PUT /api/v1/projects/{project_id}/episodes/1/script-review/content`.
+- Step1 review was confirmed through `POST /api/v1/projects/{project_id}/episodes/1/script-review/confirm`.
+
+Assistant scenario:
+
+- Session id: `15883284-93f5-461c-a5bd-e6fb1d2b79e4`.
+- Request: right-side assistant was instructed to call `mcp__arcreel__generate_episode_script({"episode":1})` only.
+- Tool result: `✅ 剧本生成完成: /app/projects/_tenants/ten_9979b6290cd14993a42f3cb909409827/projects/proj-c56f473025444b8d/scripts/episode_1.json`.
+- Assistant completed after reading the generated file.
+- Generated script:
+  - title: `思特里克兰德的名字与画作`
+  - segments: 3
+- API verification:
+  - episode `script_file=scripts/episode_1.json`
+  - episode `script_status=generated`
+  - episode `status=scripted`
+  - `.scripts["episode_1.json"].segments | length == 3`
+- Remote file verification through container Python returned the same title and segment count.
+
+Browser verification:
+
+- agent-browser used isolated session `arcreel-ui-1573151018d0`.
+- Opened `/app/projects/proj-c56f473025444b8d`.
+- Project page displayed:
+  - `Characters 2`
+  - `Scenes 2`
+  - `Props 2`
+  - `E1 思特里克兰德的名字与画作 Draft 3 · 0:24`
+  - right-side assistant tool record `GENERATE SCRIPT {"episode":1} ✓`
+- Clicking the episode opened the detail page:
+  - title `思特里克兰德的名字与画作`
+  - 3 pending shots
+  - prompt fields rendered
+  - right-side assistant session remained project-scoped
 
 ## Remaining gaps
 
@@ -358,26 +428,14 @@ Dominant failure classes:
 - PostgreSQL foreign-key failures in fixtures that insert tenant rows before user rows.
 - Remaining tests may still use `project_name` as a function argument name while carrying project ids.
 
-### Full real CaMeL OAuth scenario is blocked locally by redirect registration
+### Local real CaMeL OAuth scenario is blocked by redirect registration
 
 The local browser login path reaches CaMeL OAuth, but CaMeL rejects the local redirect URI:
 
 - redirect URI used locally: `http://127.0.0.1:1241/api/v1/auth/camel/callback`
 - observed CaMeL error: `redirect_uri is not registered for this client`
 
-This blocks real local provider bootstrap because ArcReel correctly requires a CaMeL OAuth access token with `arcreel:token-provision` scope before creating local media providers and the Anthropic Bridge credential. No fallback or password-grant path was assumed.
-
-Remote `dream.camel-hub.com` should be tested separately because its redirect URI is a different CaMeL client configuration path.
-
-### Full media generation scenario is not complete
-
-The project/source/assistant route identity path is verified locally, but actual model-backed generation is not verified in this local run because CaMeL provider bootstrap did not complete. Pending model-backed scenario:
-
-- Real CaMeL login on a registered redirect URI.
-- Complete provider bootstrap for image/text/video/audio/anthropic.
-- Use the right-side assistant to create 3 characters, 3 scenes, 3 props.
-- Generate images for characters/scenes/props.
-- Create 1 episode.
+This blocks real local provider bootstrap because ArcReel correctly requires a CaMeL OAuth access token with `arcreel:token-provision` scope before creating local media providers and the Anthropic Bridge credential. No fallback or password-grant path was assumed. Remote `dream.camel-hub.com` uses a registered redirect URI and has completed the real model-backed validation above.
 
 ### Remaining old function-argument `project_name` names
 

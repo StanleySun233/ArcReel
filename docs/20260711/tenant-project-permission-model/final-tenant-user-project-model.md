@@ -278,9 +278,13 @@ MCP / Skill session 规则：
 - owner/admin/member/view 权限矩阵关键路径。
 - 本地清库后，默认个人租户、project_id 项目创建、源文件导入、文件列表、assistant session 创建均可运行。
 - 浏览器冒烟显示默认个人空间、租户 listbox、项目列表和 CaMeL bootstrap modal。
+- 远程 `dream.camel-hub.com` 使用真实 `passbygrocer` 登录态完成 provider/model 路径验证。
+- 远程项目 `proj-c56f473025444b8d` 已验证：2 个角色、2 个场景、2 个道具及图片产物存在；第 1 集 step1 审核确认后由右侧 assistant 生成 `scripts/episode_1.json`。
+- 远程 API 和文件验证均显示剧本标题为 `思特里克兰德的名字与画作`，segments 数量为 3，episode `script_status=generated`，status=`scripted`。
+- agent-browser 独立 session 打开远程项目页，验证资产计数、Episode 列表、Episode 详情、3 个 shots、右侧 assistant 工具链渲染正常。
 
-未完成的模型侧验证：
+仍需后续收敛：
 
-- 本地真实 CaMeL OAuth 因 `http://127.0.0.1:1241/api/v1/auth/camel/callback` 未在 CaMeL client 注册，无法在本机完成真实 provider bootstrap。
-- 因 provider bootstrap 未完成，本机无法证明真实文本/图片模型生成链路。
-- 该阻断不允许通过修改 `camel-api`、猜测 password grant 或添加 fallback 规避；只能在已注册 redirect URI 的 ArcReel 环境或 CaMeL client 配置修正后继续验证。
+- 全量历史 pytest 仍不绿；当前可信结论来自目标相关 focused tests、远程 API 验证和 agent-browser 验证。
+- 本地真实 CaMeL OAuth 仍因 `http://127.0.0.1:1241/api/v1/auth/camel/callback` 未在 CaMeL client 注册而不可用；本地不得通过修改 `camel-api`、猜测 password grant 或添加 fallback 规避。
+- 本轮按“不动视频”约束执行，没有验证视频生成。

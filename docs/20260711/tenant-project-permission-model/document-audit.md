@@ -54,4 +54,4 @@
 - 当前权威文档明确串行执行方式。
 - 已新增最终交付文档，集中描述租户、用户、项目三层关系、权限矩阵、文件、配置、任务、Agent 和用量边界。
 - `docs/20260710/tenant-commercialization/` 目录已从工作树清除。
-- 除本审计记录外，`docs/` 下已无 SQLite / aiosqlite / `.arcreel.db` / `migrate_sqlite_to_orm` 文档命中。
+- `docs/` 下只剩当前权威文档中的 SQLite / `.arcreel.db` “不支持/已删除”口径，以及本审计记录；无旧方案作为有效契约。
