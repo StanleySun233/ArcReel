@@ -3,6 +3,7 @@ name: arcreel-dev
 services:
   postgres:
     image: postgres:18-alpine
+    shm_size: "1gb"
     environment:
       POSTGRES_USER: ${ARCREEL_DEV_POSTGRES_USER:-arcreel}
       POSTGRES_PASSWORD: ${ARCREEL_DEV_POSTGRES_PASSWORD:-arcreel_dev_password}

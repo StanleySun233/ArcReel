@@ -223,6 +223,18 @@ Evidence:
 
 ## Verification completed
 
+Current local verification refresh:
+
+- Created project-local `.venv` and installed ArcReel test dependencies there; system Python was not modified.
+- `deploy/dev/docker-compose.middleware.yml` now sets local dev PostgreSQL `shm_size: "1gb"`. The previous 64MB Docker default caused PostgreSQL `DiskFullError` / `No space left on device` while creating and dropping many isolated test schemas.
+- Cleaned 2648 stale local PostgreSQL `test_%` schemas from the ArcReel dev database; post-clean check returned `0`.
+- Frontend focused tests:
+  - `pnpm vitest run src/api.test.ts src/stores/auth-store.test.ts src/hooks/useAssistantSession.test.tsx src/components/pages/ApiKeysTab.test.tsx`
+  - Result: `3 files passed, 72 tests passed`
+- Backend focused tests:
+  - `DATABASE_URL=postgresql+asyncpg://arcreel_app:...@127.0.0.1:15432/arcreel ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://arcreel:...@127.0.0.1:15432/arcreel REDIS_URL=redis://127.0.0.1:16379/0 .venv/bin/python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_agent_chat_router.py tests/test_session_repo.py tests/test_task_repo.py tests/test_usage_repo.py tests/test_usage_tracker.py -q`
+  - Result: `131 passed, 1 warning`
+
 Backend:
 
 - `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_session_manager_project_scope.py tests/agent_session_store/test_conformance.py tests/agent_runtime/test_event_log.py tests/test_assistant_routes.py tests/test_assistant_router_full.py tests/test_assistant_service_more.py tests/test_agent_chat_router.py tests/test_session_manager_sdk_session_id.py tests/agent_runtime/test_entry_stream.py tests/agent_runtime/test_agent_startup_error.py tests/test_task_repo.py tests/test_task_repo_state_machine.py tests/test_generation_queue.py tests/test_generation_worker_module.py tests/test_tasks_router_more.py tests/test_usage_repo.py tests/test_usage_tracker.py tests/test_usage_router.py -q`
