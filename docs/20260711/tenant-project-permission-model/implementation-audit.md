@@ -249,6 +249,35 @@ Frontend:
 - `pnpm vitest run src/api.test.ts`
   - Result: 51 passed
 
+Local clean E2E smoke:
+
+- Local cleanup was explicitly authorized and executed only against ArcReel local development state.
+- PostgreSQL `arcreel.public` schema was dropped/recreated, Redis DB 0 was flushed, and `alembic upgrade head` completed.
+- Local service `http://127.0.0.1:1241` returned `200` for `/api/v1/auth/status` with `mode=camel`.
+- A CaMeL-shaped local token for `camel:passbygrocer` was used only to bypass the local OAuth redirect registration blocker and verify ArcReel internals.
+- `/api/v1/auth/me` created the default personal tenant `passbygrocer的个人空间` with role `admin`.
+- `/api/v1/camel/bootstrap/status` returned the expected five token/provider plan:
+  - image: `gpt-image-2`
+  - text: `gpt-5.5`
+  - video: `doubao-seedance-2-0-260128`
+  - audio: `gpt-4o-mini-tts`
+  - anthropic: `claude-opus-4-8`
+- `/api/v1/camel/bootstrap/start-url` generated a CaMeL authorization URL with scope `profile email arcreel:token-provision`.
+- `POST /api/v1/projects` created `proj-b9b796ff259d461b` under the current tenant.
+- `POST /api/v1/projects/proj-b9b796ff259d461b/source` imported `月亮与六便士第一章一.txt`.
+- `GET /api/v1/projects/proj-b9b796ff259d461b/files` listed the imported source file.
+- `POST /api/v1/projects/proj-b9b796ff259d461b/assistant/sessions/send` returned `accepted` and created a session scoped to `tenant_id + project_id`.
+- Reading that assistant session returned `project_id=proj-b9b796ff259d461b`; the async agent then failed with `Not logged in · Please run /login`, which is expected for this local run because provider bootstrap could not complete.
+
+Browser smoke:
+
+- `agent-browser` opened `/app/projects` with the local token injected into `localStorage`.
+- Project list displayed the created project and default personal space.
+- Tenant switcher opened as a listbox and showed `passbygrocer的个人空间`, role `Admin`, and `Personal space`.
+- The CaMeL setup modal displayed five planned keys and default models, including `camel-arcreel-passbygrocer-anthropic`.
+- Opening the project card navigated to the project workspace by project id.
+- The license/footer surface was previously observed as the requested single line: `Powered by ArcReel — https://github.com/ArcReel/ArcReel`.
+
 ## Remaining gaps
 
 ### Full pytest suite is not green yet
@@ -267,22 +296,26 @@ Dominant failure classes:
 - PostgreSQL foreign-key failures in fixtures that insert tenant rows before user rows.
 - Remaining tests may still use `project_name` as a function argument name while carrying project ids.
 
-### Full API scenario test is not complete
+### Full real CaMeL OAuth scenario is blocked locally by redirect registration
 
-The local service at `127.0.0.1:1241` was not running during this pass. No server process was started because project rules prohibit starting services without explicit user authorization.
+The local browser login path reaches CaMeL OAuth, but CaMeL rejects the local redirect URI:
 
-Required scenario still pending:
+- redirect URI used locally: `http://127.0.0.1:1241/api/v1/auth/camel/callback`
+- observed CaMeL error: `redirect_uri is not registered for this client`
 
-- Login as the provided CaMeL user.
-- Create a narration project with AI manga/comic style.
-- Import `~/月亮与六便士第一章一.txt`.
+This blocks real local provider bootstrap because ArcReel correctly requires a CaMeL OAuth access token with `arcreel:token-provision` scope before creating local media providers and the Anthropic Bridge credential. No fallback or password-grant path was assumed.
+
+Remote `dream.camel-hub.com` should be tested separately because its redirect URI is a different CaMeL client configuration path.
+
+### Full media generation scenario is not complete
+
+The project/source/assistant route identity path is verified locally, but actual model-backed generation is not verified in this local run because CaMeL provider bootstrap did not complete. Pending model-backed scenario:
+
+- Real CaMeL login on a registered redirect URI.
+- Complete provider bootstrap for image/text/video/audio/anthropic.
 - Use the right-side assistant to create 3 characters, 3 scenes, 3 props.
 - Generate images for characters/scenes/props.
 - Create 1 episode.
-
-### Browser scenario test is not complete
-
-`agent-browser` testing requires a running local ArcReel web service. This remains pending until the service is available or explicit authorization is given to start it.
 
 ### Remaining old function-argument `project_name` names
 
