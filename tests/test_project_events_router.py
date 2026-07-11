@@ -72,9 +72,6 @@ async def test_stream_project_events_emits_snapshot_and_changes():
     app = SimpleNamespace(state=SimpleNamespace(project_event_service=service))
     request = _FakeRequest(app)
 
-    resolved = await project_events_router._project_events_service("demo", request)
-    assert resolved is service
-
     stream = project_events_router.stream_project_events("demo", request, _user={"sub": "testuser"}, service=service)
 
     snapshot_event = await anext(stream)

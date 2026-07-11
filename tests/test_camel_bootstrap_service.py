@@ -71,6 +71,7 @@ async def add_camel_user_with_personal_tenant(
     completed_at: datetime | None = None,
 ) -> None:
     session.add(camel_user(completed_at=completed_at))
+    await session.flush()
     session.add(
         Tenant(
             id="ten_camel_123",
@@ -80,6 +81,7 @@ async def add_camel_user_with_personal_tenant(
             created_by_user_id="camel:123",
         )
     )
+    await session.flush()
     session.add(
         TenantMembership(
             tenant_id="ten_camel_123",

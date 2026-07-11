@@ -445,7 +445,9 @@ async def complete_camel_provider_bootstrap(
     try:
         for spec in settings.media_specs:
             token = token_by_media.get(spec.media)
-            api_key = token.get("key") if isinstance(token, dict) else None
+            if not isinstance(token, dict):
+                raise HTTPException(status_code=502, detail="CaMeL token provisioning response was incomplete")
+            api_key = token.get("key")
             if not isinstance(api_key, str) or not api_key:
                 raise HTTPException(status_code=502, detail="CaMeL token provisioning response was incomplete")
             models = _token_models(token, spec)
