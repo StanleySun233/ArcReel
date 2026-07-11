@@ -125,12 +125,12 @@ def test_camel_bootstrap_settings_derive_from_oauth_minimal_env(monkeypatch: pyt
     assert settings.provider_base_url == "http://camel-internal:3000"
     assert settings.token_provision_url == "http://camel-internal:3000/api/oauth/provider/arcreel-tokens"
     assert settings.token_link_template == "https://camel.example.com/token/{token_name}"
-    assert [(spec.media, spec.endpoint, spec.models) for spec in settings.media_specs] == [
-        ("image", "openai-images", ("gpt-image-2",)),
-        ("text", "openai-chat", ("gpt-5.5",)),
-        ("video", "openai-video", ("doubao-seedance-2-0-260128",)),
-        ("audio", "openai-tts", ("gpt-4o-mini-tts",)),
-        ("anthropic", "anthropic-messages", ("claude-opus-4-8",)),
+    assert [(spec.media, spec.base_url, spec.endpoint, spec.models) for spec in settings.media_specs] == [
+        ("image", "http://camel-internal:3000", "openai-images", ("gpt-image-2",)),
+        ("text", "http://camel-internal:3000", "openai-chat", ("gpt-5.5",)),
+        ("video", "http://camel-internal:3000/seedance", "openai-video", ("doubao-seedance-2-0-260128",)),
+        ("audio", "http://camel-internal:3000", "openai-tts", ("gpt-4o-mini-tts",)),
+        ("anthropic", "http://camel-internal:3000", "anthropic-messages", ("claude-opus-4-8",)),
     ]
 
 
@@ -214,6 +214,12 @@ async def test_camel_bootstrap_creates_user_owned_providers_and_defaults(
         "CaMeL Video": "sk-video",
         "CaMeL Audio": "sk-audio",
     }
+    assert {p.display_name: p.base_url for p in providers} == {
+        "CaMeL Image": "https://api.camel-hub.com",
+        "CaMeL Text": "https://api.camel-hub.com",
+        "CaMeL Video": "https://api.camel-hub.com/seedance",
+        "CaMeL Audio": "https://api.camel-hub.com",
+    }
 
     service = ConfigService(session, user_id="camel:123")
     by_name = {p.display_name: p for p in providers}
@@ -278,7 +284,7 @@ async def test_camel_bootstrap_status_returns_needed_provider_plan(
     assert video == {
         "media": "video",
         "provider_name": "CaMeL Video",
-        "base_url": "https://api.camel-hub.com",
+        "base_url": "https://api.camel-hub.com/seedance",
         "endpoint": "openai-video",
         "models": ["doubao-seedance-2-0-260128"],
         "token_name": "camel-arcreel-123-video",
@@ -457,7 +463,7 @@ async def test_camel_bootstrap_repair_updates_existing_provider_and_defaults(
     by_name = {p.display_name: p for p in providers}
     assert by_name["CaMeL Video"].id == existing_video.id
     assert by_name["CaMeL Video"].api_key == "sk-repair-video"
-    assert by_name["CaMeL Video"].base_url == "https://api.camel-hub.com"
+    assert by_name["CaMeL Video"].base_url == "https://api.camel-hub.com/seedance"
     video_models = await repo.list_models(existing_video.id)
     assert [m.model_id for m in video_models] == ["doubao-seedance-2-0-260128"]
     assert json.loads(video_models[0].supported_durations or "[]") == list(range(4, 16))

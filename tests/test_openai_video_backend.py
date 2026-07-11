@@ -135,6 +135,37 @@ class TestOpenAIVideoBackend:
         assert isinstance(ref[1], bytes)
         assert ref[2] == "image/png"
 
+    async def test_create_accepts_string_task_id(self, tmp_path: Path):
+        mock_client = AsyncMock()
+        mock_client.videos.create = AsyncMock(return_value="vid_gateway")
+        mock_client.videos.retrieve = AsyncMock(
+            return_value={"id": "vid_gateway", "status": "completed", "seconds": "8", "error": None}
+        )
+        mock_client.videos.download_content = AsyncMock(return_value=_make_mock_content(b"video-data"))
+
+        with (
+            patch("lib.openai_shared.AsyncOpenAI", return_value=mock_client),
+            patch("lib.video_backends.base.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            from lib.video_backends.openai import OpenAIVideoBackend
+
+            backend = OpenAIVideoBackend(api_key="test-key")
+            output_path = tmp_path / "output.mp4"
+            request = VideoGenerationRequest(
+                prompt="A cat walking in the park",
+                output_path=output_path,
+                aspect_ratio="9:16",
+                resolution="720p",
+                duration_seconds=8,
+            )
+            result = await backend.generate(request)
+
+        assert result.task_id == "vid_gateway"
+        assert result.video_path == output_path
+        assert output_path.read_bytes() == b"video-data"
+        mock_client.videos.retrieve.assert_called_with("vid_gateway")
+        mock_client.videos.download_content.assert_called_with("vid_gateway")
+
     async def test_failed_video_raises(self, tmp_path: Path):
         error = MagicMock()
         error.message = "Content policy violation"

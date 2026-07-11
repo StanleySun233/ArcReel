@@ -43,6 +43,7 @@ _DEFAULT_MEDIA_SPECS = {
 class CamelMediaSpec:
     media: str
     display_name: str
+    base_url: str
     endpoint: str
     models: tuple[str, ...]
     default_keys: tuple[str, ...]
@@ -116,7 +117,15 @@ def _join_url(base_url: str, path: str) -> str:
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
-def _media_spec(media: str, endpoint_env: str, models_env: str) -> CamelMediaSpec:
+def _media_base_url(media: str, provider_base_url: str) -> str:
+    if media != "video":
+        return provider_base_url
+    if provider_base_url.rstrip("/").endswith("/seedance"):
+        return provider_base_url
+    return _join_url(provider_base_url, "seedance")
+
+
+def _media_spec(media: str, endpoint_env: str, models_env: str, provider_base_url: str) -> CamelMediaSpec:
     display_name, default_endpoint, default_models = _DEFAULT_MEDIA_SPECS[media]
     endpoint = _env_or_default(endpoint_env, default_endpoint)
     if media != "anthropic" and endpoint not in ENDPOINT_REGISTRY:
@@ -128,7 +137,14 @@ def _media_spec(media: str, endpoint_env: str, models_env: str) -> CamelMediaSpe
         "audio": ("default_audio_backend",),
         "anthropic": (),
     }[media]
-    return CamelMediaSpec(media, display_name, endpoint, _env_models(models_env, default_models), default_keys)
+    return CamelMediaSpec(
+        media,
+        display_name,
+        _media_base_url(media, provider_base_url),
+        endpoint,
+        _env_models(models_env, default_models),
+        default_keys,
+    )
 
 
 def get_camel_bootstrap_settings() -> CamelBootstrapSettings:
@@ -138,11 +154,16 @@ def get_camel_bootstrap_settings() -> CamelBootstrapSettings:
         token_provision_url=_token_provision_url(provider_base_url),
         token_link_template=_token_link_template(),
         media_specs=(
-            _media_spec("image", "CAMEL_ARCREEL_IMAGE_ENDPOINT", "CAMEL_ARCREEL_IMAGE_MODELS"),
-            _media_spec("text", "CAMEL_ARCREEL_TEXT_ENDPOINT", "CAMEL_ARCREEL_TEXT_MODELS"),
-            _media_spec("video", "CAMEL_ARCREEL_VIDEO_ENDPOINT", "CAMEL_ARCREEL_VIDEO_MODELS"),
-            _media_spec("audio", "CAMEL_ARCREEL_AUDIO_ENDPOINT", "CAMEL_ARCREEL_AUDIO_MODELS"),
-            _media_spec("anthropic", "CAMEL_ARCREEL_ANTHROPIC_ENDPOINT", "CAMEL_ARCREEL_ANTHROPIC_MODELS"),
+            _media_spec("image", "CAMEL_ARCREEL_IMAGE_ENDPOINT", "CAMEL_ARCREEL_IMAGE_MODELS", provider_base_url),
+            _media_spec("text", "CAMEL_ARCREEL_TEXT_ENDPOINT", "CAMEL_ARCREEL_TEXT_MODELS", provider_base_url),
+            _media_spec("video", "CAMEL_ARCREEL_VIDEO_ENDPOINT", "CAMEL_ARCREEL_VIDEO_MODELS", provider_base_url),
+            _media_spec("audio", "CAMEL_ARCREEL_AUDIO_ENDPOINT", "CAMEL_ARCREEL_AUDIO_MODELS", provider_base_url),
+            _media_spec(
+                "anthropic",
+                "CAMEL_ARCREEL_ANTHROPIC_ENDPOINT",
+                "CAMEL_ARCREEL_ANTHROPIC_MODELS",
+                provider_base_url,
+            ),
         ),
     )
 
@@ -297,7 +318,7 @@ async def _upsert_provider(
         provider = await repo.create_provider(
             display_name=spec.display_name,
             discovery_format="openai",
-            base_url=settings.provider_base_url,
+            base_url=spec.base_url,
             api_key=api_key,
             models=_models_for_spec(spec, models),
         )
@@ -305,7 +326,7 @@ async def _upsert_provider(
         provider = await repo.update_provider(
             existing.id,
             display_name=spec.display_name,
-            base_url=settings.provider_base_url,
+            base_url=spec.base_url,
             api_key=api_key,
         )
         await repo.replace_models(existing.id, _models_for_spec(spec, models))
@@ -327,7 +348,7 @@ async def _upsert_agent_credential(
         credential = await repo.create(
             preset_id=CUSTOM_SENTINEL_ID,
             display_name=spec.display_name,
-            base_url=settings.provider_base_url,
+            base_url=spec.base_url,
             api_key=api_key,
             model=models[0],
             subagent_model=models[0],
@@ -336,7 +357,7 @@ async def _upsert_agent_credential(
     else:
         credential = await repo.update(
             existing.id,
-            base_url=settings.provider_base_url,
+            base_url=spec.base_url,
             api_key=api_key,
             model=models[0],
             subagent_model=models[0],
@@ -397,7 +418,7 @@ async def get_camel_bootstrap_status(session: AsyncSession, user_id: str, tenant
             {
                 "media": spec.media,
                 "provider_name": spec.display_name,
-                "base_url": settings.provider_base_url,
+                "base_url": spec.base_url,
                 "endpoint": spec.endpoint,
                 "models": list(spec.models),
                 "token_name": f"camel-arcreel-{camel_user_id}-{spec.media}",

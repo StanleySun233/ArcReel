@@ -43,6 +43,31 @@ _SORA_LEGAL_SIZES: tuple[str, ...] = _SORA_SIZES_720P + _SORA_SIZES_1080P
 _SORA_1080P_MIN_SHORT = 1080
 
 
+def _video_field(video, field: str):
+    if isinstance(video, dict):
+        return video.get(field)
+    return getattr(video, field, None)
+
+
+def _video_id(video) -> str:
+    if isinstance(video, str):
+        value = video.strip()
+    else:
+        value = _video_field(video, "id") or _video_field(video, "task_id")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    raise RuntimeError(f"OpenAI video response missing id: {video!r}")
+
+
+def _video_status(video) -> str:
+    value = _video_field(video, "status")
+    return value if isinstance(value, str) else ""
+
+
+def _video_error(video):
+    return _video_field(video, "error")
+
+
 def _resolve_size(model: str, resolution: str | None, aspect_ratio: str) -> str:
     """比例优先：在 model+分辨率档对应的 sora 合法档中选比例最接近 aspect_ratio 的；并列取像素更高者。
 
@@ -145,15 +170,17 @@ class OpenAIVideoBackend(ProviderJobIdPersistenceMixin):
         logger.info("调用 %s 视频 SDK kwargs=%s", self.name, format_kwargs_for_log(kwargs))
 
         video = await self._create_video(**kwargs)
+        video_id = _video_id(video)
         # submit 成功立即持久化 job_id；持久化失败抛 → finally mark_failed。
         # 非 worker 路径（grid / 直生 / 测试）request.task_id 为 None，统一点内跳过持久化。
-        await self._persist_provider_job_id(request, video.id, provider=PROVIDER_OPENAI)
-        final = await self._poll_until_complete(video.id, request.duration_seconds)
+        await self._persist_provider_job_id(request, video_id, provider=PROVIDER_OPENAI)
+        final = await self._poll_until_complete(video_id, request.duration_seconds)
 
         # generate 路径下 expired 是「provider 异常 / 输入参数过期」类失败，
         # 抛 RuntimeError 让 worker mark_failed（不带 [resume_expired] 前缀）。
-        if final.status == "expired":
-            raise RuntimeError(f"OpenAI Sora job expired during generate: {final.id}")
+        final_status = _video_status(final)
+        if final_status == "expired":
+            raise RuntimeError(f"OpenAI Sora job expired during generate: {_video_id(final)}")
 
         return await self._download_and_build_result(final, request, kwargs)
 
@@ -168,11 +195,11 @@ class OpenAIVideoBackend(ProviderJobIdPersistenceMixin):
 
         # resume 路径下 expired = provider 端已忘 / 输入资产过期，归类
         # [resume_expired] 让 worker 错误前缀化、不再尝试重启自愈
-        if final.status == "expired":
+        if _video_status(final) == "expired":
             raise ResumeExpiredError(
                 job_id=job_id,
                 provider=PROVIDER_OPENAI,
-                message=f"OpenAI Sora job expired: {final.id}",
+                message=f"OpenAI Sora job expired: {_video_id(final)}",
             )
 
         return await self._download_and_build_result(final, request, {"seconds": str(request.duration_seconds)})
@@ -180,7 +207,8 @@ class OpenAIVideoBackend(ProviderJobIdPersistenceMixin):
     async def _download_and_build_result(
         self, final, request: VideoGenerationRequest, kwargs: dict
     ) -> VideoGenerationResult:
-        content = await self._download_content_with_retry(final.id)
+        video_id = _video_id(final)
+        content = await self._download_content_with_retry(video_id)
 
         def _write():
             request.output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,10 +222,8 @@ class OpenAIVideoBackend(ProviderJobIdPersistenceMixin):
             video_path=request.output_path,
             provider=PROVIDER_OPENAI,
             model=self._model,
-            duration_seconds=int(
-                final.seconds if final.seconds is not None else kwargs.get("seconds") or request.duration_seconds
-            ),
-            task_id=final.id,
+            duration_seconds=int(_video_field(final, "seconds") or kwargs.get("seconds") or request.duration_seconds),
+            task_id=video_id,
         )
 
     @with_retry_async(retryable_errors=OPENAI_RETRYABLE_ERRORS)
@@ -221,14 +247,14 @@ class OpenAIVideoBackend(ProviderJobIdPersistenceMixin):
         # 关键不变量：is_failed 不识别 expired，避免覆盖 caller 分流。
         return await poll_with_retry(
             poll_fn=lambda: self._client.videos.retrieve(video_id),
-            is_done=lambda v: v.status in ("completed", "failed", "expired"),
-            is_failed=lambda v: f"Sora 视频生成失败: {getattr(v, 'error', None)}" if v.status == "failed" else None,
+            is_done=lambda v: _video_status(v) in ("completed", "failed", "expired"),
+            is_failed=lambda v: f"Sora 视频生成失败: {_video_error(v)}" if _video_status(v) == "failed" else None,
             poll_interval=_POLL_INTERVAL_SECONDS,
             max_wait=max_wait,
             retryable_errors=OPENAI_RETRYABLE_ERRORS,
             label="OpenAI",
             on_progress=lambda v, elapsed: logger.info(
-                "OpenAI 视频生成中... 状态: %s, 已等待 %d 秒", v.status, int(elapsed)
+                "OpenAI 视频生成中... 状态: %s, 已等待 %d 秒", _video_status(v), int(elapsed)
             ),
         )
 
