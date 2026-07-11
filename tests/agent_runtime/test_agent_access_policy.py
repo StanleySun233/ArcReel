@@ -298,13 +298,13 @@ def test_agent_profile_settings_denied(policy: AgentAccessPolicy, tool: str) -> 
     assert reason and "敏感文件" in reason
 
 
-def test_arcreel_db_in_sensitive_list(policy: AgentAccessPolicy) -> None:
-    """入队链路已迁到 in-process MCP tool，sandbox 内 agent 不再需要直读 db。"""
+def test_system_config_in_sensitive_list(policy: AgentAccessPolicy) -> None:
+    """sandbox 内 agent 不应直读全局系统配置。"""
     cwd = _cwd(policy)
-    db = policy.projects_root / ".arcreel.db"
-    db.parent.mkdir(parents=True, exist_ok=True)
-    db.write_bytes(b"sqlite-fake")
-    allowed, reason = policy.check_path_access(str(db), "Read", cwd)
+    config = policy.projects_root / ".system_config.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    config.write_text("{}", encoding="utf-8")
+    allowed, reason = policy.check_path_access(str(config), "Read", cwd)
     assert not allowed
     assert reason and "敏感文件" in reason
 
@@ -430,8 +430,7 @@ def test_build_sensitive_abs_paths_includes_existing_files(tmp_path: Path) -> No
     (root / ".env").write_text("X=1", encoding="utf-8")
     (root / ".env.local").write_text("Y=2", encoding="utf-8")
     (root / "projects").mkdir()
-    (root / "projects" / ".arcreel.db").write_bytes(b"sqlite-fake")
-    (root / "projects" / ".arcreel.db-shm").write_bytes(b"shm")
+    (root / "projects" / ".system_config.json").write_text("{}", encoding="utf-8")
     profile_dir = tmp_path / "agent_runtime_profile"
     (profile_dir / ".claude").mkdir(parents=True)
     (profile_dir / ".claude" / "settings.json").write_text("{}", encoding="utf-8")
@@ -446,11 +445,7 @@ def test_build_sensitive_abs_paths_includes_existing_files(tmp_path: Path) -> No
     assert str(profile_dir.resolve() / ".claude" / "settings.json") in paths
     assert str(root.resolve() / "vertex_keys") in paths
 
-    # 不存在的 system_config.json 不应出现（SDK 会跳过 non-existent path）
-    assert all(".system_config.json" not in p for p in paths)
-    # .arcreel.db + WAL 辅助文件在敏感清单（入队走 MCP tool，agent 不直读 db）
-    assert str(root.resolve() / "projects" / ".arcreel.db") in paths
-    assert str(root.resolve() / "projects" / ".arcreel.db-shm") in paths
+    assert str(root.resolve() / "projects" / ".system_config.json") in paths
 
 
 def test_build_sensitive_abs_paths_follows_constructed_roots(tmp_path: Path) -> None:
@@ -461,8 +456,6 @@ def test_build_sensitive_abs_paths_follows_constructed_roots(tmp_path: Path) -> 
     # 数据目录搬到 repo 之外
     external_data = tmp_path / "external_data" / "projects"
     external_data.mkdir(parents=True)
-    (external_data / ".arcreel.db").write_bytes(b"db")
-    (external_data / ".arcreel.db-wal").write_bytes(b"wal")
     (external_data / ".system_config.json").write_text("{}", encoding="utf-8")
     (external_data.parent / "vertex_keys").mkdir()
     # profile 目录搬到 repo 之外
@@ -477,16 +470,14 @@ def test_build_sensitive_abs_paths_follows_constructed_roots(tmp_path: Path) -> 
     )
     paths = policy._build_sensitive_abs_paths()
 
-    assert str(external_data / ".arcreel.db") in paths
-    assert str(external_data / ".arcreel.db-wal") in paths
     assert str(external_data / ".system_config.json") in paths
     assert str(external_data.parent / "vertex_keys") in paths
     assert str(external_profile.resolve() / ".claude" / "settings.json") in paths
-    # 旧的 ``repo/projects/.arcreel.db`` 路径已不复存在 — 不再误指 deny 到空位置
+    # 旧的 repo/projects 数据路径不存在时，不再误指 deny 到空位置
     assert not any(str(repo) + "/projects/" in p for p in paths)
 
     # is_sensitive_path 也必须能识别新位置
-    assert policy.is_sensitive_path((external_data / ".arcreel.db").resolve())
+    assert policy.is_sensitive_path((external_data / ".system_config.json").resolve())
     assert policy.is_sensitive_path((external_profile / ".claude" / "settings.json").resolve())
     assert policy.is_sensitive_path((external_data.parent / "vertex_keys" / "k.json").resolve())
 

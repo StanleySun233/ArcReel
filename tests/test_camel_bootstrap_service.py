@@ -6,15 +6,15 @@ import httpx
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lib.config.service import ConfigService
 from lib.custom_provider import make_provider_id
-from lib.db.base import Base
 from lib.db.models import Tenant, TenantMembership
 from lib.db.models.user import User
 from lib.db.repositories.agent_credential_repo import AgentCredentialRepository
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 CAMEL_ARCREEL_ENV_KEYS = (
     "CAMEL_ARCREEL_PROVIDER_BASE_URL",
@@ -103,9 +103,7 @@ def bypass_pg_tenant_context(monkeypatch: pytest.MonkeyPatch, camel_bootstrap) -
 
 @pytest.fixture
 async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with sm() as s:
         yield s

@@ -26,7 +26,10 @@ async def _require_usage_scope(user, project_id: str | None = None):
         async with session.begin():
             access = await require_tenant_access(session, user, minimum_role=ROLE_VIEW)
             await set_tenant_context(session, user_id=user.id, tenant_id=access.id)
-            if project_id is not None and await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id) is None:
+            if (
+                project_id is not None
+                and await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id) is None
+            ):
                 raise HTTPException(status_code=404, detail="project_not_found")
             return access
 

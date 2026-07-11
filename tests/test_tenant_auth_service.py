@@ -124,6 +124,43 @@ async def test_require_tenant_access_uses_database_role_not_jwt_snapshot(async_s
         await require_tenant_access(async_session, stale_user, minimum_role=ROLE_MEMBER)
 
     assert exc.value.status_code == 403
+    assert exc.value.detail == "STALE_TENANT_ROLE"
+
+
+@pytest.mark.asyncio
+async def test_require_tenant_access_denies_without_stale_role_when_snapshot_matches(async_session):
+    await _add_user(async_session, "camel:owner", "owner")
+    async_session.add(
+        Tenant(
+            id="ten_team",
+            name="Team",
+            owner_user_id="camel:owner",
+            created_by_user_id="camel:owner",
+        )
+    )
+    async_session.add(
+        TenantMembership(
+            tenant_id="ten_team",
+            user_id="camel:owner",
+            role=ROLE_VIEW,
+            created_by_user_id="camel:owner",
+        )
+    )
+    await async_session.flush()
+    user = CurrentUserInfo(
+        id="camel:owner",
+        sub="owner",
+        provider="camel",
+        role="admin",
+        tenant_id="ten_team",
+        tenant_role=ROLE_VIEW,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await require_tenant_access(async_session, user, minimum_role=ROLE_MEMBER)
+
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "TENANT_PERMISSION_DENIED"
 
 
 @pytest.mark.asyncio

@@ -44,8 +44,8 @@ class AgentAccessPolicy:
     # 源仓库根（已 resolve）：``.env`` / ``.env.*`` 相对此根（dotenv 从仓库根
     # 加载），也是「仓库内参考资料放行」的围栏基准。
     project_root: Path
-    # 数据根（已 resolve，生产为 app_data_dir()）：``.arcreel.db*`` /
-    # ``.system_config.json*`` 所在地，也是跨项目读隔离的基准。
+    # 数据根（已 resolve，生产为 app_data_dir()）：``.system_config.json*``
+    # 所在地，也是跨项目读隔离的基准。
     projects_root: Path
     # agent profile 根（已 resolve，受调用方 env 解析控制）：
     # ``.claude/settings.json`` 所在地。
@@ -159,8 +159,7 @@ class AgentAccessPolicy:
         覆盖后的真实位置（env 解析由调用方完成，本类只消费 resolve 后的根）：
 
         - ``.env`` / ``.env.*`` 总是相对源仓库根
-        - ``.arcreel.db`` / ``.system_config.json`` / ``.arcreel.db-*`` 在
-          ``projects_root``（生产为 ``app_data_dir()``）下
+        - ``.system_config.json`` 在 ``projects_root``（生产为 ``app_data_dir()``）下
         - ``vertex_keys/`` 在 ``projects_root.parent`` 下（与
           ``server.routers.providers.upload_vertex_credential`` 写入位置一致）
         - ``agent_runtime_profile/.claude/settings.json`` 在
@@ -172,24 +171,19 @@ class AgentAccessPolicy:
         profile = self.agent_profile_root
         files: tuple[Path, ...] = (
             repo / ".env",
-            data / ".arcreel.db",
             data / ".system_config.json",
             data / ".system_config.json.bak",
             profile / ".claude" / "settings.json",
         )
         prefixes: tuple[Path, ...] = (data.parent / "vertex_keys", self.log_dir)
-        # ``.arcreel.db-wal`` / ``.arcreel.db-shm`` 与主 db 同目录
-        globs: tuple[tuple[Path, str], ...] = (
-            (repo, ".env.*"),
-            (data, ".arcreel.db-*"),
-        )
+        globs: tuple[tuple[Path, str], ...] = ((repo, ".env.*"),)
         return files, prefixes, globs
 
     def is_sensitive_path(self, resolved: Path) -> bool:
         """判断已 resolve 的路径是否命中敏感文件清单。
 
         覆盖 ``.env`` / ``.env.*`` / ``vertex_keys/`` 子树 / ``.system_config.json*`` /
-        ``.arcreel.db*`` / ``agent_runtime_profile/.claude/settings.json`` / 日志目录。
+        ``agent_runtime_profile/.claude/settings.json`` / 日志目录。
         """
         files, prefixes, globs = self._sensitive_table
         for sensitive_file in files:

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import projects
-from server.services.tenant_auth import TenantAccess
+from server.services.tenant_auth import ROLE_ADMIN, TenantAccess
 
 
 class _FakePM:
@@ -357,6 +357,22 @@ class TestProjectsRouter:
 
             delete_ok = client.delete("/api/v1/projects/remove-me")
             assert delete_ok.status_code == 200
+
+    def test_delete_project_requires_admin_role(self, tmp_path, monkeypatch):
+        client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())
+        required_roles: list[str] = []
+
+        async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
+            required_roles.append(minimum_role)
+            return TenantAccess(id="ten_test", name="Tenant", role="admin", is_owner=True, personal=True)
+
+        monkeypatch.setattr(projects, "require_tenant_access", _access)
+
+        with client:
+            response = client.delete("/api/v1/projects/remove-me")
+
+        assert response.status_code == 200
+        assert required_roles == [ROLE_ADMIN]
 
     def test_create_persists_source_kind_and_defaults_novel(self, tmp_path, monkeypatch):
         client = _client(monkeypatch, _FakePM(tmp_path), _FakeCalc())

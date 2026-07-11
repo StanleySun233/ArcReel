@@ -1,8 +1,8 @@
 # API Contract: Tenant Project Permission Model
 
 **日期:** 20260711
-**状态:** draft
-**适用范围:** 新商业发行版；不兼容旧版项目名路由。
+**状态:** accepted
+**适用范围:** 新商业发行版；不保留旧版项目名路由。
 
 ## 通用请求上下文
 
@@ -16,44 +16,47 @@
 
 ## 项目 API
 
-所有项目 API 使用 `project_id`。
+所有项目 API 使用 `project_id`。项目显示名只出现在响应和重命名 payload 中，不作为路由键、缓存键或业务查询键。
 
-| 旧形态 | 新形态 | 说明 |
-|--------|--------|------|
-| `GET /api/v1/projects/{name}` | `GET /api/v1/projects/{project_id}` | `name` 只在响应里展示 |
-| `PATCH /api/v1/projects/{name}` | `PATCH /api/v1/projects/{project_id}` | 校验当前租户内 `name` 不重复 |
-| `DELETE /api/v1/projects/{name}` | `DELETE /api/v1/projects/{project_id}` | 仅 owner/admin 允许 |
-| `GET /api/v1/projects/{name}/video-capabilities` | `GET /api/v1/projects/{project_id}/video-capabilities` | 视频模型能力解析 |
-| `GET /api/v1/projects/{name}/cost-estimate` | `GET /api/v1/projects/{project_id}/cost-estimate` | 项目费用估算 |
-| `POST /api/v1/projects/{name}/generate-overview` | `POST /api/v1/projects/{project_id}/generate-overview` | 使用 ProjectContext |
-| `GET /api/v1/projects/{name}/scripts/{script_file}` | `GET /api/v1/projects/{project_id}/scripts/{script_file}` | 读取剧本内容 |
-| `PATCH /api/v1/projects/{name}/script-scenes/{scene_id}` | `PATCH /api/v1/projects/{project_id}/script-scenes/{scene_id}` | drama 场景编辑 |
-| `PATCH /api/v1/projects/{name}/segments/{segment_id}` | `PATCH /api/v1/projects/{project_id}/segments/{segment_id}` | narration 片段编辑 |
-| `PATCH /api/v1/projects/{name}/episodes/{episode}` | `PATCH /api/v1/projects/{project_id}/episodes/{episode}` | 分集标题编辑 |
-| `GET /api/v1/projects/{name}/episodes/{episode}/script-review` | `GET /api/v1/projects/{project_id}/episodes/{episode}/script-review` | step1 审核读取 |
-| `PUT /api/v1/projects/{name}/episodes/{episode}/script-review/content` | `PUT /api/v1/projects/{project_id}/episodes/{episode}/script-review/content` | step1 审核内容保存 |
-| `POST /api/v1/projects/{name}/episodes/{episode}/script-review/confirm` | `POST /api/v1/projects/{project_id}/episodes/{episode}/script-review/confirm` | step1 审核确认 |
-| `POST /api/v1/projects/{name}/source` | `POST /api/v1/projects/{project_id}/source` | 源文件或源文本导入 |
-| `GET /api/v1/projects/{name}/events/stream` | `GET /api/v1/projects/{project_id}/events/stream` | SSE channel 使用 project_id |
-| `POST /api/v1/projects/{name}/assistant/sessions/send` | `POST /api/v1/projects/{project_id}/assistant/sessions/send` | Agent cwd 使用 project_id |
-| `GET /api/v1/projects/{name}/versions/{resource_type}/{resource_id}` | `GET /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}` | 版本读取按当前租户解析项目 |
-| `POST /api/v1/projects/{name}/versions/{resource_type}/{resource_id}/restore/{version}` | `POST /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}/restore/{version}` | 版本还原要求 member/admin |
-| `POST /api/v1/projects/{name}/generate/grid/{episode}` | `POST /api/v1/projects/{project_id}/generate/grid/{episode}` | 宫格图生成要求 member/admin |
-| `GET /api/v1/projects/{name}/grids` | `GET /api/v1/projects/{project_id}/grids` | 宫格图列表允许 viewer |
-| `GET /api/v1/projects/{name}/grids/{grid_id}` | `GET /api/v1/projects/{project_id}/grids/{grid_id}` | 宫格图详情允许 viewer |
-| `POST /api/v1/projects/{name}/grids/{grid_id}/regenerate` | `POST /api/v1/projects/{project_id}/grids/{grid_id}/regenerate` | 宫格图重生成要求 member/admin |
-| `GET /api/v1/projects/{name}/reference-videos/episodes/{episode}/units` | `GET /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units` | 参考视频单元列表允许 viewer |
-| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/derive-units` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/derive-units` | ad 参考视频单元派生要求 member/admin |
-| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units` | 新增参考视频单元要求 member/admin |
-| `PATCH /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}` | `PATCH /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}` | 编辑参考视频单元要求 member/admin |
-| `DELETE /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}` | `DELETE /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}` | 删除参考视频单元要求 member/admin |
-| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/reorder` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/reorder` | 重排参考视频单元要求 member/admin |
-| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}/generate` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/generate` | 参考视频单元生成要求 member/admin |
-| `POST /api/v1/projects/{name}/reference-videos/episodes/{episode}/units/{unit_id}/upload-video` | `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/upload-video` | 手动上传参考单元视频要求 member/admin |
-| `POST /api/v1/projects/{name}/export/token` | `POST /api/v1/projects/{project_id}/export/token` | 导出 token 签发允许 viewer |
-| `GET /api/v1/projects/{name}/export` | `GET /api/v1/projects/{project_id}/export` | 下载 token 绑定 `tenant_id:project_id` |
-| `GET /api/v1/projects/{name}/export/jianying-draft` | `GET /api/v1/projects/{project_id}/export/jianying-draft` | 剪映草稿导出使用 token 中 tenant 对应项目仓库 |
-| `POST /api/v1/agent/chat` | 当前返回 `403 feature_disabled` | OpenClaw 同步 Agent 入口保留业务代码，随 Issued Tokens 暂停 |
+| Endpoint | 权限 | 说明 |
+|----------|------|------|
+| `GET /api/v1/projects` | view/member/admin | 当前租户项目列表 |
+| `POST /api/v1/projects` | member/admin | 当前租户内创建项目，返回 `id` 和显示名 |
+| `GET /api/v1/projects/{project_id}` | view/member/admin | 项目详情 |
+| `PATCH /api/v1/projects/{project_id}` | admin/owner | 更新项目显示名或项目元数据；`project_id` 不可改 |
+| `DELETE /api/v1/projects/{project_id}` | admin/owner | 删除项目目录和项目行 |
+| `GET /api/v1/projects/{project_id}/video-capabilities` | view/member/admin | 视频模型能力解析 |
+| `GET /api/v1/projects/{project_id}/cost-estimate` | view/member/admin | 项目费用估算 |
+| `POST /api/v1/projects/{project_id}/generate-overview` | member/admin | 生成项目概述 |
+| `GET /api/v1/projects/{project_id}/scripts/{script_file}` | view/member/admin | 读取剧本内容 |
+| `PATCH /api/v1/projects/{project_id}/script-scenes/{scene_id}` | member/admin | drama 场景编辑 |
+| `PATCH /api/v1/projects/{project_id}/script-shots/{shot_id}` | member/admin | 分镜编辑 |
+| `PATCH /api/v1/projects/{project_id}/segments/{segment_id}` | member/admin | narration 片段编辑 |
+| `PATCH /api/v1/projects/{project_id}/episodes/{episode}` | member/admin | 分集标题编辑 |
+| `GET /api/v1/projects/{project_id}/episodes/{episode}/script-review` | view/member/admin | step1 审核读取 |
+| `PUT /api/v1/projects/{project_id}/episodes/{episode}/script-review/content` | member/admin | step1 审核内容保存 |
+| `POST /api/v1/projects/{project_id}/episodes/{episode}/script-review/confirm` | member/admin | step1 审核确认 |
+| `POST /api/v1/projects/{project_id}/source` | member/admin | 源文件或源文本导入 |
+| `GET /api/v1/projects/{project_id}/events/stream` | view/member/admin | 项目事件 SSE channel |
+| `POST /api/v1/projects/{project_id}/assistant/sessions/send` | member/admin | Agent 消息发送和会话创建 |
+| `GET /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}` | view/member/admin | 资源版本读取 |
+| `POST /api/v1/projects/{project_id}/versions/{resource_type}/{resource_id}/restore/{version}` | member/admin | 版本还原 |
+| `POST /api/v1/projects/{project_id}/generate/grid/{episode}` | member/admin | 宫格图生成 |
+| `GET /api/v1/projects/{project_id}/grids` | view/member/admin | 宫格图列表 |
+| `GET /api/v1/projects/{project_id}/grids/{grid_id}` | view/member/admin | 宫格图详情 |
+| `POST /api/v1/projects/{project_id}/grids/{grid_id}/regenerate` | member/admin | 宫格图重生成 |
+| `GET /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units` | view/member/admin | 参考视频单元列表 |
+| `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/derive-units` | member/admin | ad 参考视频单元派生 |
+| `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units` | member/admin | 新增参考视频单元 |
+| `PATCH /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}` | member/admin | 编辑参考视频单元 |
+| `DELETE /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}` | member/admin | 删除参考视频单元 |
+| `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/reorder` | member/admin | 重排参考视频单元 |
+| `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/generate` | member/admin | 参考视频单元生成 |
+| `POST /api/v1/projects/{project_id}/reference-videos/episodes/{episode}/units/{unit_id}/upload-video` | member/admin | 手动上传参考单元视频 |
+| `POST /api/v1/projects/{project_id}/export/token` | view/member/admin | 导出 token 签发 |
+| `GET /api/v1/projects/{project_id}/export` | token | 下载 token 绑定 `tenant_id:project_id` |
+| `GET /api/v1/projects/{project_id}/export/jianying-draft` | token | 剪映草稿导出 |
+| `POST /api/v1/agent/chat` | disabled | OpenClaw 同步 Agent 入口返回 `403 feature_disabled` |
 
 项目响应字段：
 
@@ -127,14 +130,6 @@
 入队时检查当前用户权限。worker 执行时使用任务中持久化的 `tenant_id/project_id/requested_by_user_id`，不重新读取用户当前 token。
 
 ## 用量 API
-
-| Endpoint | 权限 | 说明 |
-|----------|------|------|
-| `GET /api/v1/usage/tenant` | admin/member/view | 当前租户用量总览，按权限裁剪 |
-| `GET /api/v1/usage/projects/{project_id}` | view/member/admin | 当前项目用量 |
-| `GET /api/v1/usage/users/{user_id}` | admin 或本人 | 用户维度用量 |
-
-当前兼容实现中，旧用量路径保留但 query 语义已收敛为 `project_id`：
 
 | Endpoint | 权限 | 说明 |
 |----------|------|------|

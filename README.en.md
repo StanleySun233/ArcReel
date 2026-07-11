@@ -93,7 +93,7 @@ graph TD
 
 > ⚠️ **OS**: Linux / macOS / WSL2 / Docker recommended. Native Windows can run project creation and basic flows, but POSIX-only isolation (Bash sandbox, bwrap) auto-degrades. For production, WSL2 or Docker Desktop is still recommended
 
-### Default Deployment (SQLite)
+### Default Deployment (PostgreSQL)
 
 ```bash
 git clone https://github.com/ArcReel/ArcReel.git
@@ -249,7 +249,7 @@ flowchart TB
     end
 
     subgraph Data["Data Layer"]
-        D1["SQLAlchemy 2.0 Async ORM"] ~~~ D2["SQLite / PostgreSQL"]
+        D1["SQLAlchemy 2.0 Async ORM"] ~~~ D2["PostgreSQL"]
         D3["Alembic Migrations"] ~~~ D4["UsageTracker<br/>Multi-Provider Cost Tracking"]
     end
 
@@ -268,7 +268,7 @@ flowchart TB
 | **Text Generation** | Gemini (`google-genai`), Volcengine Ark (`volcengine-python-sdk[ark]`), Grok (`xai-sdk`), OpenAI (`openai`), DashScope / MiniMax (`httpx`), Instructor (structured output fallback) |
 | **Narration Voiceover (TTS)** | DashScope Qwen3 TTS (`httpx`), any OpenAI-compatible TTS (custom provider) |
 | **Media Processing** | FFmpeg, Pillow |
-| **ORM & Database** | SQLAlchemy 2.0 (async), Alembic, aiosqlite, asyncpg — SQLite (default) / PostgreSQL (production) |
+| **ORM & Database** | SQLAlchemy 2.0 (async), Alembic, asyncpg — PostgreSQL |
 | **Authentication** | JWT (`pyjwt`), API Key (SHA-256 hash), Argon2 password hashing (`pwdlib`) |
 | **Deployment** | Docker, Docker Compose (`deploy/` default, `deploy/production/` with PostgreSQL) |
 

@@ -244,7 +244,7 @@ class TaskRepository(BaseRepository):
         params: dict[str, Any] = {"media_type": media_type}
         provider_filter = ""
         if pool_full_providers:
-            # SQLite/PG 都支持 expanding bindparam：list 形式 + NOT IN (:providers)
+            # PostgreSQL 支持 expanding bindparam：list 形式 + NOT IN (:providers)
             provider_filter = "AND (tasks.provider_id IS NULL OR tasks.provider_id NOT IN :providers)"
             params["providers"] = tuple(pool_full_providers)
 

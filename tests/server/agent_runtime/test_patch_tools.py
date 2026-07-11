@@ -958,10 +958,10 @@ class TestPatchProjectNarrationSettings:
 
     async def test_resolver_uses_values_written_by_tool(self, ctx: ToolContext) -> None:
         """工具写入与生成端解析读的是同一份顶层字段:写入后 resolver 实际解析出覆盖值。"""
-        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.ext.asyncio import async_sessionmaker
 
         from lib.config.resolver import ConfigResolver
-        from lib.db.base import Base
+        from tests.pg_utils import create_pg_test_engine_with_cleanup
 
         out = await _call(
             patch_project_tool(ctx),
@@ -970,9 +970,7 @@ class TestPatchProjectNarrationSettings:
         assert out.get("is_error") is not True
         project = ctx.pm.load_project("demo")
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         try:
             resolver = ConfigResolver(async_sessionmaker(engine, expire_on_commit=False))
             assert await resolver.resolve_narration_voice(project) == "Ethan"

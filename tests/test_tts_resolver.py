@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.config.resolver import ConfigResolver, ProviderModel
 from lib.config.service import ProviderStatus
-from lib.db.base import Base
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 def _ready(name: str, media_types: list[str]) -> ProviderStatus:
@@ -96,9 +96,7 @@ class TestResolveDefaultAudioBackend:
 
 
 async def _make_factory():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     return async_sessionmaker(engine, expire_on_commit=False), engine
 
 

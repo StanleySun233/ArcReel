@@ -1,7 +1,7 @@
 """自定义供应商管理 API 测试。
 
 通过 TestClient + dependency_overrides 测试 CRUD、模型管理、
-模型发现和连接测试端点。使用内存 SQLite 数据库。
+模型发现和连接测试端点。使用独立 PostgreSQL schema。
 """
 
 from __future__ import annotations
@@ -12,13 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lib.config.service import ConfigService
 from lib.db import get_async_session
-from lib.db.base import Base
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import custom_providers
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 TEST_USER_ID = "test"
 
@@ -29,10 +29,8 @@ TEST_USER_ID = "test"
 
 @pytest.fixture()
 async def db_engine():
-    """内存 SQLite 引擎。"""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """独立 PostgreSQL schema 引擎。"""
+    engine = await create_pg_test_engine_with_cleanup()
     yield engine
     await engine.dispose()
 
@@ -52,9 +50,7 @@ def app(session_factory) -> FastAPI:
             yield session
 
     _app.dependency_overrides[get_async_session] = _override_session
-    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
-        id=TEST_USER_ID, sub="test", role="admin"
-    )
+    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=TEST_USER_ID, sub="test", role="admin")
     _app.include_router(custom_providers.router, prefix="/api/v1")
     return _app
 

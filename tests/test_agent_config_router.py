@@ -6,12 +6,12 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.db import get_async_session
-from lib.db.base import Base
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import agent_config
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 def _make_app(session_factory) -> FastAPI:
@@ -29,9 +29,7 @@ def _make_app(session_factory) -> FastAPI:
 
 @pytest_asyncio.fixture
 async def _session_factory():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     yield factory
     await engine.dispose()

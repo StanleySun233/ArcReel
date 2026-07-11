@@ -27,7 +27,7 @@ from server.agent_runtime.turn_schema import normalize_block
 
 logger = logging.getLogger(__name__)
 
-# 落库瞬时失败（SQLite busy / 连接抖动）的有界重试；重试耗尽才放弃该条目。
+# 落库瞬时失败（连接抖动）的有界重试；重试耗尽才放弃该条目。
 _APPEND_ATTEMPTS = 3
 _APPEND_RETRY_BASE_S = 0.05
 

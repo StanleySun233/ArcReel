@@ -3,26 +3,26 @@
 import asyncio
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 import lib.generation_queue as generation_queue_module
-from lib.db.base import Base
 from lib.generation_queue import GenerationQueue
 from lib.generation_queue_client import enqueue_task_only
 from lib.user_scope import current_identity_scope
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture
 async def queue():
-    """Create a GenerationQueue backed by in-memory SQLite."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Create a GenerationQueue backed by an isolated PostgreSQL schema."""
+    engine, schema = await create_pg_test_engine()
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
     q = GenerationQueue(session_factory=factory)
-    yield q
-    await engine.dispose()
+    try:
+        yield q
+    finally:
+        await drop_pg_test_engine(engine, schema)
 
 
 class TestGenerationQueue:

@@ -14,7 +14,6 @@ from lib.db.repositories.credential_repository import CredentialRepository
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import providers
 
-
 _FAKE_USER = CurrentUserInfo(id="test-user", sub="testuser", role="admin")
 
 

@@ -52,7 +52,7 @@ from server.services.project_archive import (
     ProjectArchiveValidationError,
 )
 from server.services.project_cover import resolve_project_cover
-from server.services.tenant_auth import ROLE_MEMBER, ROLE_VIEW, require_tenant_access
+from server.services.tenant_auth import ROLE_ADMIN, ROLE_MEMBER, ROLE_VIEW, require_tenant_access
 
 router = APIRouter()
 
@@ -553,7 +553,7 @@ async def create_project(
             project_name = manual_name or manager.generate_project_name(title)
             if await repo.get_by_name(project_name) is not None:
                 raise HTTPException(status_code=400, detail=_t("project_exists", name=project_name))
-            project_id = f"proj-{uuid.uuid4().hex}"
+            project_id = f"proj-{uuid.uuid4().hex[:16]}"
 
             try:
                 result = await asyncio.to_thread(
@@ -758,7 +758,7 @@ async def update_project(project_id: str, req: UpdateProjectRequest, _user: Curr
     try:
         async with async_session_factory() as session:
             async with session.begin():
-                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_ADMIN)
                 await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
                 row = await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id)
                 if row is None:
@@ -945,7 +945,7 @@ async def delete_project(project_id: str, _user: CurrentUser, _t: Translator):
     try:
         async with async_session_factory() as session:
             async with session.begin():
-                access = await require_tenant_access(session, _user, minimum_role=ROLE_MEMBER)
+                access = await require_tenant_access(session, _user, minimum_role=ROLE_ADMIN)
                 await set_tenant_context(session, user_id=_user.id, tenant_id=access.id)
                 row = await ProjectRepository(session, tenant_id=access.id).get_by_id(project_id)
                 if row is None:
@@ -1216,7 +1216,9 @@ class UpdateEpisodeRequest(BaseModel):
 
 
 @router.patch("/projects/{project_id}/segments/{segment_id}")
-async def update_segment(project_id: str, segment_id: str, req: UpdateSegmentRequest, _user: CurrentUser, _t: Translator):
+async def update_segment(
+    project_id: str, segment_id: str, req: UpdateSegmentRequest, _user: CurrentUser, _t: Translator
+):
     """更新说书模式片段"""
     try:
         _access, _row, manager = await _require_project_row(project_id, _user, _t, minimum_role=ROLE_MEMBER)

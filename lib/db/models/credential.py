@@ -21,7 +21,6 @@ class ProviderCredential(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base)
             "tenant_id",
             "provider",
             unique=True,
-            sqlite_where=text("is_active = 1"),
             postgresql_where=text("is_active"),
         ),
     )

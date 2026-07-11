@@ -27,35 +27,31 @@ class AlembicPostgresDb:
     app_role: str
 
     def execute(self, sql: str, params: dict | None = None) -> None:
-        asyncio.run(_execute(self.url, self.schema, sql, params))
+        asyncio.run(_execute(self.admin_url, self.schema, sql, params))
 
     def execute_with_settings(self, settings: dict[str, str], sql: str, params: dict | None = None) -> None:
-        asyncio.run(_execute_with_settings(self.url, self.schema, settings, sql, params))
+        asyncio.run(_execute_with_settings(self.admin_url, self.schema, settings, sql, params))
 
-    def execute_as_rls_role_with_settings(
-        self, settings: dict[str, str], sql: str, params: dict | None = None
-    ) -> None:
+    def execute_as_rls_role_with_settings(self, settings: dict[str, str], sql: str, params: dict | None = None) -> None:
         asyncio.run(_execute_with_settings(self.url, self.schema, settings, sql, params, self.rls_role))
 
     def fetchall(self, sql: str, params: dict | None = None):
-        return asyncio.run(_fetchall(self.url, self.schema, sql, params))
+        return asyncio.run(_fetchall(self.admin_url, self.schema, sql, params))
 
     def fetchall_as_rls_role(self, sql: str, params: dict | None = None):
         return asyncio.run(_fetchall(self.url, self.schema, sql, params, self.rls_role))
 
     def fetchall_with_settings(self, settings: dict[str, str], sql: str, params: dict | None = None):
-        return asyncio.run(_fetchall_with_settings(self.url, self.schema, settings, sql, params))
+        return asyncio.run(_fetchall_with_settings(self.admin_url, self.schema, settings, sql, params))
 
-    def fetchall_as_rls_role_with_settings(
-        self, settings: dict[str, str], sql: str, params: dict | None = None
-    ):
+    def fetchall_as_rls_role_with_settings(self, settings: dict[str, str], sql: str, params: dict | None = None):
         return asyncio.run(_fetchall_with_settings(self.url, self.schema, settings, sql, params, self.rls_role))
 
     def grant_rls_role(self) -> None:
         asyncio.run(_grant_rls_role(self.admin_url, self.schema, self.rls_role, self.app_role))
 
     def scalar(self, sql: str, params: dict | None = None):
-        return asyncio.run(_scalar(self.url, self.schema, sql, params))
+        return asyncio.run(_scalar(self.admin_url, self.schema, sql, params))
 
     def columns(self, table_name: str) -> set[str]:
         rows = self.fetchall(
@@ -161,8 +157,7 @@ async def _grant_rls_role(url: str, schema: str, role: str, app_role: str) -> No
             )
             await conn.execute(
                 sa.text(
-                    f"GRANT USAGE, SELECT ON ALL SEQUENCES "
-                    f"IN SCHEMA {_quote_ident(schema)} TO {_quote_ident(role)}"
+                    f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA {_quote_ident(schema)} TO {_quote_ident(role)}"
                 )
             )
     finally:

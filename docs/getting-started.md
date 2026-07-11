@@ -100,7 +100,7 @@ docker compose version
 
 ### 2.1 下载并启动
 
-#### 方式 A：默认部署（SQLite，推荐入门）
+#### 方式 A：默认部署（PostgreSQL，推荐入门）
 
 ```bash
 # 1. 克隆项目

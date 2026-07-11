@@ -3,13 +3,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from lib.user_scope import set_current_tenant_id
 from server.agent_runtime.service import AssistantService
 from server.agent_runtime.session_store import SessionMetaStore
 from tests.factories import make_session_meta
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 class _FakePM:
@@ -95,10 +95,8 @@ class _FakeSessionManager:
 class TestAssistantServiceMore:
     @pytest.mark.asyncio
     async def test_service_init_interrupts_stale_running_sessions(self, tmp_path):
-        # Create an in-memory async store and seed data
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        # Create an isolated async store and seed data
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         store = SessionMetaStore(session_factory=factory)
 
@@ -289,9 +287,7 @@ class TestAssistantServiceMore:
         client_key）的重试应经 DB 兜底命中既有会话，不再重复建会话。"""
         from server.agent_runtime.event_log import EventLogStore, build_user_entry
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         store = EventLogStore(session_factory=factory)
 
@@ -324,9 +320,7 @@ class TestAssistantServiceMore:
         """进程内 LRU 淘汰旧键后，同键重试经 DB 兜底命中原会话。"""
         from server.agent_runtime.event_log import EventLogStore
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         store = EventLogStore(session_factory=factory)
 
@@ -366,9 +360,7 @@ class TestAssistantServiceMore:
         在先，被之后新到达但只访问一次的 key 挤出缓存（退化为 FIFO）。"""
         from server.agent_runtime.event_log import EventLogStore
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         store = EventLogStore(session_factory=factory)
 
@@ -415,9 +407,7 @@ class TestAssistantServiceMore:
         情形（不能直接 move_to_end 抛 KeyError 把幂等命中打成未处理异常）。"""
         from server.agent_runtime.event_log import EventLogStore
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         store = EventLogStore(session_factory=factory)
 
@@ -465,9 +455,7 @@ class TestAssistantServiceMore:
         映射并按正常路径新建会话，而不是让调用方连接一个不存在的会话。"""
         from server.agent_runtime.event_log import EventLogStore
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         store = EventLogStore(session_factory=factory)
 

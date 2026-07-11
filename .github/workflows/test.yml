@@ -89,7 +89,7 @@ jobs:
           fail_ci_if_error: false
 
   postgres-compat:
-    # SQLite/PostgreSQL 方言兼容性闸门：alembic 三步闭环（upgrade/downgrade/idempotent）
+    # PostgreSQL 闸门：alembic 三步闭环（upgrade/downgrade/idempotent）
     # + 所有 DB-touching 测试（marker 驱动）跑在 PG16 上。
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -136,7 +136,7 @@ jobs:
       - name: Run dialect-sensitive tests against Postgres
         run: |
           uv run python -m pytest -v \
-            -m "uses_db and not sqlite_only" \
+            -m "uses_db" \
             --cov=lib --cov=server --cov-report=xml:coverage-pg.xml
 
       - name: Upload PG coverage

@@ -63,7 +63,7 @@ _SENSITIVE_QUERY_KEYS = frozenset({"password", "passwd", "pwd", "token", "secret
 
 
 def _db_url() -> str:
-    raw = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./projects/.arcreel.db")
+    raw = os.environ.get("DATABASE_URL", "<unset>")
     try:
         parsed = urlparse(raw)
         netloc = parsed.netloc

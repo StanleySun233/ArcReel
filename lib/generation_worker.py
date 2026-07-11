@@ -1,5 +1,5 @@
 """
-Background worker that consumes generation tasks from SQLite queue.
+Background worker that consumes generation tasks from the PostgreSQL queue.
 
 Per-provider × media_type 调度，拆成两件独立的东西：CapacityTable（上限，来自
 ConfigService 的用户配置）+ SlotTable（运行时占用台账）。

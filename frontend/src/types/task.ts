@@ -22,7 +22,7 @@ export interface TaskItem {
   media_type: TaskMediaType;
   resource_id: string;
   script_file: string | null;
-  /** Parsed from payload_json in the SQLite row */
+  /** Parsed from payload_json in the task row */
   payload: Record<string, unknown>;
   status: TaskStatus;
   result: Record<string, unknown> | null;

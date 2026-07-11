@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from alembic import command
+from tests.alembic_pg import AlembicPostgresDb
 
-from tests.alembic_pg import AlembicPostgresDb, alembic_pg  # noqa: F401
+pytest_plugins = ["tests.alembic_pg"]
 
 TENANT_SETTINGS = {"app.current_tenant_id": "ten_default", "app.current_user_id": "default"}
 
@@ -22,7 +23,7 @@ def test_upgrade_copies_legacy_setting_to_two_new_keys(alembic_pg: AlembicPostgr
     rows = alembic_pg.fetchall_with_settings(
         TENANT_SETTINGS,
         "SELECT key, value FROM system_setting WHERE key IN "
-        "('default_image_backend', 'default_image_backend_t2i', 'default_image_backend_i2i')"
+        "('default_image_backend', 'default_image_backend_t2i', 'default_image_backend_i2i')",
     )
     settings = {r.key: r.value for r in rows}
     assert settings.get("default_image_backend_t2i") == "openai/gpt-image-1"
@@ -43,8 +44,7 @@ def test_upgrade_preserves_already_set_new_keys(alembic_pg: AlembicPostgresDb):
 
     rows = alembic_pg.fetchall_with_settings(
         TENANT_SETTINGS,
-        "SELECT key, value FROM system_setting WHERE key IN "
-        "('default_image_backend_t2i', 'default_image_backend_i2i')"
+        "SELECT key, value FROM system_setting WHERE key IN ('default_image_backend_t2i', 'default_image_backend_i2i')",
     )
     settings = {r.key: r.value for r in rows}
     assert settings.get("default_image_backend_t2i") == "openai/already-set"
@@ -57,7 +57,7 @@ def test_upgrade_no_op_when_no_legacy(alembic_pg: AlembicPostgresDb):
     rows = alembic_pg.fetchall_with_settings(
         TENANT_SETTINGS,
         "SELECT key FROM system_setting WHERE key IN "
-        "('default_image_backend', 'default_image_backend_t2i', 'default_image_backend_i2i')"
+        "('default_image_backend', 'default_image_backend_t2i', 'default_image_backend_i2i')",
     )
     assert rows == []
 
@@ -70,7 +70,7 @@ def test_downgrade_drops_only_new_keys(alembic_pg: AlembicPostgresDb):
         "INSERT INTO system_setting (tenant_id, user_id, key, value, updated_at) "
         "VALUES ('ten_default', 'default', 'default_image_backend', 'openai/legacy', CURRENT_TIMESTAMP), "
         "('ten_default', 'default', 'default_image_backend_t2i', 'openai/t2i', CURRENT_TIMESTAMP), "
-        "('ten_default', 'default', 'default_image_backend_i2i', 'openai/i2i', CURRENT_TIMESTAMP)"
+        "('ten_default', 'default', 'default_image_backend_i2i', 'openai/i2i', CURRENT_TIMESTAMP)",
     )
 
     command.downgrade(alembic_pg.cfg, "eedf0aa985e6")

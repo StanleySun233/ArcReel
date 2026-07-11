@@ -23,7 +23,7 @@ from lib.retry import BASE_RETRYABLE_ERRORS, _should_retry, with_retry_async
 
 logger = logging.getLogger(__name__)
 
-# DB 瞬态错误集合：sqlite "database is locked"、pg "could not connect" / 连接已关闭。
+# DB 瞬态错误集合：PostgreSQL "could not connect" / 连接已关闭。
 # 故意不收 DBAPIError 父类——会兜住 IntegrityError/DataError/ProgrammingError 等非瞬态
 # 错误（SQL 语法 / 约束违反），重试无意义且拖延 fail-fast。
 _PERSIST_RETRYABLE_ERRORS: tuple[type[Exception], ...] = (

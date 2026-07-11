@@ -11,7 +11,6 @@ from claude_agent_sdk import fold_session_summary
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -74,11 +73,9 @@ class DbSessionStore:
                 await self._append_once(project_key, session_id, subpath, entries, now_ms)
                 return
             except IntegrityError as exc:
-                # Narrow retry to the seq-PK race only. Both SQLite ("UNIQUE
-                # constraint failed: ... seq") and PostgreSQL ("duplicate key
-                # value violates unique constraint" with the seq column in the
-                # detail) include these tokens for this specific PK collision;
-                # other unique violations (e.g. uuid dedup) bubble up.
+                # Narrow retry to the seq-PK race only. PostgreSQL includes the
+                # seq column in the duplicate-key detail for this specific PK
+                # collision; other unique violations (e.g. uuid dedup) bubble up.
                 msg = str(exc.orig) if exc.orig else str(exc)
                 is_seq_race = "seq" in msg and ("UNIQUE" in msg or "duplicate key" in msg)
                 if not is_seq_race:
@@ -99,9 +96,7 @@ class DbSessionStore:
                     subpath or "<main>",
                     exc,
                 )
-                # Jittered exponential backoff capped at ~50ms — keeps SQLite's
-                # writer-lock contention from amplifying under high concurrency
-                # while staying well below the busy_timeout.
+                # Jittered exponential backoff capped at ~50ms.
                 delay = random.uniform(0, min(_APPEND_BACKOFF_CAP_S, 0.001 * (2**attempt)))
                 await asyncio.sleep(delay)
 
@@ -175,19 +170,17 @@ class DbSessionStore:
     ) -> None:
         """Read-fold-write the per-session summary inside the active transaction.
 
-        Acquires a row lock on PG (SELECT ... FOR UPDATE) so concurrent appends
-        can't lose folds. SQLite serializes writers via BEGIN IMMEDIATE.
+        Acquires a row lock so concurrent appends can't lose folds.
         """
-        bind = session.bind
-        dialect = bind.dialect.name if bind is not None else "sqlite"
-
-        stmt = select(AgentSessionSummary).where(
-            AgentSessionSummary.tenant_id == tenant_id,
-            AgentSessionSummary.project_key == project_key,
-            AgentSessionSummary.session_id == session_id,
+        stmt = (
+            select(AgentSessionSummary)
+            .where(
+                AgentSessionSummary.tenant_id == tenant_id,
+                AgentSessionSummary.project_key == project_key,
+                AgentSessionSummary.session_id == session_id,
+            )
+            .with_for_update()
         )
-        if dialect == "postgresql":
-            stmt = stmt.with_for_update()
         prev_row = (await session.execute(stmt)).scalar_one_or_none()
 
         if prev_row is None:
@@ -224,29 +217,20 @@ class DbSessionStore:
             prev_row.updated_at = now_dt
 
     async def _insert_entries(self, session, rows: list[dict]) -> None:
-        """Dialect-aware INSERT ... ON CONFLICT (uuid) DO NOTHING.
+        """PostgreSQL INSERT ... ON CONFLICT (uuid) DO NOTHING.
 
         Targets the partial unique index ``uq_agent_entries_uuid`` (WHERE
-        uuid IS NOT NULL); both PG and SQLite require ``index_where`` to
-        match a partial index inference target.
+        uuid IS NOT NULL); ``index_where`` must match the partial index
+        inference target.
         """
-        bind = session.bind
-        dialect = bind.dialect.name if bind is not None else "sqlite"
         index_elements = ["tenant_id", "project_key", "session_id", "subpath", "uuid"]
         index_where = text("uuid IS NOT NULL")
 
-        if dialect == "postgresql":
-            stmt = pg_insert(AgentSessionEntry).values(rows)
-            stmt = stmt.on_conflict_do_nothing(
-                index_elements=index_elements,
-                index_where=index_where,
-            )
-        else:
-            stmt = sqlite_insert(AgentSessionEntry).values(rows)
-            stmt = stmt.on_conflict_do_nothing(
-                index_elements=index_elements,
-                index_where=index_where,
-            )
+        stmt = pg_insert(AgentSessionEntry).values(rows)
+        stmt = stmt.on_conflict_do_nothing(
+            index_elements=index_elements,
+            index_where=index_where,
+        )
         await session.execute(stmt)
 
     async def load(self, key: dict) -> list[dict] | None:

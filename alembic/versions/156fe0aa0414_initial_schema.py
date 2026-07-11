@@ -101,7 +101,6 @@ def upgrade() -> None:
         ["project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running')"),
-        sqlite_where=sa.text("status IN ('queued', 'running')"),
     )
 
     op.create_table(

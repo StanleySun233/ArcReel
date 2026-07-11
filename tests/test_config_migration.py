@@ -2,18 +2,16 @@ import json
 from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lib.config.migration import migrate_json_to_db
 from lib.config.repository import ProviderConfigRepository, SystemSettingRepository
-from lib.db.base import Base
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 @pytest.fixture
 async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     sm = async_sessionmaker(engine, expire_on_commit=False)
     async with sm() as s:
         yield s

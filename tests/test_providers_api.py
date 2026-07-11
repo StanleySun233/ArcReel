@@ -25,6 +25,7 @@ from server.auth import CurrentUserInfo, get_current_user
 from server.dependencies import get_config_service
 from server.routers import providers
 from tests.conftest import make_translator
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 _FAKE_USER = CurrentUserInfo(id="test-user", sub="testuser", role="admin")
 
@@ -549,35 +550,33 @@ class TestPatchProviderConfig:
 class TestPatchProviderConfigMaxWorkersValidation:
     """容量键（*_max_workers）写入校验：非法值 422 + 可读消息，合法值正常保存。
 
-    走真实 ConfigService + 内存 DB，覆盖 router → service → repository 全链路。
+    走真实 ConfigService + 独立 PG schema，覆盖 router → service → repository 全链路。
     """
 
     @staticmethod
     def _make_db_app(locale: str = "zh") -> FastAPI:
         from contextlib import asynccontextmanager
 
-        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-        from lib.db.base import Base
+        from sqlalchemy.ext.asyncio import async_sessionmaker
 
         # engine 由 lifespan 持有：TestClient 上下文退出时必然 dispose——若放在
         # session 依赖的 yield 之后，路由抛 HTTPException 时会被跳过而泄漏 engine
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        sm = async_sessionmaker(engine, expire_on_commit=False)
+        state = {}
 
         @asynccontextmanager
         async def _lifespan(_app: FastAPI):
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+            engine = await create_pg_test_engine_with_cleanup()
+            state["engine"] = engine
+            state["sm"] = async_sessionmaker(engine, expire_on_commit=False)
             try:
                 yield
             finally:
-                await engine.dispose()
+                await state["engine"].dispose()
 
         app = FastAPI(lifespan=_lifespan)
 
         async def _override_session():
-            async with sm() as s:
+            async with state["sm"]() as s:
                 yield s
 
         app.dependency_overrides[get_async_session] = _override_session

@@ -1,8 +1,8 @@
 """ArcReel SDK in-process MCP tools.
 
 Tools registered here run **in the server main process** (not inside the
-agent sandbox), so they can read ``projects/.arcreel.db`` and call provider
-HTTP without poking holes in ``filesystem.denyRead`` / network allowlist.
+agent sandbox), so they can call provider HTTP without poking holes in
+``filesystem.denyRead`` / network allowlist.
 
 Each session gets its own MCP server built via :func:`build_arcreel_mcp_server`
 — ``project_name`` is closure-bound, so the agent cannot redirect tools to a

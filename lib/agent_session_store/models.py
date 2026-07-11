@@ -33,7 +33,6 @@ class AgentSessionEntry(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
             "uuid",
             unique=True,
             postgresql_where=text("uuid IS NOT NULL"),
-            sqlite_where=text("uuid IS NOT NULL"),
         ),
         Index(
             "idx_agent_entries_listing",

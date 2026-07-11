@@ -1,8 +1,8 @@
 # 租户、用户、项目权限关系设计
 
 **日期:** 20260711
-**状态:** draft
-**适用范围:** ArcReel 新商业发行版。明确不做旧版本项目、SQLite、本地媒体路径、按项目名寻址的兼容。
+**状态:** accepted
+**适用范围:** ArcReel 新商业发行版。明确不做旧版本项目、本地嵌入式数据库、本地媒体路径、按项目名寻址的兼容。
 
 ## 目标
 
@@ -109,7 +109,7 @@ $ARCREEL_DATA_DIR/_tenants/{tenant_id}/projects/{project_id}/project.json
 | asset_library_bindings | tenant_id, asset_id, parent_id, snapshot_data | 支持跨租户/个人导入、快照、手动 sync |
 | agent_sessions | tenant_id, project_id, user_id | Agent 会话不得脱离项目上下文 |
 
-本发行版不做旧数据迁移兼容。Alembic 可以直接表达新表结构，但不需要写旧 SQLite 或旧 project.json 转换逻辑。
+本发行版不做旧数据迁移兼容。Alembic 可以直接表达新表结构，但不需要写旧本地数据库或旧 project.json 转换逻辑。
 
 ## Issued Tokens 暂停策略
 
@@ -187,15 +187,17 @@ Agent 会话创建、消息发送、工具调用、任务入队必须携带同�
 
 租户切换必须由用户手动触发。登录后默认进入个人空间。
 
-## 验收审计清单
+## 最终限制清单
 
-- [ ] 所有 `/projects/{name}` 路由改为 `/projects/{project_id}`。
-- [ ] 所有项目文件路径使用 `project_id`。
-- [ ] 所有 SQL 查询项目时带当前后端 tenant 上下文。
-- [ ] 所有任务、Agent、文件、用量记录持久化 `tenant_id + project_id`。
-- [x] Issued Tokens 后台统一返回 `403 feature_disabled`，前端按钮 disabled。
-- [ ] 用量统计支持 tenant/project 分组。
-- [ ] 前端所有缓存 key 和 URL 不再使用项目名。
-- [ ] 跨租户同名项目测试通过。
-- [ ] view/member/admin/owner 权限矩阵测试通过。
-- [ ] Agent 输入文本、生成图片、生成视频、上传文件、导入资产完整链路测试通过。
+- 项目只能通过 `tenant_id + project_id` 访问。
+- 项目显示名不得作为路由键、存储目录名、任务筛选键、Agent 会话键、文件绑定键或用量聚合键。
+- 前端不得把 `tenant_id` 或 role 作为业务授权参数提交。
+- 后端必须在请求时查询真实 membership，并忽略前端传来的 role。
+- viewer 只能读取项目、资产、成员列表和可见用量。
+- member 可以创建项目、上传文件、导入资产、生成文本/图片/视频、添加 viewer，但不能删除项目或添加 member/admin。
+- admin 可以编辑租户配置、创建/编辑/删除项目、添加 member/viewer。
+- owner 是租户字段，不是 membership 枚举；owner 默认拥有 admin 行为，并额外拥有添加 admin 的能力。
+- Issued Tokens 默认不可用，后台统一 `403 feature_disabled`，前端按钮 disabled。
+- CaMeL provider provisioning keys、媒体供应商凭证和 Agent 凭证不属于 Issued Tokens 禁用范围。
+- 已入队任务按提交时持久化的 `tenant_id/project_id/requested_by_user_id` 执行，不因后续 membership 变化中断。
+- 所有用户可访问媒体文件必须通过 `file_id` 和后端短签名 URL 获取。

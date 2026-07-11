@@ -4,12 +4,12 @@ import json
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from lib.user_scope import set_current_tenant_id, set_current_user_id
 from server.agent_runtime.session_manager import SessionManager
 from server.agent_runtime.session_store import SessionMetaStore
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 class _FakeOptions:
@@ -24,10 +24,8 @@ class _FakeHookMatcher:
 
 
 async def _make_store():
-    """Create an async SessionMetaStore backed by in-memory SQLite."""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Create an async SessionMetaStore backed by an isolated PostgreSQL schema."""
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     store = SessionMetaStore(session_factory=factory)
     return store, engine

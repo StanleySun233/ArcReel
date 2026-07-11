@@ -9,9 +9,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.sse import ServerSentEvent
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from lib.i18n import DEFAULT_LOCALE, get_translator
 from server.agent_runtime.event_log import EventLogService, EventLogStore
 from server.agent_runtime.models import LiveMessage, SubscriptionReady
@@ -20,6 +19,7 @@ from server.auth import CurrentUserInfo, get_current_user, get_current_user_flex
 from server.routers import assistant
 from tests.conftest import make_translator
 from tests.factories import make_session_meta
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 SESSION_ID = "entry-stream-s1"
 
@@ -74,9 +74,7 @@ class _FakeEntrySessionManager:
 
 @pytest.fixture()
 async def entry_service(tmp_path):
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     store = EventLogStore(session_factory=factory)
 

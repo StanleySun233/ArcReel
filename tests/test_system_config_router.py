@@ -1,7 +1,7 @@
 """
 Tests for the refactored system_config router.
 
-Uses an in-memory SQLite database and dependency overrides to test
+Uses an isolated PostgreSQL schema and dependency overrides to test
 GET/PATCH /api/v1/system/config without real providers.
 """
 
@@ -12,14 +12,14 @@ from dataclasses import dataclass, field
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.config.service import ConfigService
 from lib.db import get_async_session
-from lib.db.base import Base
 from lib.db.repositories.credential_repository import CredentialRepository
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import system_config as system_config_router
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 TEST_USER_ID = "system-test"
 
@@ -29,6 +29,7 @@ class _SystemConfigSeed:
     settings: dict[str, str] = field(default_factory=dict)
     ready_providers: list[str] = field(default_factory=list)
 
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -36,9 +37,7 @@ class _SystemConfigSeed:
 
 @pytest.fixture()
 async def db_session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     sm = async_sessionmaker(engine, expire_on_commit=False)
     async with sm() as session:
         yield session
@@ -60,25 +59,26 @@ async def _seed_system_config(session, seed: _SystemConfigSeed) -> None:
 def _make_app_with_mock(seed: _SystemConfigSeed) -> FastAPI:
     from contextlib import asynccontextmanager
 
-    mem_engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    mem_factory = async_sessionmaker(mem_engine, expire_on_commit=False)
+    state = {}
 
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
-        async with mem_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        mem_engine = await create_pg_test_engine_with_cleanup()
+        mem_factory = async_sessionmaker(mem_engine, expire_on_commit=False)
+        state["engine"] = mem_engine
+        state["factory"] = mem_factory
         async with mem_factory() as session:
             await _seed_system_config(session, seed)
-        yield
-        await mem_engine.dispose()
+        try:
+            yield
+        finally:
+            await state["engine"].dispose()
 
     app = FastAPI(lifespan=_lifespan)
-    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
-        id=TEST_USER_ID, sub="testuser", role="admin"
-    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=TEST_USER_ID, sub="testuser", role="admin")
 
     async def _override_session():
-        async with mem_factory() as session:
+        async with state["factory"]() as session:
             yield session
 
     app.dependency_overrides[get_async_session] = _override_session

@@ -203,14 +203,12 @@ class TestMediaGenerator:
     @pytest.mark.asyncio
     async def test_video_billed_duration_lands_in_ledger(self, tmp_path):
         """端到端：backend 返回与请求不同的实际计费时长，ApiCall 账本记录 backend 值。"""
-        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+        from sqlalchemy.ext.asyncio import async_sessionmaker
 
-        from lib.db.base import Base
         from lib.usage_tracker import UsageTracker
+        from tests.pg_utils import create_pg_test_engine_with_cleanup
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         try:
             gen = _build_generator(tmp_path)
             gen._video_backend = _FakeVideoBackend(result_duration_seconds=15)

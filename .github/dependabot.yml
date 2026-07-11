@@ -40,7 +40,6 @@ updates:
       database:
         patterns:
           - "sqlalchemy*"
-          - "aiosqlite"
           - "asyncpg"
           - "alembic"
         update-types:

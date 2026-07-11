@@ -50,7 +50,6 @@ class Task(TenantOwnedMixin, UserOwnedMixin, Base):
             "resource_id",
             text("COALESCE(script_file, '')"),
             unique=True,
-            sqlite_where=text("status IN ('queued', 'running', 'cancelling')"),
             postgresql_where=text("status IN ('queued', 'running', 'cancelling')"),
         ),
     )

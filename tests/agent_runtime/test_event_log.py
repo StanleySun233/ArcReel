@@ -5,9 +5,8 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from server.agent_runtime.event_log import (
     REPLAYED_USER_ECHO_KEY,
     EventLogService,
@@ -18,13 +17,12 @@ from server.agent_runtime.event_log import (
     is_interrupt_entry,
     normalize_sdk_message_to_entries,
 )
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 @pytest.fixture()
 async def log_store():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     yield EventLogStore(session_factory=factory)
     await engine.dispose()
@@ -32,30 +30,15 @@ async def log_store():
 
 @pytest.fixture()
 async def file_log_store(tmp_path):
-    """文件 SQLite + NullPool：并发测试需要独立连接（内存库 StaticPool 会串扰）。"""
-    from sqlalchemy import event, pool
-
-    db_path = tmp_path / "event-log.db"
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", poolclass=pool.NullPool)
-
-    @event.listens_for(engine.sync_engine, "connect")
-    def _set_sqlite_pragma(dbapi_conn, _record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=30000")
-        cursor.execute("PRAGMA foreign_keys=OFF")
-        cursor.close()
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """独立 PostgreSQL schema：并发测试需要真实多连接。"""
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     yield EventLogStore(session_factory=factory)
     await engine.dispose()
 
 
 class _FakeDriverError(Exception):
-    """带驱动侧属性的伪 DBAPI 错误（asyncpg 的 sqlstate/constraint_name、
-    sqlite3 的 sqlite_errorname），用于构造本地化文案下的 IntegrityError。"""
+    """带驱动侧属性的伪 DBAPI 错误，用于构造本地化文案下的 IntegrityError。"""
 
     def __init__(
         self,
@@ -63,15 +46,12 @@ class _FakeDriverError(Exception):
         *,
         sqlstate: str | None = None,
         constraint_name: str | None = None,
-        sqlite_errorname: str | None = None,
     ) -> None:
         super().__init__(message)
         if sqlstate is not None:
             self.sqlstate = sqlstate
         if constraint_name is not None:
             self.constraint_name = constraint_name
-        if sqlite_errorname is not None:
-            self.sqlite_errorname = sqlite_errorname
 
 
 # ---------------------------------------------------------------------------
@@ -640,7 +620,6 @@ class TestEventLogStore:
         assert created is True
         assert result["seq"] == 0
 
-    @pytest.mark.sqlite_only
     async def test_concurrent_appends_keep_seq_unique(self, file_log_store: EventLogStore):
         await asyncio.gather(*[file_log_store.append("s1", [{"type": "assistant", "uuid": f"u{i}"}]) for i in range(8)])
         entries = await file_log_store.list_after("s1")
@@ -813,7 +792,7 @@ class TestEventLogStore:
                 raise IntegrityError(
                     "INSERT INTO agent_session_event_log ...",
                     {},
-                    _FakeDriverError("constraint failed", sqlite_errorname="SQLITE_CONSTRAINT_PRIMARYKEY"),
+                    _FakeDriverError("duplicate key value violates unique constraint", sqlstate="23505"),
                 )
             return await original_append_once(session_id, entries, client_key)
 
@@ -845,12 +824,11 @@ class TestEventLogStore:
             await log_store.append("s1", [{"type": "user", "uuid": "u1"}])
         assert calls["n"] == 1
 
-    async def test_append_retries_seq_race_via_sqlite_errorname(self, log_store: EventLogStore, monkeypatch):
-        """SQLite 侧用 sqlite_errorname 判定（PRIMARYKEY/UNIQUE 两个扩展码都算），
-        不依赖错误文案。"""
+    async def test_append_retries_seq_race_via_postgres_sqlstate(self, log_store: EventLogStore, monkeypatch):
+        """PostgreSQL 侧用唯一冲突 SQLSTATE 判定，不依赖错误文案。"""
         from sqlalchemy.exc import IntegrityError
 
-        driver_error = _FakeDriverError("constraint failed", sqlite_errorname="SQLITE_CONSTRAINT_PRIMARYKEY")
+        driver_error = _FakeDriverError("constraint failed", sqlstate="23505")
         calls = {"n": 0}
         original_append_once = log_store._append_once  # pyright: ignore[reportPrivateUsage]
 

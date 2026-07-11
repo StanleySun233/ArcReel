@@ -3,22 +3,22 @@
 from datetime import datetime, timedelta
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from lib.usage_tracker import UsageTracker
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture
 async def tracker():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine, schema = await create_pg_test_engine()
 
     factory = async_sessionmaker(engine, expire_on_commit=False)
     t = UsageTracker(session_factory=factory)
-    yield t
-    await engine.dispose()
+    try:
+        yield t
+    finally:
+        await drop_pg_test_engine(engine, schema)
 
 
 class TestUsageTracker:

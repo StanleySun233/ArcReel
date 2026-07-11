@@ -98,11 +98,11 @@ ConfigService（`service.py`）→ Repository（持久化 + 密钥脱敏）→ R
 
 ### lib/db/ — SQLAlchemy Async ORM 层
 
-- `engine.py` — 异步引擎 + session factory（`DATABASE_URL` 默认 `sqlite+aiosqlite`）
+- `engine.py` — 异步引擎 + session factory（必须配置 PostgreSQL `DATABASE_URL`）
 - `models/` — ORM 模型：Task / ApiCall / ApiKey / AgentSession（`session.py`）/ Config / Credential / User / CustomProvider（含模型子表）/ **Asset**（全局资产库）
 - `repositories/` — 异步 Repository：Task / Usage / Session / ApiKey / Credential（多 API Key + 活跃切换）/ CustomProvider / **Asset**
 
-数据库：开发 SQLite（`projects/.arcreel.db`），生产 PostgreSQL（`asyncpg`）
+数据库：PostgreSQL（`asyncpg`），本发行版不支持本地文件数据库
 
 ### Agent Runtime（Claude Agent SDK 集成）
 

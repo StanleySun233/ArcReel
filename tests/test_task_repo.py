@@ -3,19 +3,19 @@
 import asyncio
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from lib.db.repositories.task_repo import TaskRepository
+from tests.pg_utils import create_pg_test_engine, create_pg_test_engine_with_cleanup, drop_pg_test_engine
 
 
 @pytest.fixture
 async def engine():
-    eng = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    yield eng
-    await eng.dispose()
+    eng, schema = await create_pg_test_engine()
+    try:
+        yield eng
+    finally:
+        await drop_pg_test_engine(eng, schema)
 
 
 @pytest.fixture
@@ -135,10 +135,7 @@ class TestTaskRepository:
         assert not await repo.is_worker_online(name="default")
 
     async def test_worker_lease_concurrent_first_acquire(self, tmp_path):
-        db_path = tmp_path / "lease-race.db"
-        engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
 
         factory = async_sessionmaker(engine, expire_on_commit=False)
         start = asyncio.Event()

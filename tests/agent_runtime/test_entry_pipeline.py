@@ -361,7 +361,7 @@ class TestSessionEntryPipeline:
         assert store.entries[1]["answers"] == {"继续吗?": "继续"}
 
     async def test_transient_store_failure_retried(self):
-        """瞬时落库失败（SQLite busy 等）有界重试，避免时间线永久空洞。"""
+        """瞬时落库失败有界重试，避免时间线永久空洞。"""
 
         class _FlakyStore(_RecordingStore):
             def __init__(self):

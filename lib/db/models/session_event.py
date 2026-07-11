@@ -34,7 +34,6 @@ class AgentSessionEventLogEntry(TimestampMixin, TenantOwnedMixin, UserOwnedMixin
             "client_key",
             unique=True,
             postgresql_where=text("client_key IS NOT NULL"),
-            sqlite_where=text("client_key IS NOT NULL"),
         ),
         # 跨会话幂等兜底查询（find_new_session_by_client_key）的检索索引：
         # 唯一索引以 session_id 打头，服务不了仅按 client_key 的查找。
@@ -43,6 +42,5 @@ class AgentSessionEventLogEntry(TimestampMixin, TenantOwnedMixin, UserOwnedMixin
             "tenant_id",
             "client_key",
             postgresql_where=text("client_key IS NOT NULL"),
-            sqlite_where=text("client_key IS NOT NULL"),
         ),
     )

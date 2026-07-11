@@ -79,9 +79,7 @@ def upgrade() -> None:
 
     with op.batch_alter_table("provider_credential", schema=None) as batch_op:
         batch_op.add_column(sa.Column("user_id", sa.String(), server_default=DEFAULT_USER_ID, nullable=False))
-        batch_op.create_foreign_key(
-            "fk_provider_credential_user_id", "users", ["user_id"], ["id"], ondelete="CASCADE"
-        )
+        batch_op.create_foreign_key("fk_provider_credential_user_id", "users", ["user_id"], ["id"], ondelete="CASCADE")
         batch_op.drop_index("uq_provider_credential_one_active")
         batch_op.create_index("ix_provider_credential_user_id", ["user_id"], unique=False)
         batch_op.create_index("ix_provider_credential_user_provider", ["user_id", "provider"], unique=False)
@@ -89,7 +87,6 @@ def upgrade() -> None:
             "uq_provider_credential_one_active",
             ["user_id", "provider"],
             unique=True,
-            sqlite_where=sa.text("is_active = 1"),
             postgresql_where=sa.text("is_active"),
         )
 
@@ -124,7 +121,6 @@ def downgrade() -> None:
             "uq_provider_credential_one_active",
             ["provider"],
             unique=True,
-            sqlite_where=sa.text("is_active = 1"),
             postgresql_where=sa.text("is_active"),
         )
 

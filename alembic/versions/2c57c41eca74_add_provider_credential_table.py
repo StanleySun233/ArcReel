@@ -41,7 +41,6 @@ def upgrade() -> None:
             "uq_provider_credential_one_active",
             ["provider"],
             unique=True,
-            sqlite_where=sa.text("is_active = 1"),
             postgresql_where=sa.text("is_active"),
         )
 

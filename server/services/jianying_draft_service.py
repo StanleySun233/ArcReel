@@ -56,6 +56,7 @@ def _add_track(script_file: Any, track_type: TrackType, name: str | None = None)
         return
     script_file.append_track(TrackSpec(track_type, name))
 
+
 # 字幕由有序 span 派生（而非单字段）的内容模式。drama 从 utterances 派生 subtitle_spans；
 # ad + reference_video 路径虽也产 span，但 content_mode 仍是 ad（已在 _SUBTITLE_TEXT_FIELDS），
 # 故此处只列 drama。未注册且不在此集合的模式（未知脏值）不挂字幕轨。

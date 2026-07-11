@@ -3,11 +3,10 @@ import json
 from typing import Any
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib import app_data_dir as app_data_dir_module
 from lib.app_data_dir import app_data_dir
-from lib.db import Base
 from lib.generation_worker import (
     _ORPHAN_RESCAN_LEASE_LOST_MULT,
     DEFAULT_PROVIDER,
@@ -18,6 +17,7 @@ from lib.generation_worker import (
     _read_int_env,
 )
 from lib.project_manager import ProjectManager
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 def _cap(limits: dict[str, dict[str, int]] | None = None, *, image: int = 5, video: int = 3) -> CapacityTable:
@@ -105,14 +105,12 @@ def _tenant_task(**kwargs) -> dict[str, Any]:
 
 @pytest.fixture()
 async def _patch_empty_db(monkeypatch):
-    """把全局 async_session_factory 换成空内存库，隔离掉真实数据库。
+    """把全局 async_session_factory 换成空 PG schema，隔离掉真实数据库。
 
     无 project_name 的 _extract_provider 会用 lib.db.async_session_factory 经 ConfigResolver
     解析全局默认供应商；不隔离时它读真实 dev 库，本机一旦配了其它 ready 供应商，回退断言就被污染。
     """
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     monkeypatch.setattr("lib.db.async_session_factory", async_sessionmaker(engine, expire_on_commit=False))
     yield
     await engine.dispose()

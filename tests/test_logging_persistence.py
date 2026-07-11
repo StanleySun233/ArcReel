@@ -18,16 +18,14 @@ def _reset_root_logger():
     """每个用例前后清空 root logger handlers，避免污染。
 
     setup_logging() / attach_file_handler() 不止改 root.handlers——还动
-    root.level 以及 uvicorn*/aiosqlite 等命名 logger 的 handlers/disabled/
+    root.level 以及 uvicorn* 等命名 logger 的 handlers/disabled/
     propagate。teardown 必须把这些都恢复，并 close() 临时挂的 file handler
     以释放 fd（Windows 上 file locking 尤其敏感）。
     """
     root = logging.getLogger()
     saved_handlers = list(root.handlers)
     saved_level = root.level
-    named_loggers = {
-        name: logging.getLogger(name) for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "aiosqlite")
-    }
+    named_loggers = {name: logging.getLogger(name) for name in ("uvicorn", "uvicorn.error", "uvicorn.access")}
     saved_named = {
         name: (list(logger.handlers), logger.level, logger.disabled, logger.propagate)
         for name, logger in named_loggers.items()

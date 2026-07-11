@@ -6,9 +6,11 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-from alembic import command
 
-from tests.alembic_pg import AlembicPostgresDb, alembic_pg  # noqa: F401
+from alembic import command
+from tests.alembic_pg import AlembicPostgresDb
+
+pytest_plugins = ["tests.alembic_pg"]
 
 
 @pytest.fixture

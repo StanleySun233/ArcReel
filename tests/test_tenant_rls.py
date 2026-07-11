@@ -1,6 +1,7 @@
 from alembic import command
+from tests.alembic_pg import AlembicPostgresDb
 
-from tests.alembic_pg import AlembicPostgresDb, alembic_pg  # noqa: F401
+pytest_plugins = ["tests.alembic_pg"]
 
 
 def test_projects_rls_denies_missing_context_and_filters_by_tenant(alembic_pg: AlembicPostgresDb):
@@ -27,13 +28,13 @@ def test_projects_rls_denies_missing_context_and_filters_by_tenant(alembic_pg: A
         {"app.current_tenant_id": "ten_a", "app.current_user_id": "camel:u1"},
         "INSERT INTO projects (id, tenant_id, name, created_by_user_id, local_path, created_at, updated_at) VALUES "
         "('proj_a', 'ten_a', 'Project A', 'camel:u1', "
-        "'ten_a/project_a/project.json', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        "'ten_a/project_a/project.json', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
     )
     alembic_pg.execute_as_rls_role_with_settings(
         {"app.current_tenant_id": "ten_b", "app.current_user_id": "camel:u2"},
         "INSERT INTO projects (id, tenant_id, name, created_by_user_id, local_path, created_at, updated_at) VALUES "
         "('proj_b', 'ten_b', 'Project B', 'camel:u2', "
-        "'ten_b/project_b/project.json', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+        "'ten_b/project_b/project.json', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
     )
 
     assert alembic_pg.fetchall_as_rls_role("SELECT name FROM projects ORDER BY name") == []

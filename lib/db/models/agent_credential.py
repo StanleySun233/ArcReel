@@ -15,7 +15,6 @@ class AgentAnthropicCredential(TimestampMixin, TenantOwnedMixin, Base):
             "uq_agent_credential_one_active_per_tenant",
             "tenant_id",
             unique=True,
-            sqlite_where=text("is_active = 1"),
             postgresql_where=text("is_active"),
         ),
     )

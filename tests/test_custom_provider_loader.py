@@ -1,7 +1,7 @@
-"""自定义 backend DB 装载（lib.custom_provider.loader）单测：内存 SQLite + 真 CustomProviderRepository。
+"""自定义 backend DB 装载（lib.custom_provider.loader）单测：PG + 真 CustomProviderRepository。
 
 查 provider、校验 model（存在 / 启用 / endpoint 推算 media_type 相符）、失效回退默认、委托现成
-create_custom_backend（ENDPOINT_REGISTRY 不改）。镜像 test_custom_provider_repo.py 的内存 DB 范式，不 mock repo。
+create_custom_backend（ENDPOINT_REGISTRY 不改）。镜像 test_custom_provider_repo.py 的 DB 范式，不 mock repo。
 """
 
 from __future__ import annotations
@@ -9,20 +9,18 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.custom_provider import make_provider_id
 from lib.custom_provider.backends import CustomImageBackend
 from lib.custom_provider.loader import load_custom_backend
-from lib.db.base import Base
 from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 @pytest.fixture()
 async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as s:
         yield s

@@ -1,22 +1,22 @@
 """Tests for CostEstimationService."""
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.config.resolver import ConfigResolver
-from lib.db.base import Base
 from lib.usage_tracker import UsageTracker
 from server.services.cost_estimation import CostEstimationService
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture
 async def db_factory():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine, schema = await create_pg_test_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    yield factory
-    await engine.dispose()
+    try:
+        yield factory
+    finally:
+        await drop_pg_test_engine(engine, schema)
 
 
 def _make_script(

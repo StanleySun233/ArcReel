@@ -63,8 +63,8 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [x] 项目列表卡片、创建后跳转、任务过滤、项目事件流、助手 API 路径使用 `project_id`。
 - [ ] 前端剩余 `projectName` 命名债和非主链路 API client 需要继续清理或标注为携带 project id。
 - [x] 项目名仅用于 UI 展示和重命名输入的主路径已验证。
-- [ ] 登录默认进入个人空间；切租户必须用户手动触发。
-- [ ] `tenant_role` 只控制 UI 展示；403 stale role 触发刷新当前 tenant token。
+- [x] 登录默认进入个人空间；切租户必须用户手动触发。
+- [x] `tenant_role` 只控制 UI 展示；403 stale role 触发刷新当前 tenant token。
 
 ### Phase 3 - 任务、生成、Agent、文件链路上下文化
 
@@ -102,6 +102,18 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 - [x] Issued Tokens 不参与认证依赖链路。
 - [x] OpenClaw 同步 Agent 入口 `/agent/chat` 默认返回 `403 feature_disabled`，业务代码保留。
 - [x] CaMeL provider keys、媒体供应商凭证、Agent 凭证不受影响。
+- [x] Issued Tokens 业务代码保留，调用边界统一 403，后续可显式启用。
+
+### Phase 4b - PostgreSQL-only runtime
+
+**Status:** completed
+
+**Acceptance Criteria**
+- [x] 运行时 `DATABASE_URL` 只接受 `postgresql+asyncpg://`。
+- [x] 项目依赖和 lockfile 删除本地嵌入式 DB driver。
+- [x] 源码、迁移、测试、运行时 profile 不再包含本地 DB 方言分支或旧本地数据库文件假设。
+- [x] 单测 DB fixture 全部改为独立 PostgreSQL schema。
+- [x] 旧数据迁移脚本和旧迁移说明删除。
 
 ### Phase 5 - 全链路审计和测试
 
@@ -110,13 +122,13 @@ Gate 已按用户确认口径更新：Issued Tokens 后台 403、前端按钮 di
 **Acceptance Criteria**
 - [ ] 场景矩阵覆盖 owner/admin/member/view。
 - [ ] 场景矩阵覆盖 viewer 查询成员列表。
-- [ ] 场景矩阵覆盖只允许 owner/admin 删除项目。
-- [ ] 场景矩阵覆盖跨租户同名项目。
+- [x] 场景矩阵覆盖只允许 owner/admin 删除项目。
+- [x] 场景矩阵覆盖跨租户同名项目。
 - [ ] 场景矩阵覆盖创建项目、上传文件、生成图片、生成视频、Agent 输入文本、资产导入、用量查看。
 - [x] 单元/路由测试覆盖项目 id 不等于展示名时主路径不接受展示名。
 - [x] 场景矩阵覆盖 Issued Tokens disabled。
 - [x] 场景矩阵覆盖 worker/provider/session store tenant 隔离。
-- [ ] 自动测试和必须手动验证项都写入 QA evidence。
+- [x] 自动测试和必须手动验证项都写入 QA evidence。
 
 ## Serial File Touch Order
 

@@ -1,20 +1,18 @@
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from lib.db.base import Base
 from lib.db.models.config import ProviderConfig, SystemSetting
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture
 async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine, schema = await create_pg_test_engine()
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     async with async_session() as s:
         yield s
-    await engine.dispose()
+    await drop_pg_test_engine(engine, schema)
 
 
 async def test_provider_config_crud(session: AsyncSession):

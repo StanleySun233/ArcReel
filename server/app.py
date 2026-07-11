@@ -373,7 +373,7 @@ async def lifespan(app: FastAPI):
             await migrate_local_transcripts_to_store(
                 store,
                 projects_root=projects_root,
-                data_dir=projects_root,  # same place .arcreel.db lives, so docker volume catches it
+                data_dir=projects_root,
             )
         except Exception:
             logger.exception("session-store transcript migration failed (non-fatal)")

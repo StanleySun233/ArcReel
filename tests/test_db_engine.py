@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from lib.db.engine import get_database_url, get_migration_database_url, is_sqlite_backend
+from lib.db.engine import get_database_url, get_migration_database_url
 
 
 class TestGetDatabaseUrl:
@@ -15,8 +15,8 @@ class TestGetDatabaseUrl:
             with pytest.raises(RuntimeError, match="DATABASE_URL is required"):
                 get_database_url()
 
-    def test_sqlite_database_url_is_rejected(self):
-        with patch.dict(os.environ, {"DATABASE_URL": "sqlite+aiosqlite:///./projects/.arcreel.db"}):
+    def test_non_postgresql_database_url_is_rejected(self):
+        with patch.dict(os.environ, {"DATABASE_URL": "mysql+asyncmy://localhost/test"}):
             with pytest.raises(RuntimeError, match="postgresql\\+asyncpg"):
                 get_database_url()
 
@@ -24,12 +24,6 @@ class TestGetDatabaseUrl:
         with patch.dict(os.environ, {"DATABASE_URL": "postgresql+asyncpg://localhost/test"}):
             url = get_database_url()
             assert url == "postgresql+asyncpg://localhost/test"
-
-
-class TestIsSqliteBackend:
-    def test_postgresql(self):
-        with patch.dict(os.environ, {"DATABASE_URL": "postgresql+asyncpg://localhost/test"}):
-            assert is_sqlite_backend() is False
 
 
 class TestGetMigrationDatabaseUrl:

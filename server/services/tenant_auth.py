@@ -186,7 +186,12 @@ async def require_tenant_access(
     )
     if access is None:
         raise HTTPException(status_code=403, detail="TENANT_ACCESS_REVOKED")
-    _require_role(access.role, minimum_role)
+    try:
+        _require_role(access.role, minimum_role)
+    except HTTPException:
+        if current_user.tenant_role is not None and current_user.tenant_role != access.role:
+            raise HTTPException(status_code=403, detail="STALE_TENANT_ROLE")
+        raise
     return access
 
 

@@ -46,7 +46,6 @@ def upgrade() -> None:
             ["project_key", "session_id", "subpath", "uuid"],
             unique=True,
             postgresql_where=sa.text("uuid IS NOT NULL"),
-            sqlite_where=sa.text("uuid IS NOT NULL"),
         )
 
     op.create_table(
@@ -78,7 +77,6 @@ def downgrade() -> None:
         batch_op.drop_index(
             "uq_agent_entries_uuid",
             postgresql_where=sa.text("uuid IS NOT NULL"),
-            sqlite_where=sa.text("uuid IS NOT NULL"),
         )
         batch_op.drop_index(batch_op.f("ix_agent_session_entries_user_id"))
         batch_op.drop_index("idx_agent_entries_listing")

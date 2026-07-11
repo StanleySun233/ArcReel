@@ -148,9 +148,6 @@ def setup_logging(level: str | None = None, *, file: bool = True) -> None:
     access_logger.handlers.clear()
     access_logger.disabled = True
 
-    # 抑制 aiosqlite 的 DEBUG 噪音（每次 SQL 操作都会输出两行日志）
-    logging.getLogger("aiosqlite").setLevel(max(numeric_level, logging.INFO))
-
 
 def attach_file_handler(formatter: logging.Formatter | None = None) -> None:
     """为 root logger 挂 TimedRotatingFileHandler（默认开启，按天切，保留 7 份）。

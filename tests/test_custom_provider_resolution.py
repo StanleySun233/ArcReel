@@ -3,21 +3,19 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from lib.db.base import Base
 from lib.db.models.custom_provider import CustomProvider, CustomProviderModel
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture
 async def db_session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine, schema = await create_pg_test_engine()
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         yield session
-    await engine.dispose()
+    await drop_pg_test_engine(engine, schema)
 
 
 @pytest.mark.asyncio
@@ -195,7 +193,9 @@ async def test_config_resolver_uses_explicit_user_id_for_custom_provider_auto_re
     await db_session.commit()
 
     factory = async_sessionmaker(bind=db_session.get_bind(), class_=AsyncSession, expire_on_commit=False)  # type: ignore[call-overload]
-    resolved = await ConfigResolver(factory, user_id="user-b", _bound_session=db_session).resolve_video_backend(None, None)
+    resolved = await ConfigResolver(factory, user_id="user-b", _bound_session=db_session).resolve_video_backend(
+        None, None
+    )
 
     assert provider_a.id != provider_b.id
     assert resolved.provider_id == make_provider_id(provider_b.id)

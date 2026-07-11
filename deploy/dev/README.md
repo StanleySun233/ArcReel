@@ -17,7 +17,7 @@ Expected local endpoints:
 
 ## Tenant-edition environment
 
-Use PostgreSQL. SQLite is not a supported runtime database for this edition.
+Use PostgreSQL as the only runtime database for this edition.
 
 ```bash
 export DATABASE_URL=postgresql+asyncpg://arcreel_app:arcreel_app_dev_password@127.0.0.1:15432/arcreel

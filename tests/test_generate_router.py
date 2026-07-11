@@ -443,6 +443,7 @@ class TestUnexpectedErrorMapsTo500:
 
         monkeypatch.setattr(generate, "get_project_manager", _boom)
         monkeypatch.setattr(generate, "get_tenant_project_manager", lambda _tenant_id: _boom())
+
         async def _access(_session, _user, *, minimum_role="view", permission_cache=None):
             return TenantAccess(id="ten_test", name="Tenant", role="member", is_owner=False, personal=True)
 

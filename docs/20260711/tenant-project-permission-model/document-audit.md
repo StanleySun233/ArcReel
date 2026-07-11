@@ -11,6 +11,8 @@
 - [api-contract.md](./api-contract.md)
 - [sprint-backlog.md](./sprint-backlog.md)
 
+`docs/superpowers/` 下的历史 plans/specs 是过往实现记录，不作为当前商业发行版的权限、存储、数据库或部署契约来源。
+
 ## 已删除旧文档
 
 已删除 `docs/20260710/tenant-commercialization/`，并从 `docs/INDEX.md` 移除该条目。
@@ -45,3 +47,4 @@
 - 当前权威文档明确不保留旧项目名路径、不做旧版 project.json 兼容。
 - 当前权威文档明确 Issued Tokens disable 行为。
 - 当前权威文档明确串行执行方式。
+- `docs/20260710/tenant-commercialization/` 目录已从工作树清除。

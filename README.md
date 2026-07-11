@@ -93,7 +93,7 @@ graph TD
 
 > ⚠️ **操作系统**：推荐 Linux / macOS / WSL2 / Docker。Windows 原生可运行项目创建与基础流程，但 Bash 沙箱、bwrap 等 POSIX-only 隔离机制会自动降级，生产部署仍建议 WSL2 或 Docker Desktop
 
-### 默认部署（SQLite）
+### 默认部署（PostgreSQL）
 
 ```bash
 git clone https://github.com/ArcReel/ArcReel.git
@@ -257,7 +257,7 @@ flowchart TB
     end
 
     subgraph Data["数据层"]
-        D1["SQLAlchemy 2.0 Async ORM"] ~~~ D2["SQLite / PostgreSQL"]
+        D1["SQLAlchemy 2.0 Async ORM"] ~~~ D2["PostgreSQL"]
         D3["Alembic 迁移"] ~~~ D4["UsageTracker<br/>多供应商费用追踪"]
     end
 
@@ -276,7 +276,7 @@ flowchart TB
 | **文本生成** | Gemini (`google-genai`), 火山方舟 (`volcengine-python-sdk[ark]`), Grok (`xai-sdk`), OpenAI (`openai`), 阿里百炼 / MiniMax (`httpx`), Instructor (结构化输出降级) |
 | **旁白配音 (TTS)** | 阿里百炼 Qwen3 TTS (`httpx`), 任意 OpenAI 兼容 TTS（自定义供应商） |
 | **媒体处理** | FFmpeg, Pillow |
-| **ORM & 数据库** | SQLAlchemy 2.0 (async), Alembic, aiosqlite, asyncpg — SQLite (默认) / PostgreSQL (生产) |
+| **ORM & 数据库** | SQLAlchemy 2.0 (async), Alembic, asyncpg — PostgreSQL |
 | **认证** | JWT (`pyjwt`), API Key (SHA-256 哈希), Argon2 密码哈希 (`pwdlib`) |
 | **部署** | Docker, Docker Compose（`deploy/` 默认, `deploy/production/` 含 PostgreSQL） |
 

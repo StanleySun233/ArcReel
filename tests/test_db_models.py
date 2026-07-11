@@ -1,8 +1,8 @@
 """Tests for ORM model definitions — verify tables can be created."""
 
-from datetime import UTC, datetime
 import os
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import inspect, select, text

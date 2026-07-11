@@ -1,23 +1,24 @@
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.agent_session_store.store import DbSessionStore
-from lib.db.base import DEFAULT_USER_ID, Base
+from lib.db.base import DEFAULT_USER_ID
 from lib.user_scope import set_current_tenant_id, set_current_user_id
 from server.agent_runtime.event_log import EventLogStore
 from server.agent_runtime.session_store import SessionMetaStore
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture()
 async def session_factory():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine, schema = await create_pg_test_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    yield factory
-    await engine.dispose()
-    set_current_tenant_id(None)
-    set_current_user_id(DEFAULT_USER_ID)
+    try:
+        yield factory
+    finally:
+        await drop_pg_test_engine(engine, schema)
+        set_current_tenant_id(None)
+        set_current_user_id(DEFAULT_USER_ID)
 
 
 @pytest.mark.asyncio

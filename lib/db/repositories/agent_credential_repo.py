@@ -112,7 +112,6 @@ class AgentCredentialRepository(BaseRepository):
         cred = await self.get(cred_id)
         if cred is None:
             raise ValueError(f"credential id={cred_id} not found")
-        # SQLite 的 partial unique index 在同事务内中间态可能违反，所以先全清再设
         await self.session.execute(
             update(AgentAnthropicCredential)
             .where(

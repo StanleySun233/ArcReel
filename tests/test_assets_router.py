@@ -3,19 +3,17 @@ from __future__ import annotations
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from lib.db.models import Asset, AssetLibraryBinding, File, FileLink, Tenant, TenantMembership, User
 from server.auth import CurrentUserInfo, get_current_user
 from server.routers import assets
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 @pytest.fixture
 async def assets_env(monkeypatch):
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(assets, "async_session_factory", factory)
 

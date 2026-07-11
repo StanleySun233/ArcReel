@@ -3,23 +3,23 @@
 from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from lib.text_backends.base import TextGenerationRequest, TextGenerationResult
 from lib.text_generator import TextGenerator
 from lib.usage_tracker import UsageTracker
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture
 async def tracker():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine, schema = await create_pg_test_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     t = UsageTracker(session_factory=factory)
-    yield t
-    await engine.dispose()
+    try:
+        yield t
+    finally:
+        await drop_pg_test_engine(engine, schema)
 
 
 def _make_backend(provider="gemini", model="gemini-3-flash-preview"):

@@ -15,10 +15,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import lib.script_review as script_review
+import server.routers.script_review as script_review_router
 from lib.json_io import atomic_write_json
 from lib.project_manager import ProjectManager
 from server.auth import CurrentUserInfo, get_current_user
-import server.routers.script_review as script_review_router
 from server.services.script_review import ScriptReviewError, ScriptReviewService
 from server.services.tenant_auth import TenantAccess
 

@@ -7,17 +7,17 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.audio_backends.base import AudioCapability, AudioSynthesisResult
 from lib.data_validator import DataValidator
-from lib.db.base import Base
 from lib.db.repositories.usage_repo import UsageRepository
 from lib.generation_worker import CapacityTable, GenerationWorker, SlotTable
 from lib.media_generator import MediaGenerator
 from lib.resource_paths import RESOURCE_TYPES, resource_extension, resource_relative_path
 from lib.script_models import GeneratedAssets
 from lib.version_manager import VersionManager
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 class TestResourcePaths:
@@ -174,9 +174,7 @@ class TestGenerateAudioAsync:
 
 class TestUsageStatsAudioCount:
     async def test_audio_count(self):
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         try:
             factory = async_sessionmaker(engine, expire_on_commit=False)
             async with factory() as session:

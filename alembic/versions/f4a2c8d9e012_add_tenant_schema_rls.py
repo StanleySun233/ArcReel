@@ -258,9 +258,7 @@ def upgrade() -> None:
     op.create_unique_constraint(
         "uq_provider_config_tenant_provider_key", "provider_config", ["tenant_id", "provider", "key"]
     )
-    op.create_index(
-        "ix_provider_config_tenant_provider", "provider_config", ["tenant_id", "provider"], unique=False
-    )
+    op.create_index("ix_provider_config_tenant_provider", "provider_config", ["tenant_id", "provider"], unique=False)
 
     op.drop_constraint("uq_system_setting_user_key", "system_setting", type_="unique")
     op.create_unique_constraint("uq_system_setting_tenant_key", "system_setting", ["tenant_id", "key"])

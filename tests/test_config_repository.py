@@ -1,19 +1,19 @@
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from lib.config.repository import ProviderConfigRepository, SystemSettingRepository
-from lib.db.base import Base
+from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
 @pytest.fixture
 async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine, schema = await create_pg_test_engine()
     sm = async_sessionmaker(engine, expire_on_commit=False)
     async with sm() as s:
+        s.info["tenant_id"] = "ten_default"
+        s.info["user_id"] = "default"
         yield s
-    await engine.dispose()
+    await drop_pg_test_engine(engine, schema)
 
 
 # --- ProviderConfigRepository ---
@@ -60,9 +60,9 @@ async def test_get_configured_keys(session: AsyncSession):
     assert keys == ["api_key"]
 
 
-async def test_provider_config_is_scoped_by_user(session: AsyncSession):
-    repo_a = ProviderConfigRepository(session, user_id="user-a")
-    repo_b = ProviderConfigRepository(session, user_id="user-b")
+async def test_provider_config_is_scoped_by_tenant(session: AsyncSession):
+    repo_a = ProviderConfigRepository(session, tenant_id="ten_alpha")
+    repo_b = ProviderConfigRepository(session, tenant_id="ten_beta")
 
     await repo_a.set("gemini-aistudio", "api_key", "AIza-user-a-secret", is_secret=True)
     await repo_a.set("gemini-aistudio", "base_url", "https://a.example.com", is_secret=False)
@@ -145,9 +145,9 @@ async def test_setting_get_all(session: AsyncSession):
     assert all_settings == {"key1": "val1", "key2": "val2"}
 
 
-async def test_setting_is_scoped_by_user(session: AsyncSession):
-    repo_a = SystemSettingRepository(session, user_id="user-a")
-    repo_b = SystemSettingRepository(session, user_id="user-b")
+async def test_setting_is_scoped_by_tenant(session: AsyncSession):
+    repo_a = SystemSettingRepository(session, tenant_id="ten_alpha")
+    repo_b = SystemSettingRepository(session, tenant_id="ten_beta")
     await repo_a.set("default_video_backend", "custom-1/model-a")
     await repo_b.set("default_video_backend", "custom-2/model-b")
 

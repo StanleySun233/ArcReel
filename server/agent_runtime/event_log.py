@@ -69,10 +69,6 @@ _APPEND_BACKOFF_CAP_S = 0.05
 # exc.orig.sqlstate / pgcode）。
 _PG_UNIQUE_VIOLATION_SQLSTATE = "23505"
 
-# SQLite 唯一约束冲突的扩展错误名：复合主键走 PRIMARYKEY、普通唯一索引走
-# UNIQUE，两者对本表都意味着唯一约束冲突。
-_SQLITE_UNIQUE_ERRORNAMES = {"SQLITE_CONSTRAINT_UNIQUE", "SQLITE_CONSTRAINT_PRIMARYKEY"}
-
 # 标记 SDK 回放的用户消息副本（POST 受理时已写日志），供写入点跳过。
 # 只存活在进程内消息 dict 上，不落任何持久化层。
 REPLAYED_USER_ECHO_KEY = "_replayed_user_echo"
@@ -448,8 +444,7 @@ def _first_driver_attr(exc: IntegrityError, *attr_names: str) -> Any:
 
 
 def _is_unique_violation(exc: IntegrityError) -> bool:
-    """判定唯一约束冲突：错误码优先（PostgreSQL SQLSTATE / SQLite errorname），
-    文案子串仅作兜底。
+    """判定 PostgreSQL 唯一约束冲突：错误码优先，文案子串仅作兜底。
 
     PostgreSQL 错误文案随服务端 lc_messages 本地化，非英文环境下不含
     "duplicate key" 字样，子串匹配会把可重试的竞态误判为真实错误。
@@ -457,16 +452,13 @@ def _is_unique_violation(exc: IntegrityError) -> bool:
     sqlstate = _first_driver_attr(exc, "sqlstate", "pgcode")
     if sqlstate is not None:
         return str(sqlstate) == _PG_UNIQUE_VIOLATION_SQLSTATE
-    errorname = _first_driver_attr(exc, "sqlite_errorname")
-    if errorname is not None:
-        return errorname in _SQLITE_UNIQUE_ERRORNAMES
     msg = str(exc.orig) if exc.orig else str(exc)
     return "UNIQUE" in msg or "duplicate key" in msg
 
 
 def _is_client_key_violation(exc: IntegrityError) -> bool:
     """判定冲突是否落在 client_key 唯一索引：约束名优先（不随 locale 翻译），
-    驱动未暴露约束名时回退错误文本——两个后端的文案都会带索引/列名。
+    驱动未暴露约束名时回退错误文本。
 
     ``exc.orig`` 为 None 时的兜底不能直接用 ``str(exc)`` 全文匹配：
     SQLAlchemy 的 ``StatementError`` 文本里带 ``[SQL: INSERT INTO ...

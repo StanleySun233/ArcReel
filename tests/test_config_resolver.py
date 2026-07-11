@@ -1,18 +1,16 @@
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.config.resolver import ConfigResolver
 from lib.config.service import ProviderStatus
-from lib.db.base import Base
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 async def _make_session():
-    """创建内存 SQLite 数据库并返回 (factory, engine)。"""
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """创建独立 PostgreSQL schema 并返回 (factory, engine)。"""
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     return factory, engine
 

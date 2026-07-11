@@ -35,7 +35,7 @@ ArcReel 已经做了大半基础工作:
 
 沙箱内 Bash 在 cwd 范围自动放行,新增 skill 脚本不再需要改权限配置。
 
-SDK 0.1.80 的 `SandboxSettings` 只管命令执行行为,不管文件和网络。文件/网络限制走 `permissions.deny`,扩展到当前漏掉的敏感文件(`projects/.arcreel.db`、`projects/.system_config.json.bak`、`agent_runtime_profile/.claude/settings.json` 等)。
+SDK 0.1.80 的 `SandboxSettings` 只管命令执行行为,不管文件和网络。文件/网络限制走 `permissions.deny`,扩展到当前漏掉的敏感文件(`projects/.system_config.json.bak`、`agent_runtime_profile/.claude/settings.json` 等)。
 
 macOS 自动用 Seatbelt,Linux 自动用 bubblewrap,启动开销 <50ms。
 
@@ -80,7 +80,7 @@ Anthropic 认证如何让 SDK 子进程拿到、同时让 Bash 子进程不可�
 下列指标不可绕过,实施方案如不能同时满足全部红线,需求不成立。
 
 - **Bash 子进程不可见任何 provider 密钥与认证密钥**(包括 Anthropic 自身)
-- **agent 不能读取**`.env` / `projects/.arcreel.db` / `projects/.system_config.json.bak` / `vertex_keys/**` / `agent_runtime_profile/.claude/settings.json` 等敏感文件
+- **agent 不能读取**`.env` / `projects/.system_config.json.bak` / `vertex_keys/**` / `agent_runtime_profile/.claude/settings.json` 等敏感文件
 - **agent 不能写项目目录外**
 - **父进程 `os.environ` 不含 provider 密钥**
 

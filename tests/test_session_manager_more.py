@@ -4,9 +4,8 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from lib.db.base import Base
 from server.agent_runtime import session_manager as sm_mod
 from server.agent_runtime.agent_access_policy import AgentAccessPolicy
 from server.agent_runtime.message_utils import extract_plain_user_content
@@ -15,6 +14,7 @@ from server.agent_runtime.session_actor import SessionActor
 from server.agent_runtime.session_manager import ManagedSession
 from server.agent_runtime.session_store import SessionMetaStore
 from tests.fakes import FakeSDKClient
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 class _FakeOptions:
@@ -451,9 +451,7 @@ class TestSessionManagerMore:
         docs_dir = tmp_path / "docs"
         docs_dir.mkdir(parents=True)
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         meta_store = SessionMetaStore(session_factory=factory)
 
@@ -499,9 +497,7 @@ class TestSessionManagerMore:
         lib_dir = tmp_path / "lib"
         lib_dir.mkdir(parents=True)
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         meta_store = SessionMetaStore(session_factory=factory)
 
@@ -537,9 +533,7 @@ class TestSessionManagerMore:
         own_project = tmp_path / "projects" / "alpha"
         own_project.mkdir(parents=True)
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         meta_store = SessionMetaStore(session_factory=factory)
 
@@ -571,9 +565,7 @@ class TestSessionManagerMore:
         own_project = tmp_path / "projects" / "alpha"
         own_project.mkdir(parents=True)
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         meta_store = SessionMetaStore(session_factory=factory)
 
@@ -663,9 +655,7 @@ class TestSessionManagerMore:
         profile_md.parent.mkdir(parents=True, exist_ok=True)
         profile_md.write_text("# Agent instructions")
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         meta_store = SessionMetaStore(session_factory=factory)
 
@@ -696,9 +686,7 @@ class TestSessionManagerMore:
         claude_home = tmp_path / "claude_home" / "projects"
         claude_home.mkdir(parents=True)
 
-        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        engine = await create_pg_test_engine_with_cleanup()
         factory = async_sessionmaker(engine, expire_on_commit=False)
         meta_store = SessionMetaStore(session_factory=factory)
 

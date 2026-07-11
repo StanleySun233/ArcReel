@@ -45,7 +45,6 @@ def upgrade() -> None:
             ["session_id", "client_key"],
             unique=True,
             postgresql_where=sa.text("client_key IS NOT NULL"),
-            sqlite_where=sa.text("client_key IS NOT NULL"),
         )
 
 

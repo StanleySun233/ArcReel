@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from alembic import command
+from tests.alembic_pg import AlembicPostgresDb
 
-from tests.alembic_pg import AlembicPostgresDb, alembic_pg  # noqa: F401
+pytest_plugins = ["tests.alembic_pg"]
 
 
 def _seed_pre_endpoint_state(db: AlembicPostgresDb, combos: list[tuple[str, str]]) -> None:

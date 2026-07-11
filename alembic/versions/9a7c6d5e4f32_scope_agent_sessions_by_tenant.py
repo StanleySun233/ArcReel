@@ -62,7 +62,6 @@ def upgrade() -> None:
         ["tenant_id", "project_key", "session_id", "subpath", "uuid"],
         unique=True,
         postgresql_where=sa.text("uuid IS NOT NULL"),
-        sqlite_where=sa.text("uuid IS NOT NULL"),
     )
 
     op.drop_index("uq_agent_event_log_client_key", table_name="agent_session_event_log")
@@ -72,7 +71,6 @@ def upgrade() -> None:
         ["tenant_id", "session_id", "client_key"],
         unique=True,
         postgresql_where=sa.text("client_key IS NOT NULL"),
-        sqlite_where=sa.text("client_key IS NOT NULL"),
     )
     op.drop_index("ix_agent_event_log_client_key", table_name="agent_session_event_log")
     op.create_index(
@@ -81,7 +79,6 @@ def upgrade() -> None:
         ["tenant_id", "client_key"],
         unique=False,
         postgresql_where=sa.text("client_key IS NOT NULL"),
-        sqlite_where=sa.text("client_key IS NOT NULL"),
     )
 
 
@@ -93,7 +90,6 @@ def downgrade() -> None:
         ["client_key"],
         unique=False,
         postgresql_where=sa.text("client_key IS NOT NULL"),
-        sqlite_where=sa.text("client_key IS NOT NULL"),
     )
     op.drop_index("uq_agent_event_log_client_key", table_name="agent_session_event_log")
     op.create_index(
@@ -102,7 +98,6 @@ def downgrade() -> None:
         ["session_id", "client_key"],
         unique=True,
         postgresql_where=sa.text("client_key IS NOT NULL"),
-        sqlite_where=sa.text("client_key IS NOT NULL"),
     )
     op.drop_index("uq_agent_entries_uuid", table_name="agent_session_entries")
     op.create_index(
@@ -111,7 +106,6 @@ def downgrade() -> None:
         ["project_key", "session_id", "subpath", "uuid"],
         unique=True,
         postgresql_where=sa.text("uuid IS NOT NULL"),
-        sqlite_where=sa.text("uuid IS NOT NULL"),
     )
     op.drop_index("idx_agent_entries_listing", table_name="agent_session_entries")
     op.create_index(

@@ -1,6 +1,6 @@
-"""assemble_backend 内置（简单族）async 装载段单测：内存 SQLite + 真 ConfigResolver。
+"""assemble_backend 内置（简单族）async 装载段单测：PG + 真 ConfigResolver。
 
-镜像 test_config_resolver.py 的内存 DB 范式：不 mock resolver，断言凭证 overlay 真进 LoadedConfig
+镜像 test_config_resolver.py 的 DB 范式：不 mock resolver，断言凭证 overlay 真进 LoadedConfig
 信封、端到端经 assemble_backend 造出简单族 backend、未登记 provider × media fail-loud。
 """
 
@@ -9,20 +9,18 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from lib.backend_assembly import assemble_backend
 from lib.backend_assembly.assembler import _load_builtin_config
 from lib.config.resolver import ConfigResolver
 from lib.config.service import ConfigService
-from lib.db.base import Base
+from tests.pg_utils import create_pg_test_engine_with_cleanup
 
 
 @pytest.fixture()
 async def session_factory():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    engine = await create_pg_test_engine_with_cleanup()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     yield factory
     await engine.dispose()

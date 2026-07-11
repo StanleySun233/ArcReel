@@ -134,6 +134,46 @@ Evidence:
 
 - `tests/test_projects_router.py::TestProjectsRouter::test_project_detail_uses_id_not_display_name` covers detail, script read, and source import route behavior.
 
+### Tenant role refresh and project deletion permissions are enforced
+
+The backend now returns `STALE_TENANT_ROLE` when a request is denied because the token role snapshot differs from the database role. The frontend API layer refreshes the current tenant token and retries once. Project deletion requires admin-level tenant access, matching the owner/admin-only product rule.
+
+Evidence:
+
+- `server/services/tenant_auth.py` compares the JWT role snapshot against the database role when permission is denied.
+- `frontend/src/api.ts` handles `STALE_TENANT_ROLE` through `/auth/refresh-current-tenant` and retries the original request.
+- `server/routers/projects.py` requires `ROLE_ADMIN` for `DELETE /projects/{project_id}`.
+- `tests/test_tenant_auth_service.py` covers stale-role and non-stale denial behavior.
+- `frontend/src/api.test.ts` covers refresh-and-retry behavior.
+- `tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role` covers delete permission.
+
+### PostgreSQL is the only supported runtime database
+
+All runtime and test code paths have been moved off local embedded database support. The project now requires `postgresql+asyncpg://` for `DATABASE_URL`; the old local database dependency, migration script, file-path sensitive-list entries, dialect branches, dialect-specific model arguments, and in-memory database test fixtures have been removed.
+
+Evidence:
+
+- `pyproject.toml` and `uv.lock` no longer include the embedded database driver dependency.
+- `lib/db/engine.py` requires PostgreSQL URLs and no longer exposes a compatibility backend helper.
+- `lib/agent_session_store/store.py` uses PostgreSQL `INSERT ... ON CONFLICT` only.
+- ORM models and Alembic migrations only keep `postgresql_where` partial-index definitions.
+- The old local database migration script and `deploy/production/MIGRATE-TO-POSTGRES.md` were removed.
+- Agent sandbox sensitive-path policy no longer assumes a local database file.
+- Tests use `tests/pg_utils.py` to create isolated PostgreSQL schemas.
+- Runtime source, migrations, tests, lockfiles, CI, deployment docs, and agent profiles were scanned for old local database markers.
+  - Result: no matches.
+
+### Issued Tokens business code is retained behind invocation-level 403
+
+The OpenClaw/Issued Tokens feature remains in the codebase for later enablement. The current edition disables it only at call boundaries.
+
+Evidence:
+
+- `server/routers/api_keys.py` retains create/list/update/delete implementation paths behind `ISSUED_TOKENS_ENABLED = False`.
+- `server/auth.py` rejects `arc-` token authentication with `403 feature_disabled` while retaining the verification path.
+- `frontend/src/components/pages/ApiKeysTab.tsx` keeps the UI structure and disables actions.
+- `tests/test_api_keys_router.py` includes a business-path-retained test with the flag enabled.
+
 ## Verification completed
 
 Backend:
@@ -142,6 +182,12 @@ Backend:
   - Result: 426 passed
 - `python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_agent_session_user_scope.py tests/agent_runtime/test_event_log.py tests/agent_session_store tests/test_generation_queue.py tests/test_generation_worker_module.py tests/test_resume_executor.py -q`
   - Result: 212 passed
+- `python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role -q`
+  - Result: 10 passed
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_db_engine.py tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_agent_chat_router.py tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_tenant_project_routes.py tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role tests/test_projects_router.py::TestProjectsRouter::test_list_and_create_and_delete tests/test_generation_queue.py tests/test_task_repo.py tests/test_config_repository.py tests/test_asset_repo.py tests/agent_runtime/test_event_log.py tests/agent_session_store/test_conformance.py -q`
+  - Result: 177 passed, 1 warning
+- `python -m ruff check server lib alembic tests scripts`
+  - Result: passed
 - `python -m ruff check <changed backend files and tests>`
   - Result: passed
 - `basedpyright <changed backend task/session files>`
@@ -151,6 +197,8 @@ Frontend:
 
 - `pnpm check`
   - Result: typecheck passed, lint passed, 925 tests passed.
+- `pnpm vitest run src/api.test.ts`
+  - Result: 51 passed
 
 ## Remaining gaps
 

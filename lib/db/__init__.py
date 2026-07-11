@@ -9,7 +9,6 @@ from lib.db.engine import (
     get_async_session,
     get_database_url,
     get_migration_database_url,
-    is_sqlite_backend,
     safe_session_factory,
 )
 
@@ -68,15 +67,11 @@ async def init_db() -> None:
 
 
 async def close_db() -> None:
-    """Dispose engine connections on shutdown.
-
-    aiosqlite connections may already be dead when SSE tasks were cancelled,
-    so we tolerate errors during pool cleanup.
-    """
+    """Dispose engine connections on shutdown."""
     try:
         await async_engine.dispose()
     except Exception:
-        pass  # aiosqlite connections may already be dead after SSE task cancellation
+        pass
 
 
 __all__ = [
@@ -88,6 +83,5 @@ __all__ = [
     "get_database_url",
     "get_migration_database_url",
     "init_db",
-    "is_sqlite_backend",
     "safe_session_factory",
 ]

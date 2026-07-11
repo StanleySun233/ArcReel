@@ -460,7 +460,7 @@ def _make_operational_error(msg: str) -> OperationalError:
 class TestPersistJobIdRetry:
     """persist_provider_job_id 在 DB 瞬态错误下重试 + 结构化日志。"""
 
-    async def test_retries_on_sqlite_locked(self, caplog):
+    async def test_retries_on_transient_db_error(self, caplog):
         """前 2 次 OperationalError → 第 3 次成功；retry 实际执行 3 次。"""
         attempts = 0
 
@@ -610,7 +610,7 @@ class TestPersistApiCallIdRetry:
     路径无 api_call_id 锚定将永远留 pending 账目。
     """
 
-    async def test_retries_on_sqlite_locked(self, caplog):
+    async def test_retries_on_transient_db_error(self, caplog):
         """前 2 次 OperationalError → 第 3 次成功；retry 实际执行 3 次。"""
         attempts = 0
 

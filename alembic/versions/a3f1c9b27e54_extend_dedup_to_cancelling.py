@@ -20,15 +20,8 @@ depends_on: str | Sequence[str] | None = None
 
 
 def _drop_dedup_index_if_exists() -> None:
-    """跨方言安全 drop：DB 可能因历史迁移漂移而没建过该索引，避免 OperationalError。"""
-    bind = op.get_bind()
-    dialect = bind.dialect.name
-    if dialect == "sqlite":
-        op.execute("DROP INDEX IF EXISTS idx_tasks_dedupe_active")
-    elif dialect == "postgresql":
-        op.execute("DROP INDEX IF EXISTS idx_tasks_dedupe_active")
-    else:
-        op.drop_index("idx_tasks_dedupe_active", table_name="tasks")
+    """DB 可能因历史迁移漂移而没建过该索引，避免 OperationalError。"""
+    op.execute("DROP INDEX IF EXISTS idx_tasks_dedupe_active")
 
 
 def upgrade() -> None:
@@ -46,7 +39,6 @@ def upgrade() -> None:
         ["project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running', 'cancelling')"),
-        sqlite_where=sa.text("status IN ('queued', 'running', 'cancelling')"),
     )
 
 
@@ -59,5 +51,4 @@ def downgrade() -> None:
         ["project_name", "task_type", "resource_id", sa.text("COALESCE(script_file, '')")],
         unique=True,
         postgresql_where=sa.text("status IN ('queued', 'running')"),
-        sqlite_where=sa.text("status IN ('queued', 'running')"),
     )

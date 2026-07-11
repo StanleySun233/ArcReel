@@ -5,9 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from alembic import command
 
-from tests.alembic_pg import AlembicPostgresDb, alembic_pg  # noqa: F401
+from alembic import command
+from tests.alembic_pg import AlembicPostgresDb
+
+pytest_plugins = ["tests.alembic_pg"]
 
 
 @pytest.fixture

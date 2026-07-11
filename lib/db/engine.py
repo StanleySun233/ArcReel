@@ -17,9 +17,7 @@ from sqlalchemy.ext.asyncio import (
 
 # Suppress noisy pool/connection errors caused by SSE task cancellation.
 # When an SSE client disconnects, Starlette cancels the response task.
-# aiosqlite connections that are being returned to the pool at that moment
-# fail with CancelledError or "no active connection" during rollback.
-# These are harmless — the connection was going to be discarded anyway.
+# These errors are harmless — the connection was going to be discarded anyway.
 logging.getLogger("sqlalchemy.pool.impl").setLevel(logging.CRITICAL)
 
 
@@ -49,12 +47,6 @@ def get_migration_database_url() -> str:
     return get_database_url()
 
 
-def is_sqlite_backend() -> bool:
-    """Return False after validating the configured tenant-edition database."""
-    get_database_url()
-    return False
-
-
 def _create_engine():
     url = get_database_url()
 
@@ -81,11 +73,9 @@ async_session_factory = async_sessionmaker(
 class _SafeSessionFactory:
     """A session factory whose context manager suppresses close() errors.
 
-    When SSE clients disconnect, Starlette cancels the response task.
-    aiosqlite connections that are mid-flight at that point raise
-    ``OperationalError: no active connection`` during the implicit
-    rollback inside ``AsyncSession.close()``.  This is harmless — the
-    connection was going to be discarded anyway — so we swallow it.
+    When SSE clients disconnect, Starlette cancels the response task. Close-time
+    pool errors are harmless because the connection was going to be discarded
+    anyway, so we swallow them.
 
     Usage is identical to ``async_session_factory``::
 
