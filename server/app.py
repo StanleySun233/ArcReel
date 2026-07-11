@@ -159,6 +159,11 @@ def check_sandbox_available() -> bool:
     ``AgentAccessPolicy.WINDOWS_BASH_PREFIX_WHITELIST`` 代码白名单。
     macOS / Linux 工具缺失仍硬失败（受支持平台禁止降级）。
     """
+    allow_unsandboxed = os.environ.get("ARCREEL_ALLOW_UNSANDBOXED_AGENT", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
     system = platform.system()
     if system == "Darwin":
         if shutil.which("sandbox-exec") is None:
@@ -208,6 +213,13 @@ def check_sandbox_available() -> bool:
             ) from exc
         if probe.returncode != 0:
             stderr = probe.stderr.decode("utf-8", errors="replace").strip() or "(no stderr)"
+            if allow_unsandboxed:
+                logger.warning(
+                    "SANDBOX_BWRAP_BROKEN on Linux but ARCREEL_ALLOW_UNSANDBOXED_AGENT=1; "
+                    "server starts with sandbox=disabled and Bash tools restricted by code policy: %s",
+                    stderr,
+                )
+                return False
             raise RuntimeError(
                 "SANDBOX_BWRAP_BROKEN on Linux\n"
                 f"  bwrap installed but cannot run: {stderr}\n"

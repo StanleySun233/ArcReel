@@ -203,6 +203,22 @@ def test_sandbox_bwrap_probe_fallback_container_hint(monkeypatch: pytest.MonkeyP
     assert "Ubuntu 24.04" not in msg  # 未命中 apparmor sysctl，不应误导
 
 
+def test_sandbox_bwrap_probe_can_be_explicitly_disabled_for_local_e2e(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr("shutil.which", _linux_which_stub({"bwrap", "socat"}))
+    monkeypatch.setattr(
+        "server.app.subprocess.run",
+        _bwrap_probe_stub(returncode=1, stderr=b"bwrap: loopback failed"),
+    )
+    monkeypatch.setenv("ARCREEL_ALLOW_UNSANDBOXED_AGENT", "1")
+    with caplog.at_level("WARNING", logger="server.app"):
+        assert check_sandbox_available() is False
+    assert any("ARCREEL_ALLOW_UNSANDBOXED_AGENT=1" in record.message for record in caplog.records)
+
+
 @pytest.mark.parametrize(
     "exc",
     [
