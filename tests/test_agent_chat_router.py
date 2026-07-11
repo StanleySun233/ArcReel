@@ -28,7 +28,7 @@ def _make_client(*, agent_chat_enabled: bool = True) -> TestClient:
 def _fake_session(session_id: str = "sess-1", project_name: str = "demo"):
     meta = MagicMock()
     meta.id = session_id
-    meta.project_name = project_name
+    meta.project_id = project_name
     return meta
 
 

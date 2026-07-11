@@ -24,14 +24,14 @@ def upgrade() -> None:
         "agent_sessions",
         sa.Column("id", sa.String, primary_key=True, nullable=False),
         sa.Column("sdk_session_id", sa.String, nullable=True),
-        sa.Column("project_name", sa.String, nullable=False),
+        sa.Column("project_id", sa.String, nullable=False),
         sa.Column("title", sa.String, server_default="", nullable=False),
         sa.Column("status", sa.String, server_default="idle", nullable=False),
         sa.Column("created_at", sa.String, nullable=False),
         sa.Column("updated_at", sa.String, nullable=False),
     )
     op.create_index("idx_agent_sessions_status", "agent_sessions", ["status"])
-    op.create_index("idx_agent_sessions_project", "agent_sessions", ["project_name", "updated_at"])
+    op.create_index("idx_agent_sessions_project", "agent_sessions", ["project_id", "updated_at"])
 
     op.create_table(
         "api_calls",

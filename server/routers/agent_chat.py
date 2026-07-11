@@ -183,13 +183,13 @@ async def agent_chat(
         session = await service.get_session(body.session_id)
         if session is None:
             raise HTTPException(status_code=404, detail=_t("session_not_found", session_id=body.session_id))
-        if session.project_name != body.project_name:
+        if session.project_id != body.project_name:
             raise HTTPException(
                 status_code=400,
                 detail=_t(
                     "session_project_mismatch",
                     session_id=body.session_id,
-                    session_project=session.project_name,
+                    session_project=session.project_id,
                     request_project=body.project_name,
                 ),
             )

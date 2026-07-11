@@ -119,7 +119,7 @@ class AssistantService:
         offset: int = 0,
     ) -> list[SessionMeta]:
         """List sessions, injecting SDK summary as title when available."""
-        sessions = await self.meta_store.list(project_name=project_name, status=status, limit=limit, offset=offset)
+        sessions = await self.meta_store.list(project_id=project_name, status=status, limit=limit, offset=offset)
         if not sessions or not project_name:
             return sessions
 
@@ -174,7 +174,7 @@ class AssistantService:
             # computed from server cwd and never matches inserted rows, so the
             # delete becomes a silent no-op. Resolve project cwd from meta.
             meta = await self.meta_store.get(session_id)
-            resolved = self._resolve_project_cwd_safe(meta.project_name) if meta else None
+            resolved = self._resolve_project_cwd_safe(meta.project_id) if meta else None
             project_cwd = str(resolved) if resolved is not None else None
             try:
                 await delete_session_via_store(self._session_store, session_id, directory=project_cwd)  # type: ignore[arg-type]
@@ -246,12 +246,12 @@ class AssistantService:
             meta = await self.meta_store.get(session_id)
             if meta is None:
                 raise FileNotFoundError(f"session not found: {session_id}")
-            if meta.project_name != project_name:
+            if meta.project_id != project_name:
                 raise FileNotFoundError(f"session not found: {session_id}")
             # Build prompt
             text, sdk_prompt, echo_blocks = self._prepare_prompt(content, images)
             # 旧会话懒生成先行：保证受理条目排在重放重建的历史之后。
-            await self.event_log.ensure_backfilled(session_id, self._resolve_project_cwd_safe(meta.project_name))
+            await self.event_log.ensure_backfilled(session_id, self._resolve_project_cwd_safe(meta.project_id))
             user_entry = self._build_user_log_entry(text, echo_blocks)
             entry = await self.session_manager.send_message(
                 session_id,
@@ -433,7 +433,7 @@ class AssistantService:
             if meta is None:
                 raise FileNotFoundError(f"session not found: {session_id}")
         status = await self.session_manager.get_status(session_id) or meta.status
-        project_cwd = self._resolve_project_cwd_safe(meta.project_name)
+        project_cwd = self._resolve_project_cwd_safe(meta.project_id)
         entries = await self.event_log.list_entries(session_id, project_cwd, after_seq=after_seq)
         draft_state = (
             self.session_manager.get_draft_state(session_id) if status == "running" else {"draft": None, "rev": 0}
@@ -467,7 +467,7 @@ class AssistantService:
                 raise FileNotFoundError(f"session not found: {session_id}")
 
         initial_status = await self.session_manager.get_status(session_id) or meta.status
-        project_cwd = self._resolve_project_cwd_safe(meta.project_name)
+        project_cwd = self._resolve_project_cwd_safe(meta.project_id)
 
         if initial_status != "running":
             for entry in await self.event_log.list_entries(session_id, project_cwd, after_seq=after_seq):

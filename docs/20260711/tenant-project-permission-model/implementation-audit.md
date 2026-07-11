@@ -95,14 +95,15 @@ Agent session metadata, UI event log, and Claude SDK transcript mirror now inclu
 
 Evidence:
 
-- `lib/db/models/session.py` adds tenant ownership to `agent_sessions`.
-- `lib/db/repositories/session_repo.py` filters create/get/list/update/delete/interrupt by tenant and user.
+- `lib/db/models/session.py` stores `tenant_id/project_id/user_id` on `agent_sessions`.
+- `lib/db/repositories/session_repo.py` creates and filters sessions by tenant, user, and `project_id`.
 - `server/agent_runtime/event_log.py` writes and reads event log rows by tenant.
 - `lib/agent_session_store/models.py` adds tenant ownership to transcript entries and summaries.
 - `lib/agent_session_store/store.py` filters append/load/list/delete/list_subkeys by tenant.
 - `server/agent_runtime/options_assembler.py` injects current tenant/user into SDK MCP server construction.
 - `server/agent_runtime/session_store.py` constructs tenant-aware repositories from request context.
 - `alembic/versions/9a7c6d5e4f32_scope_agent_sessions_by_tenant.py` adds tenant columns and tenant-aware indexes.
+- `alembic/versions/156fe0aa0414_initial_schema.py` and the tenant-scoping migration define the session project column as `project_id`.
 - `tests/test_agent_session_user_scope.py` covers user isolation, tenant isolation, and dynamic tenant resolution for a reused `DbSessionStore`.
 - `tests/agent_session_store` verifies the SDK transcript store contract against PostgreSQL.
 
@@ -198,8 +199,8 @@ Evidence:
 - `lib/db/repositories/session_repo.py` scopes `get/list/update/delete` by `tenant_id` and `user_id`.
 - `server/routers/assistant.py` rejects session operations when the stored session project key differs from the route `project_id`.
 - `lib/agent_session_store/models.py` keys transcript entries by `tenant_id + project_key + session_id + subpath + seq`.
-- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_session_manager_project_scope.py tests/agent_session_store/test_conformance.py tests/agent_runtime/test_event_log.py -q`
-  - Result: 87 passed
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_session_repo.py tests/test_session_meta_store.py tests/test_session_manager_project_scope.py tests/agent_session_store/test_conformance.py tests/agent_runtime/test_event_log.py tests/test_assistant_routes.py tests/test_assistant_router_full.py tests/test_assistant_service_more.py tests/test_agent_chat_router.py tests/test_session_manager_sdk_session_id.py tests/agent_runtime/test_entry_stream.py tests/agent_runtime/test_agent_startup_error.py -q`
+  - Result: 179 passed, 1 warning
 
 ## Verification completed
 
@@ -243,7 +244,7 @@ Dominant failure classes:
 - `tenant_id is required` in config/model resolver tests that still instantiate services without tenant context.
 - `403` responses in route tests that do not provide current tenant membership.
 - PostgreSQL foreign-key failures in fixtures that insert tenant rows before user rows.
-- Remaining tests that assert `project_name` field names while the target contract is `project_id`.
+- Remaining task and usage tests that assert `project_name` field names while the target contract is `project_id`.
 
 ### Full API scenario test is not complete
 
@@ -262,9 +263,9 @@ Required scenario still pending:
 
 `agent-browser` testing requires a running local ArcReel web service. This remains pending until the service is available or explicit authorization is given to start it.
 
-### Remaining old `project_name` storage names
+### Remaining old task/usage `project_name` storage names
 
-Some persistence models and task/session payload fields still use `project_name` as a historical column or response field name while carrying project id values. These need a separate schema-level cleanup if the final storage vocabulary must also be renamed to `project_id`.
+Task and usage persistence models still use `project_name` as a historical column or response field name while carrying project id values. These need separate schema-level cleanup so the final storage vocabulary is consistently `project_id`.
 
 ### Remaining project-id audit gap
 

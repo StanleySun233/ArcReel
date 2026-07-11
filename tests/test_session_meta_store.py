@@ -21,12 +21,12 @@ async def store():
 
 class TestSessionMetaStore:
     async def test_session_lifecycle(self, store):
-        session = await store.create(project_name="demo", sdk_session_id="sdk-abc")
-        assert session.project_name == "demo"
+        session = await store.create(project_id="demo", sdk_session_id="sdk-abc")
+        assert session.project_id == "demo"
         assert session.status == "idle"
         assert session.id == "sdk-abc"
 
-        sessions = await store.list(project_name="demo")
+        sessions = await store.list(project_id="demo")
         assert len(sessions) == 1
         assert sessions[0].id == session.id
 
@@ -45,15 +45,15 @@ class TestSessionMetaStore:
 
     async def test_list_with_filters(self, store):
         # Create sessions for different projects
-        await store.create(project_name="project_a", sdk_session_id="sdk-a1")
-        await store.create(project_name="project_a", sdk_session_id="sdk-a2")
-        await store.create(project_name="project_b", sdk_session_id="sdk-b1")
+        await store.create(project_id="project_a", sdk_session_id="sdk-a1")
+        await store.create(project_id="project_a", sdk_session_id="sdk-a2")
+        await store.create(project_id="project_b", sdk_session_id="sdk-b1")
 
         # Filter by project
-        sessions_a = await store.list(project_name="project_a")
+        sessions_a = await store.list(project_id="project_a")
         assert len(sessions_a) == 2
 
-        sessions_b = await store.list(project_name="project_b")
+        sessions_b = await store.list(project_id="project_b")
         assert len(sessions_b) == 1
 
         # Filter by status
@@ -66,9 +66,9 @@ class TestSessionMetaStore:
         assert not deleted
 
     async def test_interrupt_running_sessions(self, store):
-        running = await store.create(project_name="demo", sdk_session_id="sdk-running")
-        completed = await store.create(project_name="demo", sdk_session_id="sdk-completed")
-        idle = await store.create(project_name="demo", sdk_session_id="sdk-idle")
+        running = await store.create(project_id="demo", sdk_session_id="sdk-running")
+        completed = await store.create(project_id="demo", sdk_session_id="sdk-completed")
+        idle = await store.create(project_id="demo", sdk_session_id="sdk-idle")
 
         await store.update_status(running.id, "running")
         await store.update_status(completed.id, "completed")
@@ -82,5 +82,5 @@ class TestSessionMetaStore:
 
     async def test_id_equals_sdk_session_id(self, store):
         """SessionMeta.id 应直接映射 sdk_session_id 值。"""
-        session = await store.create(project_name="demo", sdk_session_id="my-sdk-session-42")
+        session = await store.create(project_id="demo", sdk_session_id="my-sdk-session-42")
         assert session.id == "my-sdk-session-42"

@@ -213,7 +213,7 @@ async def test_get_or_connect_wraps_actor_failure_with_stderr(
     monkeypatch.setattr("server.agent_runtime.session_manager.SessionActor", _FakeActor)
     monkeypatch.setattr(SessionManager, "_ensure_capacity", AsyncMock(return_value=None))
 
-    meta = make_session_meta(id="resumed-session", project_name="demo", status="idle")
+    meta = make_session_meta(id="resumed-session", project_id="demo", status="idle")
 
     with pytest.raises(AgentStartupError) as exc_info:
         await session_manager.get_or_connect("resumed-session", meta=meta)

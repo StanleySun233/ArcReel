@@ -45,7 +45,7 @@ async def _validate_session_ownership(
     session = await service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail=_t("session_not_found", session_id=session_id))
-    if session.project_name != project_id:
+    if session.project_id != project_id:
         raise HTTPException(status_code=404, detail=_t("session_not_found", session_id=session_id))
     return session
 

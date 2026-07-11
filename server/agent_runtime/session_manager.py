@@ -801,7 +801,7 @@ class SessionManager:
                 logger.warning("claude_agent_sdk stderr: %s", line)
 
             options = await self._build_options(
-                meta.project_name,
+                meta.project_id,
                 meta.id,  # SessionMeta.id 就是 sdk_session_id
                 can_use_tool=await self._build_can_use_tool_callback(session_id, managed_ref),
                 locale=locale,
@@ -821,7 +821,7 @@ class SessionManager:
                 session_id=meta.id,  # 现在就是 sdk_session_id
                 actor=actor,
                 status=resumed_status,
-                project_name=meta.project_name,
+                project_name=meta.project_id,
                 assistant_model=assistant_model,
                 resolved_sdk_id=meta.id,  # 标记为已注册，防止重复创建 DB 记录
             )

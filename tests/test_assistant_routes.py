@@ -90,7 +90,7 @@ class TestAssistantRoutes:
         }
 
         # Mock get_session for ownership validation
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
+        session_meta = make_session_meta(id="session-1", project_id=PROJECT_ID)
         with (
             patch.object(
                 assistant.assistant_service,
@@ -166,7 +166,7 @@ class TestAssistantRoutes:
         _assert_generic_500(response, "LEAK_get")
 
     def test_delete_session_unexpected_error_no_leak(self):
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
+        session_meta = make_session_meta(id="session-1", project_id=PROJECT_ID)
         with (
             patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
             patch.object(
@@ -181,7 +181,7 @@ class TestAssistantRoutes:
         _assert_generic_500(response, "LEAK_delete")
 
     def test_interrupt_unexpected_error_no_leak(self):
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
+        session_meta = make_session_meta(id="session-1", project_id=PROJECT_ID)
         with (
             patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
             patch.object(
@@ -196,7 +196,7 @@ class TestAssistantRoutes:
         _assert_generic_500(response, "LEAK_interrupt")
 
     def test_answer_question_unexpected_error_no_leak(self):
-        session_meta = make_session_meta(id="session-1", project_name=PROJECT_ID)
+        session_meta = make_session_meta(id="session-1", project_id=PROJECT_ID)
         with (
             patch.object(assistant.assistant_service, "get_session", return_value=session_meta),
             patch.object(

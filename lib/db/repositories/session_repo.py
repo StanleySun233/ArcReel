@@ -19,7 +19,7 @@ def _row_to_dict(row: AgentSession) -> dict[str, Any]:
         "id": row.id,
         "sdk_session_id": row.sdk_session_id,
         "tenant_id": row.tenant_id,
-        "project_name": row.project_name,
+        "project_id": row.project_id,
         "title": row.title or "",
         "status": row.status,
         "created_at": dt_to_iso(row.created_at),
@@ -36,13 +36,13 @@ class SessionRepository(BaseRepository):
         session.info["tenant_id"] = self.tenant_id
 
     async def create(
-        self, project_name: str, sdk_session_id: str, title: str = "", user_id: str | None = None
+        self, project_id: str, sdk_session_id: str, title: str = "", user_id: str | None = None
     ) -> dict[str, Any]:
         now = utc_now()
         row = AgentSession(
             id=uuid.uuid4().hex,
             sdk_session_id=sdk_session_id,
-            project_name=project_name,
+            project_id=project_id,
             title=title,
             status="idle",
             created_at=now,
@@ -68,7 +68,7 @@ class SessionRepository(BaseRepository):
     async def list(
         self,
         *,
-        project_name: str | None = None,
+        project_id: str | None = None,
         status: str | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -76,8 +76,8 @@ class SessionRepository(BaseRepository):
         stmt = select(AgentSession).where(
             AgentSession.tenant_id == self.tenant_id, AgentSession.user_id == self.user_id
         )
-        if project_name:
-            stmt = stmt.where(AgentSession.project_name == project_name)
+        if project_id:
+            stmt = stmt.where(AgentSession.project_id == project_id)
         if status:
             stmt = stmt.where(AgentSession.status == status)
         stmt = stmt.order_by(AgentSession.updated_at.desc())

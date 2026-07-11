@@ -27,7 +27,7 @@ class TestSessionRepository:
     async def test_create_and_get(self, db_session):
         repo = SessionRepository(db_session)
         created = await repo.create("demo", "sdk-001", "Test Session")
-        assert created["project_name"] == "demo"
+        assert created["project_id"] == "demo"
         assert created["status"] == "idle"
         assert created["title"] == "Test Session"
         assert created["sdk_session_id"] == "sdk-001"
@@ -42,10 +42,10 @@ class TestSessionRepository:
         await repo.create("project_a", "sdk-a2", "Session A2")
         await repo.create("project_b", "sdk-b1", "Session B1")
 
-        results = await repo.list(project_name="project_a")
+        results = await repo.list(project_id="project_a")
         assert len(results) == 2
 
-        results = await repo.list(project_name="project_b")
+        results = await repo.list(project_id="project_b")
         assert len(results) == 1
 
     async def test_update_status(self, db_session):

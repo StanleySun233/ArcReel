@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -253,7 +254,7 @@ class _CursorCapturingService:
 
     def __init__(self):
         self.captured_after = None
-        self.meta = make_session_meta(id=SESSION_ID, status="idle", project_name=PROJECT)
+        self.meta = make_session_meta(id=SESSION_ID, status="idle", project_id=PROJECT)
 
     async def get_session(self, session_id):
         return self.meta if session_id == SESSION_ID else None
@@ -269,11 +270,12 @@ class _CursorCapturingService:
 
 def _build_client(monkeypatch, fake_service) -> TestClient:
     monkeypatch.setattr(assistant, "get_assistant_service", lambda: fake_service)
+    monkeypatch.setattr(assistant, "_require_tenant_role", AsyncMock())
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     app.dependency_overrides[get_current_user_flexible] = lambda: _FAKE_USER
     app.dependency_overrides[get_translator] = lambda: make_translator()
-    app.include_router(assistant.router, prefix="/api/v1/projects/{project_name}/assistant")
+    app.include_router(assistant.router, prefix="/api/v1/projects/{project_id}/assistant")
     return TestClient(app)
 
 

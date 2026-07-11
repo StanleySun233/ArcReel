@@ -14,7 +14,7 @@ def make_session_meta(**overrides) -> SessionMeta:
     """
     defaults = dict(
         id="session-1",
-        project_name="demo",
+        project_id="demo",
         title="demo",
         status="running",
         created_at=datetime(2026, 2, 9, 8, 0, 0, tzinfo=UTC),

@@ -29,7 +29,7 @@ class _FakeMetaStore:
     async def get(self, session_id):
         return self.metas.get(session_id)
 
-    async def list(self, project_name=None, status=None, limit=50, offset=0):
+    async def list(self, project_id=None, status=None, limit=50, offset=0):
         return list(self.metas.values())
 
     async def delete(self, session_id):
@@ -154,7 +154,7 @@ class TestAssistantServiceMore:
         meta = make_session_meta(id="s1", status="idle")
 
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([meta])
         service.event_log = _FakeEventLogService()
@@ -209,7 +209,7 @@ class TestAssistantServiceMore:
         meta = make_session_meta(id="s1", status="idle")
 
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([meta])
         service.event_log = _FakeEventLogService()
@@ -227,7 +227,7 @@ class TestAssistantServiceMore:
         meta = make_session_meta(id="s1", status="idle")
 
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([meta])
         service.event_log = _FakeEventLogService()
@@ -244,7 +244,7 @@ class TestAssistantServiceMore:
         不因在途窗口各自建会话、重复执行同一 prompt。"""
         service = AssistantService(project_root=tmp_path)
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()
@@ -297,7 +297,7 @@ class TestAssistantServiceMore:
 
         service = AssistantService(project_root=tmp_path)
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()
@@ -326,7 +326,7 @@ class TestAssistantServiceMore:
 
         service = AssistantService(project_root=tmp_path)
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()
@@ -366,7 +366,7 @@ class TestAssistantServiceMore:
 
         service = AssistantService(project_root=tmp_path)
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()
@@ -413,7 +413,7 @@ class TestAssistantServiceMore:
 
         service = AssistantService(project_root=tmp_path)
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()
@@ -461,7 +461,7 @@ class TestAssistantServiceMore:
 
         service = AssistantService(project_root=tmp_path)
         sm = _FakeSessionManager()
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = sm
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()
@@ -486,7 +486,7 @@ class TestAssistantServiceMore:
         写入的新映射（即便 DB 兜底之后仍能查回正确会话，也不应制造这层
         可避免的抖动窗口）。"""
         service = AssistantService(project_root=tmp_path)
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = _FakeSessionManager()
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()
@@ -516,7 +516,7 @@ class TestAssistantServiceMore:
         已被其他并发请求记入更新的映射：不应用本次查到的（较旧）session_id
         覆盖并发写入的映射。"""
         service = AssistantService(project_root=tmp_path)
-        service.pm = _FakePM(valid_project="demo")
+        service._project_manager = lambda: _FakePM(valid_project="demo")
         service.session_manager = _FakeSessionManager()
         service.meta_store = _FakeMetaStore([])
         service.event_log = _FakeEventLogService()

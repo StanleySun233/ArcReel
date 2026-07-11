@@ -33,7 +33,7 @@ def upgrade() -> None:
     op.create_index(
         "idx_agent_sessions_tenant_project",
         "agent_sessions",
-        ["tenant_id", "project_name", "updated_at"],
+        ["tenant_id", "project_id", "updated_at"],
         unique=False,
     )
     op.create_index(

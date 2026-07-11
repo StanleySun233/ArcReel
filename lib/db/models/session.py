@@ -13,11 +13,11 @@ class AgentSession(TimestampMixin, TenantOwnedMixin, UserOwnedMixin, Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
     sdk_session_id: Mapped[str] = mapped_column(String, unique=True)
-    project_name: Mapped[str] = mapped_column(String, nullable=False)
+    project_id: Mapped[str] = mapped_column(String, nullable=False)
     title: Mapped[str] = mapped_column(String, server_default="")
     status: Mapped[str] = mapped_column(String, server_default="idle")
 
     __table_args__ = (
-        Index("idx_agent_sessions_project", "tenant_id", "project_name", "updated_at"),
+        Index("idx_agent_sessions_project", "tenant_id", "project_id", "updated_at"),
         Index("idx_agent_sessions_status", "status"),
     )

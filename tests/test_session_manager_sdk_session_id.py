@@ -70,14 +70,13 @@ class TestSessionManagerSdkSessionId:
         # DB record should exist
         meta = await meta_store.get(sdk_session_id)
         assert meta is not None
-        assert meta.project_name == "demo"
+        assert meta.project_id == "demo"
         assert meta.status == "running"
 
     async def test_finalize_turn_records_assistant_usage(self, session_manager, meta_store):
         meta = await meta_store.create("demo", "sdk-usage-789")
         managed = _make_managed(session_id=meta.id, project_name="demo", assistant_model="claude-sonnet-4")
         managed.last_user_prompt = "hello assistant"
-        session_manager._user_id = "assistant-user"  # type: ignore[attr-defined]
 
         await session_manager._finalize_turn(
             managed,
@@ -106,7 +105,7 @@ class TestSessionManagerSdkSessionId:
             ).scalar_one()
 
         assert row.project_name == "demo"
-        assert row.user_id == "assistant-user"
+        assert row.user_id == "default"
         assert row.provider == "anthropic"
         assert row.call_type == "text"
         assert row.model == "claude-sonnet-4"
@@ -287,4 +286,4 @@ class TestSessionManagerSdkSessionId:
         # DB record should have been created by _on_sdk_session_id_received
         meta = await meta_store.get(sdk_session_id)
         assert meta is not None
-        assert meta.project_name == "demo"
+        assert meta.project_id == "demo"

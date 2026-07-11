@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -14,8 +16,8 @@ PREFIX = f"/api/v1/projects/{PROJECT}/assistant"
 class _FakeService:
     def __init__(self):
         self.sessions = {
-            "session-1": make_session_meta(id="session-1", project_name=PROJECT),
-            "bad": make_session_meta(id="bad", project_name=PROJECT),
+            "session-1": make_session_meta(id="session-1", project_id=PROJECT),
+            "bad": make_session_meta(id="bad", project_id=PROJECT),
         }
 
     async def send_or_create(self, project_name, content, session_id=None, images=None, locale=None, client_key=None):
@@ -27,7 +29,7 @@ class _FakeService:
         return {"status": "accepted", "session_id": returned_id}
 
     async def list_sessions(self, **kwargs):
-        return [make_session_meta(id="session-1", project_name=kwargs.get("project_name") or "demo")]
+        return [make_session_meta(id="session-1", project_id=kwargs.get("project_name") or "demo")]
 
     async def get_session(self, session_id):
         if session_id == "error":
@@ -63,11 +65,12 @@ _FAKE_USER = CurrentUserInfo(id="default", sub="testuser", role="admin")
 def _client(monkeypatch):
     fake = _FakeService()
     monkeypatch.setattr(assistant, "get_assistant_service", lambda: fake)
+    monkeypatch.setattr(assistant, "_require_tenant_role", AsyncMock())
     app = FastAPI()
     app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
     app.dependency_overrides[get_current_user_flexible] = lambda: _FAKE_USER
     app.dependency_overrides[get_translator] = lambda: make_translator()
-    app.include_router(assistant.router, prefix="/api/v1/projects/{project_name}/assistant")
+    app.include_router(assistant.router, prefix="/api/v1/projects/{project_id}/assistant")
     return TestClient(app)
 
 
@@ -174,10 +177,11 @@ class TestAssistantRouterFull:
 
         fake.send_or_create = _timeout_send_or_create
         monkeypatch.setattr(assistant, "get_assistant_service", lambda: fake)
+        monkeypatch.setattr(assistant, "_require_tenant_role", AsyncMock())
         app = FastAPI()
         app.dependency_overrides[get_current_user] = lambda: _FAKE_USER
         app.dependency_overrides[get_translator] = lambda: make_translator()
-        app.include_router(assistant.router, prefix="/api/v1/projects/{project_name}/assistant")
+        app.include_router(assistant.router, prefix="/api/v1/projects/{project_id}/assistant")
         with TestClient(app) as client:
             resp = client.post(f"{PREFIX}/sessions/send", json={"content": "hello"})
             assert resp.status_code == 504

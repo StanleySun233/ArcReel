@@ -197,6 +197,30 @@ async def _create_pg_test_engine():
         import lib.db.models  # noqa: F401
 
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                "INSERT INTO users "
+                "(id, username, provider, provider_subject, role, is_active, created_at, updated_at) "
+                "VALUES ('default', 'default', 'local', 'default', 'user', true, NOW(), NOW()) "
+                "ON CONFLICT (id) DO NOTHING"
+            )
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO tenants "
+                "(id, name, owner_user_id, personal_for_user_id, created_by_user_id, created_at, updated_at) "
+                "VALUES ('ten_default', 'Default', 'default', 'default', 'default', NOW(), NOW()) "
+                "ON CONFLICT (id) DO NOTHING"
+            )
+        )
+        await conn.execute(
+            text(
+                "INSERT INTO tenant_memberships "
+                "(tenant_id, user_id, role, created_by_user_id, created_at, updated_at) "
+                "VALUES ('ten_default', 'default', 'admin', 'default', NOW(), NOW()) "
+                "ON CONFLICT (tenant_id, user_id) DO NOTHING"
+            )
+        )
     return engine, schema
 
 
