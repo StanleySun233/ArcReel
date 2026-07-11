@@ -54,6 +54,23 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: arcreel
+          POSTGRES_PASSWORD: arcreel
+          POSTGRES_DB: arcreel_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql+asyncpg://arcreel:arcreel@localhost:5432/arcreel_test
+      ARCREEL_TEST_DATABASE_ADMIN_URL: postgresql+asyncpg://arcreel:arcreel@localhost:5432/arcreel_test
     steps:
       - uses: actions/checkout@v7
 
