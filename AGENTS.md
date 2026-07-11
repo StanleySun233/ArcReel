@@ -143,7 +143,7 @@ ConfigService（`service.py`）→ Repository（持久化 + 密钥脱敏）→ R
 ### 实时通信
 
 - 助手：`/api/v1/assistant/sessions/{id}/stream` — SSE 流式回复
-- 项目事件：`/api/v1/projects/{name}/events/stream` — SSE 推送项目变更
+- 项目事件：`/api/v1/projects/{project_id}/events/stream` — SSE 推送项目变更
 - 任务队列：前端轮询 `/api/v1/tasks` 获取状态
 
 ### 任务队列

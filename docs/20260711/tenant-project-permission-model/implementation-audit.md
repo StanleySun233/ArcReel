@@ -248,6 +248,8 @@ Frontend:
   - Result: typecheck passed, lint passed, 925 tests passed.
 - `pnpm vitest run src/api.test.ts`
   - Result: 51 passed
+- `pnpm vitest run src/api.test.ts src/stores/auth-store.test.ts src/components/tenant/TenantSwitcher.test.tsx src/components/auth/CamelProviderBootstrapModal.test.tsx`
+  - Result: 4 files passed, 63 tests passed
 
 Local clean E2E smoke:
 
@@ -277,6 +279,23 @@ Browser smoke:
 - The CaMeL setup modal displayed five planned keys and default models, including `camel-arcreel-passbygrocer-anthropic`.
 - Opening the project card navigated to the project workspace by project id.
 - The license/footer surface was previously observed as the requested single line: `Powered by ArcReel — https://github.com/ArcReel/ArcReel`.
+
+Documentation audit:
+
+- Added [final-tenant-user-project-model.md](./final-tenant-user-project-model.md) as the single final delivery summary for the `user_id + tenant_id + project_id` relationship, role matrix, storage, files, CaMeL bootstrap, Issued Tokens, assets, usage, Agent, task, and frontend boundaries.
+- `CONTEXT.md` download-token glossary now says export tokens bind `tenant_id + project_id`, not project display name.
+- `AGENTS.md` project event stream route now uses `{project_id}`, not `{name}`.
+- `rg -n "绑定项目名|项目名的一次性|projects/\{name\}|projects/\{project_name\}|\{project_name\} 项目路径|按项目名寻址|项目名路由|项目名作为" docs/20260711 CONTEXT.md AGENTS.md README.md -S`
+  - Result: only "not supported / not retained" authority statements remain.
+- `rg -n "sqlite|aiosqlite|\.arcreel\.db|migrate_sqlite" docs server lib alembic tests pyproject.toml uv.lock -S`
+  - Result: only audit/final "removed / unsupported" statements remain.
+- `python -m ruff check AGENTS.md CONTEXT.md docs/20260711/tenant-project-permission-model`
+  - Result: passed; no Python files under those paths.
+
+Additional focused regression:
+
+- `DATABASE_URL=postgresql+asyncpg://... ARCREEL_TEST_DATABASE_ADMIN_URL=postgresql+asyncpg://... python -m pytest tests/test_tenant_auth_service.py tests/test_tenant_auth_router.py tests/test_projects_router.py::TestProjectsRouter::test_delete_project_requires_admin_role tests/test_api_keys_router.py tests/test_auth_api_key.py tests/test_assistant_routes.py tests/test_files_router.py tests/test_task_repo.py tests/test_usage_repo.py tests/test_session_repo.py -q`
+  - Result: 139 passed, 1 warning
 
 ## Remaining gaps
 

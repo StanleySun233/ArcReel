@@ -286,7 +286,7 @@ _Avoid_: 把开场白生产塞进组件——缓冲回放与扫描快照无一�
 ### 认证与凭证
 
 **下载 token（download token）**：
-项目导出专用的短时效（约 5 分钟）、绑定项目名的一次性 JWT（`purpose=download`），作为导出端点的 query param 唯一认证方式——端点自校验、不读 Authorization header，让浏览器原生下载的 URL 里不出现长效凭证。
+项目导出专用的短时效（约 5 分钟）、绑定 `tenant_id + project_id` 的一次性 JWT（`purpose=download`），作为导出端点的 query param 唯一认证方式——端点自校验、不读 Authorization header，让浏览器原生下载的 URL 里不出现长效凭证。
 _Avoid_: 与长效会话 JWT、API Key 混为一谈；把登录 JWT 放进下载 URL。
 
 ## 示例对话

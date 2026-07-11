@@ -7,6 +7,7 @@
 
 当前三层权限模型只以本目录下文档为准：
 
+- [final-tenant-user-project-model.md](./final-tenant-user-project-model.md)
 - [permission-model-design.md](./permission-model-design.md)
 - [api-contract.md](./api-contract.md)
 - [sprint-backlog.md](./sprint-backlog.md)
@@ -50,5 +51,6 @@
 - 当前权威文档明确不保留旧项目名路径、不做旧版 project.json 兼容。
 - 当前权威文档明确 Issued Tokens disable 行为。
 - 当前权威文档明确串行执行方式。
+- 已新增最终交付文档，集中描述租户、用户、项目三层关系、权限矩阵、文件、配置、任务、Agent 和用量边界。
 - `docs/20260710/tenant-commercialization/` 目录已从工作树清除。
 - 除本审计记录外，`docs/` 下已无 SQLite / aiosqlite / `.arcreel.db` / `migrate_sqlite_to_orm` 文档命中。
