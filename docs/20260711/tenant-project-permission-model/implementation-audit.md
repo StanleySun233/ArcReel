@@ -373,6 +373,14 @@ Additional focused regression:
   - Result: 4 passed
 - `DATABASE_URL=postgresql+asyncpg://... ruff check tests/config/test_anthropic_env_dict.py`
   - Result: passed
+- Remote video provider preflight was run without starting paid video generation.
+  - Remote deploy was updated from CI image `registry.kr777.top/arcreel/arcreel:latest` for commit `4aa7274`; container health became `healthy`.
+  - Browser login through CaMeL as `passbygrocer` succeeded and current tenant remained `ten_9979b6290cd14993a42f3cb909409827`.
+  - Custom provider `CaMeL Video` was switched to model `doubao-seedance-1-5-pro-251215`.
+  - `GET /api/v1/projects/proj-c56f473025444b8d/video-capabilities` returned `provider_id=custom-3`, `model=doubao-seedance-1-5-pro-251215`, `supported_durations=4..15`, `source=custom`.
+  - `GET /api/v1/projects/proj-c56f473025444b8d/files` returned empty `storyboards` and empty `videos`.
+  - `POST /api/v1/projects/proj-c56f473025444b8d/generate/video/E1S01` returned `400 {"detail":"请先生成分镜图 scene_E1S01.png"}`.
+  - Conclusion: the requested video model resolves correctly, and the route blocks before provider invocation when first-frame storyboard files are missing. No paid video provider call was made in this preflight.
 
 ### Video submit persistence keeps tenant scope without real provider calls
 
