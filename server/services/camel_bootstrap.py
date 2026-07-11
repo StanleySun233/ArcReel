@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -264,6 +265,10 @@ def _token_models(token: dict, spec: CamelMediaSpec) -> tuple[str, ...]:
 
 
 def _models_for_spec(spec: CamelMediaSpec, models: tuple[str, ...]) -> list[dict]:
+    from lib.custom_provider.duration_presets import infer_supported_durations
+    from lib.custom_provider.endpoints import endpoint_to_media_type
+
+    is_video = endpoint_to_media_type(spec.endpoint) == "video"
     return [
         {
             "model_id": model,
@@ -271,6 +276,7 @@ def _models_for_spec(spec: CamelMediaSpec, models: tuple[str, ...]) -> list[dict
             "endpoint": spec.endpoint,
             "is_default": index == 0,
             "is_enabled": True,
+            "supported_durations": json.dumps(infer_supported_durations(model)) if is_video else None,
         }
         for index, model in enumerate(models)
     ]

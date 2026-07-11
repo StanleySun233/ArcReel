@@ -640,6 +640,10 @@ class ConfigResolver:
                     ) from exc
                 if isinstance(parsed, list):
                     supported_durations = [int(d) for d in parsed]
+            else:
+                from lib.custom_provider.duration_presets import infer_supported_durations
+
+                supported_durations = infer_supported_durations(model_id)
         else:
             source = "registry"
             provider_meta = PROVIDER_REGISTRY.get(provider_id)

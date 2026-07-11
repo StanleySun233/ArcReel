@@ -642,11 +642,14 @@ class TestVideoCapabilities:
         factory, engine = await _make_session()
         try:
             async with factory() as session:
+                session.info["user_id"] = "default"
+                session.info["tenant_id"] = "ten_default"
                 provider = CustomProvider(
                     display_name="Custom X",
                     discovery_format="openai",
                     base_url="https://example.com",
                     api_key="xxx",
+                    tenant_id="ten_default",
                 )
                 session.add(provider)
                 await session.flush()
@@ -656,6 +659,7 @@ class TestVideoCapabilities:
                     display_name="My Video",
                     endpoint="newapi-video",
                     supported_durations="[5, 10]",
+                    tenant_id="ten_default",
                 )
                 session.add(model)
                 await session.flush()
@@ -683,11 +687,14 @@ class TestVideoCapabilities:
         factory, engine = await _make_session()
         try:
             async with factory() as session:
+                session.info["user_id"] = "default"
+                session.info["tenant_id"] = "ten_default"
                 provider = CustomProvider(
                     display_name="Custom Sora",
                     discovery_format="openai",
                     base_url="https://example.com",
                     api_key="xxx",
+                    tenant_id="ten_default",
                 )
                 session.add(provider)
                 await session.flush()
@@ -697,6 +704,7 @@ class TestVideoCapabilities:
                     display_name="Sora-like",
                     endpoint="openai-video",
                     supported_durations="[4, 8]",
+                    tenant_id="ten_default",
                 )
                 session.add(model)
                 await session.flush()
@@ -711,6 +719,49 @@ class TestVideoCapabilities:
             await engine.dispose()
         assert caps["source"] == "custom"
         assert caps["max_reference_images"] == 1
+
+    async def test_custom_video_missing_durations_uses_model_preset(self):
+        """历史 CaMeL bootstrap 行没有 supported_durations 时，按 model_id preset 兜底。"""
+        from lib.db.models.custom_provider import CustomProvider, CustomProviderModel
+
+        resolver = ConfigResolver.__new__(ConfigResolver)
+        fake_svc = _FakeConfigService(settings={})
+        factory, engine = await _make_session()
+        try:
+            async with factory() as session:
+                session.info["user_id"] = "default"
+                session.info["tenant_id"] = "ten_default"
+                provider = CustomProvider(
+                    display_name="CaMeL Video",
+                    discovery_format="openai",
+                    base_url="https://example.com",
+                    api_key="xxx",
+                    tenant_id="ten_default",
+                )
+                session.add(provider)
+                await session.flush()
+                model = CustomProviderModel(
+                    provider_id=provider.id,
+                    model_id="doubao-seedance-2-0-260128",
+                    display_name="doubao-seedance-2-0-260128",
+                    endpoint="ark-seedance",
+                    supported_durations=None,
+                    tenant_id="ten_default",
+                )
+                session.add(model)
+                await session.flush()
+
+                project_backend = f"custom-{provider.id}/doubao-seedance-2-0-260128"
+                with patch("lib.config.resolver.get_project_manager") as mock_pm:
+                    mock_pm.return_value.load_project.return_value = {
+                        "video_backend": project_backend,
+                    }
+                    caps = await resolver._resolve_video_capabilities(fake_svc, session, "demo")
+        finally:
+            await engine.dispose()
+        assert caps["source"] == "custom"
+        assert caps["supported_durations"] == list(range(4, 16))
+        assert caps["max_duration"] == 15
 
 
 class TestResolveImageBackend:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import httpx
@@ -239,6 +240,8 @@ async def test_camel_bootstrap_creates_user_owned_providers_and_defaults(
     assert await service.get_setting("default_video_backend") == (
         f"{make_provider_id(by_name['CaMeL Video'].id)}/camel-returned-video"
     )
+    video_models = await repo.list_models(by_name["CaMeL Video"].id)
+    assert json.loads(video_models[0].supported_durations or "[]") == [4, 8]
     assert (
         await service.get_setting("default_audio_backend")
         == f"{make_provider_id(by_name['CaMeL Audio'].id)}/camel-returned-audio"
@@ -457,6 +460,7 @@ async def test_camel_bootstrap_repair_updates_existing_provider_and_defaults(
     assert by_name["CaMeL Video"].base_url == "https://api.camel-hub.com"
     video_models = await repo.list_models(existing_video.id)
     assert [m.model_id for m in video_models] == ["doubao-seedance-2-0-260128"]
+    assert json.loads(video_models[0].supported_durations or "[]") == list(range(4, 16))
     assert await ConfigService(session, user_id="camel:123").get_setting("default_video_backend") == (
         f"{make_provider_id(existing_video.id)}/doubao-seedance-2-0-260128"
     )
