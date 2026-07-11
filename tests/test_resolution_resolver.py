@@ -1,10 +1,13 @@
 """测试 resolve_resolution 按 project → legacy → custom default → None 顺序解析。"""
 
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
-from server.services.resolution_resolver import _from_project, resolve_resolution
+from lib.user_scope import current_identity_scope
+from server.services.resolution_resolver import _from_project, get_custom_resolution_default, resolve_resolution
 
 # --- 纯项目字典路径（同步即可） ---
 
@@ -94,3 +97,35 @@ async def test_resolve_falls_through_to_custom_when_project_empty_string():
         return_value="1K",
     ):
         assert await resolve_resolution(project, "custom-1", "m") == "1K"
+
+
+@pytest.mark.asyncio
+async def test_custom_default_passes_current_tenant_to_repository(monkeypatch):
+    captured = {}
+
+    @asynccontextmanager
+    async def fake_session_factory():
+        yield object()
+
+    class FakeRepo:
+        def __init__(self, session, *, user_id=None, tenant_id=None):
+            captured["user_id"] = user_id
+            captured["tenant_id"] = tenant_id
+
+        async def get_model_by_ids(self, provider_id, model_id):
+            captured["provider_id"] = provider_id
+            captured["model_id"] = model_id
+            return SimpleNamespace(resolution="720p")
+
+    monkeypatch.setattr("lib.db.async_session_factory", fake_session_factory)
+    monkeypatch.setattr("lib.db.repositories.custom_provider_repo.CustomProviderRepository", FakeRepo)
+
+    with current_identity_scope(user_id="camel:16", tenant_id="ten_9979"):
+        assert await get_custom_resolution_default("custom-1", "model-a") == "720p"
+
+    assert captured == {
+        "user_id": "camel:16",
+        "tenant_id": "ten_9979",
+        "provider_id": 1,
+        "model_id": "model-a",
+    }

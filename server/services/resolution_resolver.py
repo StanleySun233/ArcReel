@@ -46,6 +46,7 @@ async def get_custom_resolution_default(provider_id: str | None, model_id: str |
     from lib.custom_provider import parse_provider_id
     from lib.db import async_session_factory
     from lib.db.repositories.custom_provider_repo import CustomProviderRepository
+    from lib.user_scope import get_current_tenant_id, get_current_user_id
 
     try:
         db_id = parse_provider_id(provider_id)
@@ -53,7 +54,7 @@ async def get_custom_resolution_default(provider_id: str | None, model_id: str |
         return None
 
     async with async_session_factory() as session:
-        repo = CustomProviderRepository(session)
+        repo = CustomProviderRepository(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
         model = await repo.get_model_by_ids(db_id, model_id)
         return model.resolution if model else None
 
