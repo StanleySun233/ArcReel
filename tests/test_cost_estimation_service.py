@@ -8,6 +8,9 @@ from lib.usage_tracker import UsageTracker
 from server.services.cost_estimation import CostEstimationService
 from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
+TEST_USER_ID = "default"
+TEST_TENANT_ID = "ten_default"
+
 
 @pytest.fixture
 async def db_factory():
@@ -17,6 +20,15 @@ async def db_factory():
         yield factory
     finally:
         await drop_pg_test_engine(engine, schema)
+
+
+def _resolver(factory) -> ConfigResolver:
+    return ConfigResolver(factory, user_id=TEST_USER_ID, tenant_id=TEST_TENANT_ID)
+
+
+def _scope(session) -> None:
+    session.info["user_id"] = TEST_USER_ID
+    session.info["tenant_id"] = TEST_TENANT_ID
 
 
 def _make_script(
@@ -94,7 +106,7 @@ def _make_ad_script(shot_ids: list[str], durations: list[int]) -> dict:
 
 class TestCostEstimationService:
     async def test_estimate_single_episode(self, db_factory):
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -118,7 +130,7 @@ class TestCostEstimationService:
                 assert all(isinstance(v, (int, float)) for v in cost.values())
 
     async def test_actual_costs_included(self, db_factory):
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -141,7 +153,7 @@ class TestCostEstimationService:
 
     async def test_grid_actual_costs_apportioned_to_scenes(self, db_factory):
         """Grid actual cost should be split evenly among scenes sharing the grid_id."""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -182,7 +194,7 @@ class TestCostEstimationService:
 
     async def test_grid_partial_generation_some_without_grid_id(self, db_factory):
         """Scenes without grid_id should have empty actual image cost."""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -221,7 +233,7 @@ class TestCostEstimationService:
 
     async def test_single_mode_unaffected_by_grid_logic(self, db_factory):
         """Single generation mode should be completely unaffected by grid apportionment."""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -247,7 +259,7 @@ class TestCostEstimationService:
 
     async def test_project_level_actual_split_by_asset_type(self, db_factory):
         """project-level image 成本应按 output_path 前缀拆分为 characters/scenes/props 三项。"""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -274,7 +286,7 @@ class TestCostEstimationService:
         + warning,其他正常集仍参与估算。"""
         import logging
 
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -321,10 +333,11 @@ class TestCostEstimationService:
         from lib.config.service import ConfigService
 
         async with db_factory() as session:
+            _scope(session)
             await ConfigService(session).set_setting("default_audio_backend", "dashscope/qwen3-tts-flash")
             await session.commit()
 
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -352,7 +365,7 @@ class TestCostEstimationService:
 
     async def test_audio_actual_costs_included(self, db_factory):
         """旁白实际费用按 segment 聚合进 actual.audio。"""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -374,7 +387,7 @@ class TestCostEstimationService:
 
     async def test_ad_storyboard_estimates_per_shot(self, db_factory):
         """ad 项目（分镜路径）：逐镜头返回分镜图 + 视频估值，聚合进集/项目两级合计。"""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -404,10 +417,11 @@ class TestCostEstimationService:
         from lib.config.service import ConfigService
 
         async with db_factory() as session:
+            _scope(session)
             await ConfigService(session).set_setting("default_audio_backend", "dashscope/qwen3-tts-flash")
             await session.commit()
 
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -424,7 +438,7 @@ class TestCostEstimationService:
 
     async def test_ad_reference_video_skips_image_estimate(self, db_factory):
         """ad + 参考生视频路径跳过分镜步骤：不产生分镜图估值，视频估值保留。"""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -448,7 +462,7 @@ class TestCostEstimationService:
         assert result["project_totals"]["estimate"]["video"]
 
     async def test_empty_episodes(self, db_factory):
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -461,7 +475,7 @@ class TestCostEstimationService:
 
     async def test_cost_estimation_uses_t2i_default_when_split_fields_present(self, db_factory):
         """project 仅有 image_provider_t2i 时，cost estimation 用此值估算（T2I 是 cost estimation 锚点）。"""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 
@@ -483,7 +497,7 @@ class TestCostEstimationService:
         """project 没有 image_provider_t2i 时，cost_estimation 不再自行 fallback I2I 或 legacy
         （legacy 由 ProjectManager.load_project 的 lazy upgrade 处理；I2I 和 T2I 是正交能力槽，
         互替会算到错误价目）。无 T2I 字段则使用 resolver 默认值。"""
-        resolver = ConfigResolver(db_factory)
+        resolver = _resolver(db_factory)
         tracker = UsageTracker(session_factory=db_factory)
         service = CostEstimationService(resolver, tracker)
 

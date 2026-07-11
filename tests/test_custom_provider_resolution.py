@@ -14,6 +14,8 @@ async def db_session():
     engine, schema = await create_pg_test_engine()
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
+        session.info["user_id"] = "default"
+        session.info["tenant_id"] = "ten_default"
         yield session
     await drop_pg_test_engine(engine, schema)
 

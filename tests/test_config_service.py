@@ -11,6 +11,8 @@ async def session():
     engine, schema = await create_pg_test_engine()
     sm = async_sessionmaker(engine, expire_on_commit=False)
     async with sm() as s:
+        s.info["tenant_id"] = "ten_default"
+        s.info["user_id"] = "default"
         yield s
     await drop_pg_test_engine(engine, schema)
 
