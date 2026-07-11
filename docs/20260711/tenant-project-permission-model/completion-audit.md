@@ -71,6 +71,21 @@
 
 ## 最近验证命令
 
+Live remote recheck on 2026-07-11 20:17 +08:
+
+```text
+URL: https://dream.camel-hub.com/
+Browser session: agent-browser arcreel-dream-1573151018d0
+Login: passbygrocer through CaMeL OAuth
+ArcReel page: /app/projects/proj-c56f473025444b8d/episodes/1
+Observed UI state: personal tenant passbygrocer的个人空间, role Admin, project title 月亮与六便士第一章 2资产测试, mode NARRATION, source files 2, characters 2, scenes 2, props 2, episode E1 思特里克兰德的名字与画作, 3 storyboard-ready shots, assistant tool history visible.
+Same-session API read with local ArcReel bearer token:
+  /api/v1/auth/me -> 200, user_id camel:16, username passbygrocer, tenant passbygrocer的个人空间, role admin
+  /api/v1/projects/proj-c56f473025444b8d -> 200, content_mode narration, episodes 1, scripts episode_1.json
+  /api/v1/projects/proj-c56f473025444b8d/files -> 200, source 2, characters 2, scenes 2, props 2, storyboards 3, videos 0
+No generation endpoint was invoked during this recheck.
+```
+
 Backend:
 
 ```bash
