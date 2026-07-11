@@ -199,9 +199,29 @@ async def test_list_pending_assets_error(fake_ctx: ToolContext, monkeypatch) -> 
 async def test_generate_assets_happy(fake_ctx: ToolContext, monkeypatch) -> None:
     from server.agent_runtime.sdk_tools import enqueue_assets as mod
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    fake_ctx.user_id = "camel:alice"
+    fake_ctx.tenant_id = "ten_alpha"
+    captured_identity: dict[str, Any] = {}
+
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
+        captured_identity.update(
+            {
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "requested_by_user_id": requested_by_user_id,
+            }
+        )
         succ = [
             BatchTaskResult(
                 resource_id=s.resource_id,
@@ -220,6 +240,11 @@ async def test_generate_assets_happy(fake_ctx: ToolContext, monkeypatch) -> None
     text = out["content"][0]["text"]
     assert "1 succeeded" in text
     assert "张三" in text
+    assert captured_identity == {
+        "user_id": "camel:alice",
+        "tenant_id": "ten_alpha",
+        "requested_by_user_id": "camel:alice",
+    }
 
 
 async def test_generate_assets_names_without_type(fake_ctx: ToolContext) -> None:
@@ -259,7 +284,16 @@ async def test_generate_narration_audio_enqueues_missing_segments(fake_ctx: Tool
     fake_ctx.pm.script_payload = _narration_audio_script()  # type: ignore[attr-defined]
     captured: list[Any] = []
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         captured.extend(specs)
@@ -297,7 +331,16 @@ async def test_generate_narration_audio_explicit_ids_regenerate(fake_ctx: ToolCo
     fake_ctx.pm.script_payload = _narration_audio_script()  # type: ignore[attr-defined]
     captured: list[Any] = []
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         captured.extend(specs)
@@ -322,7 +365,16 @@ async def test_generate_narration_audio_blank_text_reported(fake_ctx: ToolContex
     fake_ctx.pm.script_payload = script  # type: ignore[attr-defined]
     captured: list[Any] = []
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         captured.extend(specs)
@@ -356,7 +408,16 @@ async def test_generate_narration_audio_partial_unmatched_reported(fake_ctx: Too
     fake_ctx.pm.script_payload = _narration_audio_script()  # type: ignore[attr-defined]
     captured: list[Any] = []
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         captured.extend(specs)
@@ -425,7 +486,16 @@ async def test_generate_narration_audio_skips_segment_without_id(fake_ctx: ToolC
     fake_ctx.pm.script_payload = script  # type: ignore[attr-defined]
     captured: list[Any] = []
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         captured.extend(specs)
@@ -469,7 +539,16 @@ async def test_generate_narration_audio_task_failures_surface(fake_ctx: ToolCont
 
     fake_ctx.pm.script_payload = _narration_audio_script()  # type: ignore[attr-defined]
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         fails = [
@@ -504,7 +583,16 @@ async def test_generate_narration_audio_rejects_path_in_script_arg(fake_ctx: Too
 async def test_generate_storyboards_happy(fake_ctx: ToolContext, monkeypatch) -> None:
     from server.agent_runtime.sdk_tools import enqueue_storyboards as mod
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         succ = [
@@ -568,7 +656,16 @@ async def test_generate_grid_wrong_mode(fake_ctx: ToolContext) -> None:
 async def test_generate_video_episode_happy(fake_ctx: ToolContext, monkeypatch) -> None:
     from server.agent_runtime.sdk_tools import enqueue_videos as mod
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         for spec in specs:
@@ -616,7 +713,16 @@ async def test_generate_video_scene_missing(fake_ctx: ToolContext) -> None:
 async def test_generate_video_all_happy(fake_ctx: ToolContext, monkeypatch) -> None:
     from server.agent_runtime.sdk_tools import enqueue_videos as mod
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         succ = [
@@ -646,7 +752,16 @@ async def test_generate_video_all_error(fake_ctx: ToolContext) -> None:
 async def test_generate_video_selected_happy(fake_ctx: ToolContext, monkeypatch) -> None:
     from server.agent_runtime.sdk_tools import enqueue_videos as mod
 
-    async def fake_batch(*, project_name, specs, on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name,
+        specs,
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         for s in specs:
@@ -1649,7 +1764,16 @@ async def test_generate_video_episode_ad_reference_derives_and_enqueues(
 
     enqueued: list[Any] = []
 
-    async def fake_batch(*, project_name: str, specs: list[Any], on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name: str,
+        specs: list[Any],
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         for spec in specs:
@@ -1703,7 +1827,16 @@ async def test_generate_video_episode_ad_reference_regenerates_reset_unit(
 
     enqueued: list[Any] = []
 
-    async def fake_batch(*, project_name: str, specs: list[Any], on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name: str,
+        specs: list[Any],
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         for spec in specs:
@@ -1750,7 +1883,16 @@ async def test_generate_video_episode_ad_reference_skips_unchanged_unit_with_out
 
     enqueued: list[Any] = []
 
-    async def fake_batch(*, project_name: str, specs: list[Any], on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name: str,
+        specs: list[Any],
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         enqueued.extend(specs)
         return [], []
 
@@ -1768,7 +1910,16 @@ async def test_generate_video_all_ad_reference_falls_through_to_episode(
 ) -> None:
     from server.agent_runtime.sdk_tools import enqueue_videos as mod
 
-    async def fake_batch(*, project_name: str, specs: list[Any], on_success=None, on_failure=None):
+    async def fake_batch(
+        *,
+        project_name: str,
+        specs: list[Any],
+        on_success=None,
+        on_failure=None,
+        user_id=None,
+        tenant_id=None,
+        requested_by_user_id=None,
+    ):
         from lib.generation_queue_client import BatchTaskResult
 
         for spec in specs:

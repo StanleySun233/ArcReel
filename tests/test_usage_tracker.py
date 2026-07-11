@@ -3,9 +3,12 @@
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from lib.db.models.api_call import ApiCall
 from lib.usage_tracker import UsageTracker
+from lib.user_scope import current_identity_scope
 from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
@@ -22,6 +25,40 @@ async def tracker():
 
 
 class TestUsageTracker:
+    async def test_start_call_uses_current_identity_scope_by_default(self, tracker):
+        with current_identity_scope(user_id="camel:alice", tenant_id="ten_alpha"):
+            call_id = await tracker.start_call(
+                project_name="demo",
+                call_type="text",
+                model="gemini-3-flash-preview",
+                provider="gemini",
+            )
+
+        async with tracker._session_factory() as session:
+            row = await session.get(ApiCall, call_id)
+
+        assert row is not None
+        assert row.user_id == "camel:alice"
+        assert row.tenant_id == "ten_alpha"
+
+    async def test_start_call_explicit_identity_wins_over_current_scope(self, tracker):
+        with current_identity_scope(user_id="camel:alice", tenant_id="ten_alpha"):
+            call_id = await tracker.start_call(
+                project_name="demo",
+                call_type="text",
+                model="gemini-3-flash-preview",
+                provider="gemini",
+                user_id="camel:bob",
+                tenant_id="ten_beta",
+            )
+
+        async with tracker._session_factory() as session:
+            row = await session.scalar(select(ApiCall).where(ApiCall.id == call_id))
+
+        assert row is not None
+        assert row.user_id == "camel:bob"
+        assert row.tenant_id == "ten_beta"
+
     async def test_start_and_finish_image_call_success(self, tracker):
         call_id = await tracker.start_call(
             project_name="demo",

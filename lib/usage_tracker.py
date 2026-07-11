@@ -13,6 +13,7 @@ from lib.db import safe_session_factory
 from lib.db.base import DEFAULT_USER_ID
 from lib.db.repositories.usage_repo import UsageRepository
 from lib.providers import PROVIDER_GEMINI, CallType
+from lib.user_scope import get_current_tenant_id, get_current_user_id
 
 
 class UsageTracker:
@@ -36,9 +37,14 @@ class UsageTracker:
         tenant_id: str | None = None,
         segment_id: str | None = None,
     ) -> int:
+        resolved_user_id = get_current_user_id() if user_id == DEFAULT_USER_ID else user_id
+        resolved_tenant_id = tenant_id or get_current_tenant_id()
 
         async with self._session_factory() as session:
-            repo = UsageRepository(session)
+            session.info["user_id"] = resolved_user_id
+            if resolved_tenant_id is not None:
+                session.info["tenant_id"] = resolved_tenant_id
+            repo = UsageRepository(session, tenant_id=resolved_tenant_id)
             return await repo.start_call(
                 project_name=project_name,
                 call_type=call_type,
@@ -49,8 +55,8 @@ class UsageTracker:
                 aspect_ratio=aspect_ratio,
                 generate_audio=generate_audio,
                 provider=provider,
-                user_id=user_id,
-                tenant_id=tenant_id,
+                user_id=resolved_user_id,
+                tenant_id=resolved_tenant_id,
                 segment_id=segment_id,
             )
 
