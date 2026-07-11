@@ -163,7 +163,7 @@ async def get_file_signed_url(
     if not allowed:
         raise HTTPException(status_code=403, detail="FILE_ACCESS_DENIED")
     token = _create_file_access_token(file_id=file_id, user_id=current_user.id, tenant_id=current_user.tenant_id)
-    url = str(request.url_for("download_file_content", file_id=file_id))
+    url = f"{request.app.url_path_for('download_file_content', file_id=file_id)}"
     return {"file_id": file_id, "url": f"{url}?{urlencode({'token': token})}", "expires_in": FILE_URL_EXPIRES_IN}
 
 

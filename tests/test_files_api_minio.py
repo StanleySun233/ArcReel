@@ -147,7 +147,7 @@ async def test_signed_url_route_checks_current_project_access_before_signing(asy
     assert body["file_id"] == record.file_id
     assert body["expires_in"] == 300
     assert record.object_key not in body["url"]
-    assert f"/api/v1/files/{record.file_id}/content?token=" in body["url"]
+    assert body["url"].startswith(f"/api/v1/files/{record.file_id}/content?token=")
     assert content.status_code == 200
     assert content.content == b"image"
 
