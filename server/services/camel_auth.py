@@ -24,6 +24,7 @@ CAMEL_STATE_COOKIE_NAME = "arcreel_camel_oauth_state"
 CAMEL_STATE_COOKIE_PREFIX = f"{CAMEL_STATE_COOKIE_NAME}_"
 CAMEL_STATE_TTL_SECONDS = 600
 CAMEL_OAUTH_CALLBACK_PATH = "/api/v1/auth/camel/callback"
+_oauth_state_cache: dict[str, tuple[int, str]] = {}
 CamelOAuthIntent = Literal["login", "provider_bootstrap", "provider_repair"]
 
 
@@ -166,7 +167,22 @@ def _state_cookie_name(state: str) -> str:
 
 
 def _state_cookie_from_request(state: str, cookies: dict[str, str]) -> str | None:
-    return cookies.get(_state_cookie_name(state)) or cookies.get(CAMEL_STATE_COOKIE_NAME)
+    cookie = cookies.get(_state_cookie_name(state)) or cookies.get(CAMEL_STATE_COOKIE_NAME)
+    if cookie:
+        return cookie
+    item = _oauth_state_cache.get(state)
+    if item is None or item[0] <= int(time.time()):
+        _oauth_state_cache.pop(state, None)
+        return None
+    return item[1]
+
+
+def _remember_state_cookie_value(state: str, value: str) -> None:
+    now = int(time.time())
+    _oauth_state_cache[state] = (now + CAMEL_STATE_TTL_SECONDS, value)
+    for key, (expiry, _) in tuple(_oauth_state_cache.items()):
+        if expiry <= now:
+            _oauth_state_cache.pop(key, None)
 
 
 def _decode_state_cookie(state: str, state_cookie: str | None) -> CamelOAuthState:
@@ -222,6 +238,7 @@ def build_camel_authorization_redirect(
         params["max_age"] = settings.repair_max_age_seconds
     response = RedirectResponse(f"{settings.authorize_url}?{urlencode(params)}")
     cookie_value = _encode_state_cookie(oauth_state)
+    _remember_state_cookie_value(oauth_state.nonce, cookie_value)
     for cookie_name in (_state_cookie_name(oauth_state.nonce), CAMEL_STATE_COOKIE_NAME):
         response.set_cookie(
             cookie_name,
@@ -299,6 +316,7 @@ async def upsert_camel_user(userinfo: dict) -> CamelLocalUser:
 
 
 def _delete_state_cookies(response: RedirectResponse, state: str) -> None:
+    _oauth_state_cache.pop(state, None)
     response.delete_cookie(_state_cookie_name(state))
     response.delete_cookie(CAMEL_STATE_COOKIE_NAME)
 

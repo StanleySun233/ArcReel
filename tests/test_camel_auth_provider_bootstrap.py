@@ -6,8 +6,10 @@ import httpx
 import jwt
 import pytest
 from fastapi import FastAPI
+from starlette.responses import RedirectResponse
 
 from server.auth import CurrentUserInfo, get_current_user
+from server.routers import auth as auth_router
 from server.routers import camel_bootstrap
 from server.services import camel_auth
 from server.services.camel_auth import CamelOAuthExchange, CamelOAuthState
@@ -59,6 +61,12 @@ async def post_start_url(
         return await client.post("/api/v1/camel/bootstrap/start-url", params=params, headers=headers)
 
 
+async def get_login_start_url(app: FastAPI, base_url: str = "https://arcreel.example.com") -> httpx.Response:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url=base_url) as client:
+        return await client.get("/api/v1/auth/camel/start?from=/app/projects", follow_redirects=False)
+
+
 def decoded_state_cookie(response):
     query = authorization_query(response)
     raw_cookie = response.cookies.get(camel_auth._state_cookie_name(query["state"][0]))
@@ -69,6 +77,14 @@ def decoded_state_cookie(response):
 def authorization_query(response):
     authorization_url = response.json()["authorization_url"]
     parts = urlsplit(authorization_url)
+    assert parts.scheme == "https"
+    assert parts.netloc == "camel.example.com"
+    assert parts.path == "/api/oauth/provider/authorize"
+    return parse_qs(parts.query)
+
+
+def login_authorization_query(response):
+    parts = urlsplit(response.headers["location"])
     assert parts.scheme == "https"
     assert parts.netloc == "camel.example.com"
     assert parts.path == "/api/oauth/provider/authorize"
@@ -128,6 +144,34 @@ async def test_login_callback_creates_personal_tenant_and_returns_tenant_token(m
     assert payload["provider"] == "camel"
     assert payload["tenant_id"].startswith("ten_")
     assert payload["tenant_role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_login_callback_accepts_server_state_when_browser_cookie_missing(monkeypatch):
+    configure_oauth_env(monkeypatch)
+    app = FastAPI()
+    app.include_router(auth_router.router, prefix="/api/v1")
+    start_response = await get_login_start_url(app)
+    query = login_authorization_query(start_response)
+    state = query["state"][0]
+
+    async def fake_fetch(settings, code, redirect_uri):
+        assert code == "oauth-code"
+        assert redirect_uri == "https://arcreel.example.com/api/v1/auth/camel/callback"
+        return CamelOAuthExchange(access_token="camel-access", userinfo={"id": "123", "username": "alice"})
+
+    async def fake_handle_login(userinfo, oauth_state):
+        assert userinfo["id"] == "123"
+        assert oauth_state.nonce == state
+        assert oauth_state.return_path == "/app/projects"
+        return RedirectResponse("/ok")
+
+    monkeypatch.setattr(camel_auth, "_fetch_camel_exchange", fake_fetch)
+    monkeypatch.setattr(camel_auth, "_handle_login_intent", fake_handle_login)
+
+    response = await camel_auth.complete_camel_oauth_callback("oauth-code", state, {})
+
+    assert response.headers["location"] == "/ok"
 
 
 @pytest.mark.asyncio
