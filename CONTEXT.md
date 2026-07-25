@@ -70,7 +70,7 @@ worker 内承载 slot 的两个独立数据结构（`lib/generation_worker.py`�
 - **CapacityTable** —— 纯标量上限表（`provider_id × media_type → 上限`）。provider config 是唯一真相，reload 只换表上的数字（`replace`），占用台账不受影响。`get` 三态语义：已知 + lane 在表→登记值（`0`=不支持该 lane）、已知缺 lane→`0`、provider 未知→懒默认（纯查询不写回）。
 - **SlotTable** —— 被动纯内存占用台账（`(provider_id, media_type) → {task_id: 占用}`）。记 inflight + pending（video sem 排队期的瞬态用 phase 标志区分，promote 只翻标志）；职责限于：判有无空位（容量由 caller 传入，结构本身容量无关）、按 task 找执行体（cancel）、报告完成（worker 记账）。**不写 DB、不解析 provider、不决定孤儿策略、不碰 `docs/adr/0006` 状态机守卫**。空 bucket 在最后一个占用释放时一并剪除（池满黑名单源 `occupied_providers` 的正确性支点）。
 
-占用台账是 **worker 内存状态**，与 DB 中的 `status='running'` 必须配对维护——cancel 触发时 worker 经 `find_by_task` 找到 asyncio.Task 后 `cancel()`，finally 收尾时 `release` 并把 DB 从 `cancelling` 转 `cancelled`（见 `docs/adr/0006`）。两者都以 `media_type` 为键维度为 audio lane 铺路：SlotTable 已能按 `(provider, "audio")` 记账、CapacityTable 容量装载收口在 `_lane_limits` 一处；但真正接入 audio 还需把 claim 循环（当前硬编码 `("image","video")`）与 `_extract_provider` 的 provider 解析纳入 audio lane（本次有意未做，见 `docs/adr/0010`）。
+占用台账是 **worker 内存状态**，与 DB 中的 `status='running'` 必须配对维护——cancel 触发时 worker 经 `find_by_task` 找到 asyncio.Task 后 `cancel()`，finally 收尾时 `release` 并把 DB 从 `cancelling` 转 `cancelled`（见 `docs/adr/0006`）。两者都以 `media_type` 为键维度覆盖 image / video / audio：SlotTable 按 `(provider, media_type)` 记账，CapacityTable 容量装载收口在 `_lane_limits` 一处，claim 循环遍历 `("image", "video", "audio")`，`_extract_provider` 按 lane 分派 image/video/audio provider。
 
 **worker（GenerationWorker）**：
 ArcReel 中始终与 server 主进程**捆绑在同一个 uvicorn 进程内**的 background asyncio task，**不是**独立进程，**不是**集群成员。代码里的 `lease` / `heartbeat` / `requeue_running` 是早期遗留的"多 worker 协调"脚手架，从未被多进程使用。涉及 worker 的设计按"单进程 in-process 协调"思路。

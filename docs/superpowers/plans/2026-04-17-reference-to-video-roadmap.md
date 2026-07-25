@@ -20,11 +20,11 @@
 |---|---|---|---|---|---|
 | **PR1** | M1 SDK 验证 | `verify_reference_video_sdks.py` + 四家能力矩阵报告 | 无 | `2026-04-17-reference-to-video-pr1-sdk-verification.md` | ~500 |
 | **PR2** | M2 数据模型 + parser | `ReferenceVideoScript` Pydantic、`shot_parser.py`、`data_validator` 扩展、`generation_mode` 字段 | 无 | `2026-04-17-reference-to-video-pr2-data-model.md` | ~800 |
-| **PR3** | M3 后端 | `/reference-videos` 路由 + `reference_video_tasks.py` executor + queue/worker dispatch + 归档/费用 | PR2 | `2026-04-17-reference-to-video-pr3-backend.md`（待写） | ~1500 |
-| **PR4** | M4 前端框架 | `GenerationModeSelector`（项目级 + 集级）、`EpisodeModeSwitcher`、`ReferenceVideoCanvas` 基础三栏布局、`TimelineCanvas` 按 mode 分支 | PR3 | `2026-04-17-reference-to-video-pr4-frontend-shell.md`（待写） | ~1200 |
-| **PR5** | M4b 前端编辑器 | `MentionPicker`、`ReferenceVideoCard`（prompt 编辑器 + Shot/`@` 高亮 + 自动保存）、`ReferencePanel`（拖拽换序） | PR4 | `2026-04-17-reference-to-video-pr5-frontend-editor.md`（待写） | ~1500 |
-| **PR6** | M5 Agent 工作流 | `split-reference-video-units` subagent、`generate-script` / `generate-video` / `manga-workflow` skill 扩展、`CLAUDE.md` 更新 | PR2 + PR3 | `2026-04-17-reference-to-video-pr6-agent-workflow.md`（待写） | ~800 |
-| **PR7** | M6 E2E + 发版 | `test_reference_video_e2e.py`、i18n 一致性、覆盖率达标、生成模式切换保留策略、UI 文案补全 | PR1-6 全部 | `2026-04-17-reference-to-video-pr7-e2e-release.md`（待写） | ~600 |
+| **PR3** | M3 后端 | `/reference-videos` 路由 + `reference_video_tasks.py` executor + queue/worker dispatch + 归档/费用 | PR2 | `2026-04-17-reference-to-video-pr3-backend.md` | ~1500 |
+| **PR4** | M4 前端框架 | `GenerationModeSelector`（项目级 + 集级）、`EpisodeModeSwitcher`、`ReferenceVideoCanvas` 基础三栏布局、`TimelineCanvas` 按 mode 分支 | PR3 | `2026-04-17-reference-to-video-pr4-frontend-shell.md` | ~1200 |
+| **PR5** | M4b 前端编辑器 | `MentionPicker`、`ReferenceVideoCard`（prompt 编辑器 + Shot/`@` 高亮 + 自动保存）、`ReferencePanel`（拖拽换序） | PR4 | `2026-04-17-reference-to-video-pr5-frontend-editor.md` | ~1500 |
+| **PR6** | M5 Agent 工作流 | `split-reference-video-units` subagent、`generate-script` / `generate-video` / `manga-workflow` skill 扩展、`CLAUDE.md` 更新 | PR2 + PR3 | `2026-04-17-reference-to-video-pr6-agent-workflow.md` | ~800 |
+| **PR7** | M6 E2E + 发版 | `test_reference_video_e2e.py`、i18n 一致性、覆盖率达标、生成模式切换保留策略、UI 文案补全 | PR1-6 全部 | `2026-04-17-reference-to-video-pr7-e2e-release.md` | ~600 |
 
 **总估算**：~6900 行代码+测试；~7 周（每周 1 PR）。
 
@@ -137,7 +137,7 @@ PR2 (数据模型) ─────┼── PR3 (后端) ───────�
 - **Veo 特判**：`duration = min(duration, 8)`、`references = references[:3]`，超限由响应 `warnings[]` 回传前端
 - **Sora 特判**：若 M1 验证结论为不支持多图，强制 `references = references[:1]` + warn
 
-**详细 plan**：`2026-04-17-reference-to-video-pr3-backend.md`（待写，预计 ~20 task）
+**详细 plan**：`2026-04-17-reference-to-video-pr3-backend.md`
 
 **验收**：
 - `pytest tests/server/test_reference_videos_router.py tests/server/test_reference_video_tasks.py -v` 全绿
@@ -175,7 +175,7 @@ PR2 (数据模型) ─────┼── PR3 (后端) ───────�
 - 状态计算：`progress = 已生成 units / 总 units`
 - Canvas 先出三栏骨架 + mock 数据渲染；编辑器在 PR5 补
 
-**详细 plan**：`2026-04-17-reference-to-video-pr4-frontend-shell.md`（待写，预计 ~15 task）
+**详细 plan**：`2026-04-17-reference-to-video-pr4-frontend-shell.md`
 
 ---
 
@@ -204,7 +204,7 @@ PR2 (数据模型) ─────┼── PR3 (后端) ───────�
 - prompt 保存后端会重算 `duration_seconds` + `references`，前端保存后要用响应更新本地状态（防止顺序错乱）
 - 拖拽换序独立于 prompt 保存，走 `PATCH /units/{id}` 只带 `references` 字段
 
-**详细 plan**：`2026-04-17-reference-to-video-pr5-frontend-editor.md`（待写，预计 ~18 task）
+**详细 plan**：`2026-04-17-reference-to-video-pr5-frontend-editor.md`
 
 ---
 
@@ -233,7 +233,7 @@ PR2 (数据模型) ─────┼── PR3 (后端) ───────�
 - Subagent prompt 模板强调：shot 时长之和 ≤ 模型上限；references 来自 characters/scenes/props 三 bucket；描述用 `@名称` 不描外貌
 - `generate-video` skill 统一入口：读 episode 脚本后检测顶层结构分派，保持与 storyboard/grid 的调用习惯一致
 
-**详细 plan**：`2026-04-17-reference-to-video-pr6-agent-workflow.md`（待写，预计 ~12 task）
+**详细 plan**：`2026-04-17-reference-to-video-pr6-agent-workflow.md`
 
 ---
 
@@ -260,7 +260,7 @@ PR2 (数据模型) ─────┼── PR3 (后端) ───────�
 - 是否 bump `schema_version` v2（默认**不 bump**）
 - Sora 参考模式是否完全隐藏（依据 M1 结论）
 
-**详细 plan**：`2026-04-17-reference-to-video-pr7-e2e-release.md`（待写，预计 ~10 task）
+**详细 plan**：`2026-04-17-reference-to-video-pr7-e2e-release.md`
 
 ---
 
