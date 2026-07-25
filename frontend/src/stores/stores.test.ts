@@ -389,6 +389,14 @@ describe("stores", () => {
       useProjectsStore.getState().setCurrentProject("demo", {} as any, {}, { "storyboards/x.png": 999 });
       expect(useProjectsStore.getState().getAssetFingerprint("storyboards/x.png")).toBe(999);
     });
+
+    it("clears fingerprints when switching to a project without a fingerprint snapshot", () => {
+      const store = useProjectsStore.getState();
+      store.setCurrentProject("demo-a", {} as any, {}, { "storyboards/same.png": 1 });
+      store.setCurrentProject("demo-b", {} as any, {});
+
+      expect(useProjectsStore.getState().getAssetFingerprint("storyboards/same.png")).toBeNull();
+    });
   });
 
   it("updates usage store filters, pagination and result payloads", () => {

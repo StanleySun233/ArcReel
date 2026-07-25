@@ -26,9 +26,9 @@ _FAKE_USER = CurrentUserInfo(
 
 
 def _scoped_factory(instance):
-    def _factory(_session, *, user_id=None):
+    def _factory(_session, *, user_id=None, tenant_id=None):
         assert user_id == _FAKE_USER.id
-        assert _session.info["tenant_id"] == _FAKE_USER.tenant_id
+        assert tenant_id == _FAKE_USER.tenant_id
         return instance
 
     return _factory

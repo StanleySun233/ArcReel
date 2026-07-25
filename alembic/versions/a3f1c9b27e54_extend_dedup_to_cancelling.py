@@ -51,14 +51,14 @@ def downgrade() -> None:
         BEGIN
             IF EXISTS (
                 SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'tasks' AND column_name = 'project_id'
+                WHERE table_schema = current_schema() AND table_name = 'tasks' AND column_name = 'project_id'
             ) THEN
                 CREATE UNIQUE INDEX idx_tasks_dedupe_active
                 ON tasks (project_id, task_type, resource_id, COALESCE(script_file, ''))
                 WHERE status IN ('queued', 'running');
             ELSIF EXISTS (
                 SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'tasks' AND column_name = 'project_name'
+                WHERE table_schema = current_schema() AND table_name = 'tasks' AND column_name = 'project_name'
             ) THEN
                 CREATE UNIQUE INDEX idx_tasks_dedupe_active
                 ON tasks (project_name, task_type, resource_id, COALESCE(script_file, ''))

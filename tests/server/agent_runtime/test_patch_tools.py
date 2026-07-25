@@ -972,7 +972,11 @@ class TestPatchProjectNarrationSettings:
 
         engine = await create_pg_test_engine_with_cleanup()
         try:
-            resolver = ConfigResolver(async_sessionmaker(engine, expire_on_commit=False))
+            resolver = ConfigResolver(
+                async_sessionmaker(engine, expire_on_commit=False),
+                user_id="default",
+                tenant_id="ten_default",
+            )
             assert await resolver.resolve_narration_voice(project) == "Ethan"
             assert await resolver.resolve_narration_speed(project) == 1.2
         finally:

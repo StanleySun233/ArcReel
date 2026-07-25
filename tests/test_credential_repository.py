@@ -14,6 +14,8 @@ async def session():
     engine, schema = await create_pg_test_engine()
     async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with async_session() as s:
+        s.info["user_id"] = "default"
+        s.info["tenant_id"] = "ten_default"
         yield s
     await drop_pg_test_engine(engine, schema)
 
@@ -77,9 +79,9 @@ class TestCredentialRepository:
         assert found is not None
         assert found.name == "Key1"
 
-    async def test_list_get_active_and_get_by_id_are_scoped_by_user(self, session: AsyncSession):
-        repo_a = CredentialRepository(session, user_id="user-a")
-        repo_b = CredentialRepository(session, user_id="user-b")
+    async def test_list_get_active_and_get_by_id_are_scoped_by_tenant(self, session: AsyncSession):
+        repo_a = CredentialRepository(session, user_id="user-a", tenant_id="ten_default")
+        repo_b = CredentialRepository(session, user_id="user-b", tenant_id="ten_other")
         cred_a = await repo_a.create(provider="gemini-aistudio", name="A active", api_key="AIza-a")
         cred_b = await repo_b.create(provider="gemini-aistudio", name="B active", api_key="AIza-b")
         await session.flush()
@@ -97,9 +99,9 @@ class TestCredentialRepository:
         assert await repo_a.get_by_id(cred_b.id) is None
         assert await repo_b.get_by_id(cred_a.id) is None
 
-    async def test_activate_ignores_other_users_credentials(self, session: AsyncSession):
-        repo_a = CredentialRepository(session, user_id="user-a")
-        repo_b = CredentialRepository(session, user_id="user-b")
+    async def test_activate_ignores_other_tenants_credentials(self, session: AsyncSession):
+        repo_a = CredentialRepository(session, user_id="user-a", tenant_id="ten_default")
+        repo_b = CredentialRepository(session, user_id="user-b", tenant_id="ten_other")
         cred_a1 = await repo_a.create(provider="gemini-aistudio", name="A active", api_key="AIza-a1")
         cred_a2 = await repo_a.create(provider="gemini-aistudio", name="A standby", api_key="AIza-a2")
         cred_b1 = await repo_b.create(provider="gemini-aistudio", name="B active", api_key="AIza-b1")
@@ -125,9 +127,9 @@ class TestCredentialRepository:
         assert active_b is not None
         assert active_b.id == cred_b1.id
 
-    async def test_delete_ignores_other_users_credentials(self, session: AsyncSession):
-        repo_a = CredentialRepository(session, user_id="user-a")
-        repo_b = CredentialRepository(session, user_id="user-b")
+    async def test_delete_ignores_other_tenants_credentials(self, session: AsyncSession):
+        repo_a = CredentialRepository(session, user_id="user-a", tenant_id="ten_default")
+        repo_b = CredentialRepository(session, user_id="user-b", tenant_id="ten_other")
         cred_a1 = await repo_a.create(provider="gemini-aistudio", name="A active", api_key="AIza-a1")
         cred_a2 = await repo_a.create(provider="gemini-aistudio", name="A standby", api_key="AIza-a2")
         cred_b = await repo_b.create(provider="gemini-aistudio", name="B active", api_key="AIza-b")

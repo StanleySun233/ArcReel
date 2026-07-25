@@ -81,6 +81,7 @@ class TestExecuteTtsTask:
             "created_at": "2026-06-01T00:00:00Z",
             "resource_type": "audio",
             "resource_id": "E1S01",
+            "file_id": None,
         }
         call = gen.audio_calls[0]
         assert call["text"] == "你好世界"

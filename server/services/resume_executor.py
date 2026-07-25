@@ -129,6 +129,9 @@ async def execute_resume_video_task(task: dict[str, Any], *, job_id: str) -> dic
                 version=version,
                 video_uri=video_uri,
                 versions=generator.versions,
+                created_by_user_id=user_id,
+                tenant_id=tenant_id,
+                task_id=task_id,
             )
         else:
             result = await _finalize_video_task(

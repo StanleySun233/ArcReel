@@ -1,6 +1,7 @@
 import { waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuthStore } from "@/stores/auth-store";
+import { useConfigStatusStore } from "@/stores/config-status-store";
 import type { AuthTenant } from "@/utils/auth";
 import { recoverTenantAccess } from "@/utils/auth";
 
@@ -35,6 +36,7 @@ describe("useAuthStore", () => {
     vi.unstubAllGlobals();
     window.localStorage.clear();
     useAuthStore.setState(useAuthStore.getInitialState(), true);
+    useConfigStatusStore.setState(useConfigStatusStore.getInitialState(), true);
   });
 
   afterEach(() => {
@@ -188,6 +190,38 @@ describe("useAuthStore", () => {
       isTenantOwner: false,
     });
     expect(window.localStorage.getItem("arcreel_auth_token")).toBe("team-token");
+  });
+
+  it("invalidates config status after switching tenant", async () => {
+    useConfigStatusStore.setState({
+      initialized: true,
+      isComplete: true,
+      availableMediaTypes: ["image", "video", "text"],
+    });
+    useAuthStore.setState({
+      token: "personal-token",
+      isAuthenticated: true,
+      currentTenant: personalTenant,
+      tenants: [personalTenant, teamTenant],
+      tenantRole: "admin",
+      isTenantOwner: true,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        access_token: "team-token",
+        token_type: "bearer",
+        tenant: teamTenant,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await useAuthStore.getState().switchTenant("ten_team");
+
+    expect(useConfigStatusStore.getState()).toMatchObject({
+      initialized: false,
+      isComplete: false,
+      availableMediaTypes: [],
+    });
   });
 
   it("refreshes the current tenant token after a stale role response", async () => {

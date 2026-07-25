@@ -14,6 +14,8 @@ async def session():
     engine = await create_pg_test_engine_with_cleanup()
     sm = async_sessionmaker(engine, expire_on_commit=False)
     async with sm() as s:
+        s.info["user_id"] = "default"
+        s.info["tenant_id"] = "ten_default"
         yield s
     await engine.dispose()
 

@@ -580,6 +580,9 @@ describe("API", () => {
       expect(API.getFileUrl("my project", "source/a.txt", 3)).toBe(
         "/api/v1/files/my%20project/source/a.txt?v=3",
       );
+      expect(API.getFileUrl("my project", "source/a #1?.txt", "v%1")).toBe(
+        "/api/v1/files/my%20project/source/a%20%231%3F.txt?v=v%251",
+      );
       expect(API.getAssistantEntriesStreamUrl("demo", "session-1")).toBe(
         "/api/v1/projects/demo/assistant/sessions/session-1/entries/stream",
       );
@@ -1144,6 +1147,12 @@ describe("API", () => {
       const url = API.getGlobalAssetUrl("_global_assets/character/abc.png", "123");
       expect(url).toContain("/global-assets/character/abc.png");
       expect(url).toContain("fp=123");
+    });
+
+    it("encodes global asset path segments", () => {
+      expect(API.getGlobalAssetUrl("_global_assets/character/角色 #1?.png", "fp%1")).toBe(
+        "/api/v1/global-assets/character/%E8%A7%92%E8%89%B2%20%231%3F.png?fp=fp%251",
+      );
     });
 
     it("returns null for null path", () => {

@@ -74,7 +74,7 @@ class TestModelsCreateTables:
         now = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
         task = Task(
             task_id="abc123",
-            project_name="demo",
+            project_id="demo",
             task_type="storyboard",
             media_type="image",
             resource_id="E1S01",
@@ -90,7 +90,7 @@ class TestModelsCreateTables:
 
         result = await session.execute(select(Task).where(Task.task_id == "abc123"))
         loaded = result.scalar_one()
-        assert loaded.project_name == "demo"
+        assert loaded.project_id == "demo"
         assert loaded.status == "queued"
 
     async def test_agent_session_round_trip(self, session):
@@ -98,7 +98,8 @@ class TestModelsCreateTables:
         s = AgentSession(
             id="sess123",
             sdk_session_id="sdk-sess123",
-            project_name="demo",
+            project_id="demo",
+            tenant_id="ten_test",
             status="idle",
             created_at=now,
             updated_at=now,
@@ -110,7 +111,7 @@ class TestModelsCreateTables:
 
         result = await session.execute(select(AgentSession).where(AgentSession.id == "sess123"))
         loaded = result.scalar_one()
-        assert loaded.project_name == "demo"
+        assert loaded.project_id == "demo"
 
 
 class TestUserModel:

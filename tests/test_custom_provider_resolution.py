@@ -27,12 +27,14 @@ async def test_resolution_column_accepts_none_and_string(db_session: AsyncSessio
         discovery_format="openai",
         base_url="https://api.x.ai",
         api_key="k",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     m_without = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="m1",
         display_name="M1",
         endpoint="openai-images",
@@ -42,6 +44,7 @@ async def test_resolution_column_accepts_none_and_string(db_session: AsyncSessio
     )
     m_with = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="m2",
         display_name="M2",
         endpoint="newapi-video",
@@ -64,12 +67,14 @@ async def test_endpoint_field_stores_openai_chat(db_session: AsyncSession):
         discovery_format="openai",
         base_url="https://api.example.com",
         api_key="k",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     model = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="gpt-4o",
         display_name="GPT-4o",
         endpoint="openai-chat",
@@ -90,12 +95,14 @@ async def test_endpoint_field_stores_gemini_image(db_session: AsyncSession):
         discovery_format="google",
         base_url="https://generativelanguage.googleapis.com",
         api_key="k",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     model = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="imagen-3.0-generate-002",
         display_name="Imagen 3",
         endpoint="gemini-image",
@@ -118,12 +125,14 @@ async def test_video_capabilities_endpoint_mismatch_raises(db_session: AsyncSess
         discovery_format="openai",
         base_url="https://api.example.com",
         api_key="k",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     model = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="gpt-4o",
         display_name="GPT-4o",
         endpoint="openai-chat",  # text endpoint, not video
@@ -157,7 +166,7 @@ async def test_config_resolver_uses_explicit_user_id_for_custom_provider_auto_re
     from lib.custom_provider import make_provider_id
     from lib.db.repositories.custom_provider_repo import CustomProviderRepository
 
-    repo_a = CustomProviderRepository(db_session, user_id="user-a")
+    repo_a = CustomProviderRepository(db_session, user_id="user-a", tenant_id="ten_default")
     provider_a = await repo_a.create_provider(
         display_name="User A Video",
         discovery_format="openai",
@@ -175,7 +184,7 @@ async def test_config_resolver_uses_explicit_user_id_for_custom_provider_auto_re
         ],
     )
 
-    repo_b = CustomProviderRepository(db_session, user_id="user-b")
+    repo_b = CustomProviderRepository(db_session, user_id="user-b", tenant_id="ten_other")
     provider_b = await repo_b.create_provider(
         display_name="User B Video",
         discovery_format="openai",
@@ -195,9 +204,12 @@ async def test_config_resolver_uses_explicit_user_id_for_custom_provider_auto_re
     await db_session.commit()
 
     factory = async_sessionmaker(bind=db_session.get_bind(), class_=AsyncSession, expire_on_commit=False)  # type: ignore[call-overload]
-    resolved = await ConfigResolver(factory, user_id="user-b", _bound_session=db_session).resolve_video_backend(
-        None, None
-    )
+    resolved = await ConfigResolver(
+        factory,
+        user_id="user-b",
+        tenant_id="ten_other",
+        _bound_session=db_session,
+    ).resolve_video_backend(None, None)
 
     assert provider_a.id != provider_b.id
     assert resolved.provider_id == make_provider_id(provider_b.id)
@@ -240,12 +252,14 @@ async def test_custom_video_max_reference_images_from_endpoint(
         discovery_format="openai",
         base_url="https://api.example.com",
         api_key="k",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     model = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id=model_id,
         display_name="Vid Model",
         endpoint=endpoint,
@@ -285,12 +299,14 @@ async def test_custom_video_caps_resolved_without_api_key(db_session: AsyncSessi
         discovery_format="openai",
         base_url="https://api.example.com",
         api_key="",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     model = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="doubao-seedance-2-0",
         display_name="Vid Model",
         endpoint="ark-seedance",
@@ -335,12 +351,14 @@ async def test_custom_video_max_refs_missing_caps_fn_raises(db_session: AsyncSes
         discovery_format="openai",
         base_url="https://api.example.com",
         api_key="k",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     model = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="doubao-seedance-2-0",
         display_name="Vid Model",
         endpoint="ark-seedance",
@@ -384,12 +402,14 @@ async def test_custom_video_max_refs_negative_caps_raises(db_session: AsyncSessi
         discovery_format="openai",
         base_url="https://api.example.com",
         api_key="k",
+        tenant_id="ten_default",
     )
     db_session.add(provider)
     await db_session.flush()
 
     model = CustomProviderModel(
         provider_id=provider.id,
+        tenant_id="ten_default",
         model_id="doubao-seedance-2-0",
         display_name="Vid Model",
         endpoint="ark-seedance",

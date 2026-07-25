@@ -11,6 +11,8 @@ async def session():
     engine, schema = await create_pg_test_engine()
     async_session = async_sessionmaker(engine, expire_on_commit=False)
     async with async_session() as s:
+        s.info["user_id"] = "default"
+        s.info["tenant_id"] = "ten_default"
         yield s
     await drop_pg_test_engine(engine, schema)
 
@@ -21,6 +23,7 @@ async def test_provider_config_crud(session: AsyncSession):
         key="api_key",
         value="AIza-test",
         is_secret=True,
+        tenant_id="ten_default",
     )
     session.add(row)
     await session.flush()
@@ -34,8 +37,20 @@ async def test_provider_config_crud(session: AsyncSession):
 
 
 async def test_provider_config_unique_constraint(session: AsyncSession):
-    row1 = ProviderConfig(provider="gemini-aistudio", key="api_key", value="v1", is_secret=True)
-    row2 = ProviderConfig(provider="gemini-aistudio", key="api_key", value="v2", is_secret=True)
+    row1 = ProviderConfig(
+        provider="gemini-aistudio",
+        key="api_key",
+        value="v1",
+        is_secret=True,
+        tenant_id="ten_default",
+    )
+    row2 = ProviderConfig(
+        provider="gemini-aistudio",
+        key="api_key",
+        value="v2",
+        is_secret=True,
+        tenant_id="ten_default",
+    )
     session.add(row1)
     await session.flush()
     session.add(row2)
@@ -44,7 +59,11 @@ async def test_provider_config_unique_constraint(session: AsyncSession):
 
 
 async def test_system_setting_crud(session: AsyncSession):
-    row = SystemSetting(key="default_video_backend", value="gemini-vertex/veo-3.1-fast-generate-001")
+    row = SystemSetting(
+        key="default_video_backend",
+        value="gemini-vertex/veo-3.1-fast-generate-001",
+        tenant_id="ten_default",
+    )
     session.add(row)
     await session.flush()
 

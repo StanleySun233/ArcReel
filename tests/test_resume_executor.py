@@ -79,6 +79,18 @@ def video_task() -> dict[str, Any]:
     }
 
 
+@pytest.fixture
+def reference_video_task(video_task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **video_task,
+        "task_id": "T-ref-1",
+        "task_type": "reference_video",
+        "resource_id": "E1U1",
+        "user_id": "user-a",
+        "tenant_id": "ten-a",
+    }
+
+
 def _patch_resume_executor_deps(monkeypatch, fake_pm: _FakeProjectManager, fake_generator: _FakeGenerator) -> None:
     """同时 patch resume_executor 的 pm/generator 来源——它从 generation_tasks 顶层 re-import。"""
     from server.services import resume_executor
@@ -116,6 +128,31 @@ async def test_execute_resume_video_calls_backend_resume_directly(monkeypatch, f
     # 返回结果带 file_path / resource_type，供 worker mark_succeeded
     assert result["resource_type"] == "videos"
     assert result["file_path"] == "videos/scene_E1S01.mp4"
+
+
+@pytest.mark.asyncio
+async def test_reference_video_resume_passes_file_metadata_to_finalizer(monkeypatch, fake_pm, reference_video_task):
+    from server.services import resume_executor
+    from server.services.resume_executor import execute_resume_video_task
+
+    fake_gen = _FakeGenerator()
+    _patch_resume_executor_deps(monkeypatch, fake_pm, fake_gen)
+    monkeypatch.setattr(resume_executor, "emit_generation_success_batch", lambda **_kwargs: None)
+
+    captured: dict[str, Any] = {}
+
+    async def fake_finalize(**kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return {"resource_type": "reference_videos", "file_id": "fil_video_1"}
+
+    monkeypatch.setattr(resume_executor, "_finalize_reference_video_unit", fake_finalize)
+
+    result = await execute_resume_video_task(reference_video_task, job_id="openai-job-1")
+
+    assert captured["created_by_user_id"] == "user-a"
+    assert captured["tenant_id"] == "ten-a"
+    assert captured["task_id"] == "T-ref-1"
+    assert result["file_id"] == "fil_video_1"
 
 
 @pytest.mark.asyncio

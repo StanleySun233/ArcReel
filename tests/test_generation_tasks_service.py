@@ -227,6 +227,35 @@ def _prepare_files(tmp_path: Path):
 
 
 class TestGenerationTasks:
+    async def test_backend_cache_is_scoped_by_tenant_and_user(self, monkeypatch):
+        generation_tasks.invalidate_backend_cache()
+        calls = []
+
+        async def fake_assemble_backend(**kwargs):
+            calls.append((kwargs["media_type"], kwargs["provider_id"], kwargs["model_id"]))
+            return object()
+
+        class Resolver:
+            def __init__(self, user_id: str, tenant_id: str) -> None:
+                self._user_id = user_id
+                self._tenant_id = tenant_id
+
+        monkeypatch.setattr(generation_tasks, "assemble_backend", fake_assemble_backend)
+
+        first = await generation_tasks._get_or_create_video_backend(
+            "ark",
+            {"model": "seedance"},
+            Resolver("user-a", "ten-a"),
+        )
+        second = await generation_tasks._get_or_create_video_backend(
+            "ark",
+            {"model": "seedance"},
+            Resolver("user-b", "ten-b"),
+        )
+
+        assert first is not second
+        assert calls == [("video", "ark", "seedance"), ("video", "ark", "seedance")]
+
     def test_helper_functions(self, tmp_path):
         from lib.storyboard_sequence import get_storyboard_items
 
@@ -687,6 +716,42 @@ class TestGenerationTasks:
         assert result["resource_type"] == "videos"
         # caps 失败时 supported_durations 留空 → 守卫放行（不更坏），但 provider 不被改写。
         assert seen_resolution_args == [("ark", "seedance")]
+
+    async def test_execute_video_task_falls_back_to_provider_resolution_when_unset(self, monkeypatch, tmp_path):
+        project_path = _prepare_files(tmp_path)
+        fake_pm = _FakePM(project_path)
+        fake_generator = _FakeGenerator()
+
+        from lib.config import resolver as resolver_mod
+        from lib.config.resolver import ProviderModel
+
+        monkeypatch.setattr(generation_tasks, "get_project_manager", lambda: fake_pm)
+        monkeypatch.setattr(generation_tasks, "get_media_generator", _async_return(fake_generator))
+        monkeypatch.setattr(generation_tasks, "resolve_resolution", _async_return(None))
+        monkeypatch.setattr(generation_tasks, "extract_video_thumbnail", _async_return(None))
+        monkeypatch.setattr(generation_tasks, "emit_project_change_batch", lambda *a, **kw: None)
+        monkeypatch.setattr(
+            resolver_mod.ConfigResolver,
+            "resolve_video_backend",
+            _async_return(ProviderModel("ark", "doubao-seedance-2-0-260128")),
+        )
+        monkeypatch.setattr(
+            resolver_mod.ConfigResolver,
+            "video_capabilities_for_model",
+            _async_return({"supported_durations": [4, 8], "default_duration": None}),
+        )
+
+        await generation_tasks.execute_video_task(
+            "demo",
+            "E1S01",
+            {
+                "script_file": "episode_1.json",
+                "prompt": {"action": "跑", "camera_motion": "Static", "dialogue": []},
+                "duration_seconds": 8,
+            },
+        )
+
+        assert fake_generator.video_calls[0]["resolution"] == "720p"
 
     async def test_caps_resolved_for_payload_provider_model(self, monkeypatch, tmp_path):
         """caps 按已解析（含 payload 覆盖）的 provider/model 取，而非按 project 二次解析。"""

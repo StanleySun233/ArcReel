@@ -401,6 +401,10 @@ function withAuth(options: RequestInit = {}): RequestInit {
   return { ...options, headers };
 }
 
+function encodePathSegments(path: string): string {
+  return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+}
+
 /** 为 URL 追加 token query param（用于 EventSource） */
 function withAuthQuery(url: string): string {
   const token = getToken();
@@ -1105,7 +1109,7 @@ class API {
     path: string,
     cacheBust?: number | string | null
   ): string {
-    const base = `${API_BASE}/files/${encodeURIComponent(projectName)}/${path}`;
+    const base = `${API_BASE}/files/${encodeURIComponent(projectName)}/${encodePathSegments(path)}`;
     if (cacheBust == null || cacheBust === "") {
       return base;
     }
@@ -2263,8 +2267,8 @@ class API {
     if (!path) return null;
     const parts = path.split("/");
     if (parts.length < 3 || parts[0] !== "_global_assets") return null;
-    const type = parts[1];
-    const filename = parts.slice(2).join("/");
+    const type = encodeURIComponent(parts[1]);
+    const filename = encodePathSegments(parts.slice(2).join("/"));
     const qs = fp ? `?fp=${encodeURIComponent(fp)}` : "";
     return `${API_BASE}/global-assets/${type}/${filename}${qs}`;
   }

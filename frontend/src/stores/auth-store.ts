@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useConfigStatusStore } from "@/stores/config-status-store";
 import {
   clearTenantSession,
   clearToken,
@@ -225,6 +226,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ...persistTenantFields(payload.tenant, tenants),
       };
     });
+    useConfigStatusStore.getState().reset();
   },
 
   refreshCurrentTenant: async () => {

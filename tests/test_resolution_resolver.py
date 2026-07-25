@@ -129,3 +129,23 @@ async def test_custom_default_passes_current_tenant_to_repository(monkeypatch):
         "provider_id": 1,
         "model_id": "model-a",
     }
+
+
+@pytest.mark.asyncio
+async def test_custom_default_uses_endpoint_family_fallback_when_resolution_unset(monkeypatch):
+    @asynccontextmanager
+    async def fake_session_factory():
+        yield object()
+
+    class FakeRepo:
+        def __init__(self, session, *, user_id=None, tenant_id=None):
+            pass
+
+        async def get_model_by_ids(self, provider_id, model_id):
+            return SimpleNamespace(resolution=None, endpoint="ark-seedance")
+
+    monkeypatch.setattr("lib.db.async_session_factory", fake_session_factory)
+    monkeypatch.setattr("lib.db.repositories.custom_provider_repo.CustomProviderRepository", FakeRepo)
+
+    with current_identity_scope(user_id="camel:16", tenant_id="ten_9979"):
+        assert await get_custom_resolution_default("custom-1", "doubao-seedance-2-0-260128") == "720p"

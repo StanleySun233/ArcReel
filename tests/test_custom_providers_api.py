@@ -20,7 +20,7 @@ from server.auth import CurrentUserInfo, get_current_user
 from server.routers import custom_providers
 from tests.pg_utils import create_pg_test_engine_with_cleanup
 
-TEST_USER_ID = "test"
+TEST_USER_ID = "default"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -37,7 +37,11 @@ async def db_engine():
 
 @pytest.fixture()
 async def session_factory(db_engine):
-    return async_sessionmaker(db_engine, expire_on_commit=False)
+    return async_sessionmaker(
+        db_engine,
+        expire_on_commit=False,
+        info={"user_id": TEST_USER_ID, "tenant_id": "ten_default"},
+    )
 
 
 @pytest.fixture()
@@ -50,7 +54,13 @@ def app(session_factory) -> FastAPI:
             yield session
 
     _app.dependency_overrides[get_async_session] = _override_session
-    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(id=TEST_USER_ID, sub="test", role="admin")
+    _app.dependency_overrides[get_current_user] = lambda: CurrentUserInfo(
+        id=TEST_USER_ID,
+        sub="test",
+        role="admin",
+        tenant_id="ten_default",
+        tenant_role="admin",
+    )
     _app.include_router(custom_providers.router, prefix="/api/v1")
     return _app
 
@@ -745,7 +755,7 @@ class TestDeleteProviderCleansGlobalSettings:
 
         # 模拟全局配置引用该供应商
         svc = ConfigService(session, user_id=TEST_USER_ID)
-        other_svc = ConfigService(session, user_id="other")
+        other_svc = ConfigService(session, user_id="user-b", tenant_id="ten_other")
         await svc.set_setting("default_text_backend", f"custom-{pid}/gpt-4o")
         await svc.set_setting("default_image_backend", f"custom-{pid}/dall-e-3")
         await svc.set_setting("default_audio_backend", f"custom-{pid}/tts-1")
@@ -821,7 +831,7 @@ class TestReplaceModelsCleansStaleRefs:
 
         # 模拟全局配置引用 gpt-4o
         svc = ConfigService(session, user_id=TEST_USER_ID)
-        other_svc = ConfigService(session, user_id="other")
+        other_svc = ConfigService(session, user_id="user-b", tenant_id="ten_other")
         await svc.set_setting("default_text_backend", f"custom-{pid}/gpt-4o")
         await other_svc.set_setting("default_text_backend", f"custom-{pid}/gpt-4o")
         await session.commit()

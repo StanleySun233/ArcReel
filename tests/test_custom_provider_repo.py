@@ -14,6 +14,8 @@ async def session():
     engine, schema = await create_pg_test_engine()
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as s:
+        s.info["user_id"] = "default"
+        s.info["tenant_id"] = "ten_default"
         yield s
     await drop_pg_test_engine(engine, schema)
 
@@ -238,10 +240,10 @@ class TestConcurrencyColumns:
             )
 
 
-class TestUserIsolation:
-    async def test_provider_crud_is_scoped_by_user(self, session: AsyncSession):
-        repo_a = CustomProviderRepository(session, user_id="user-a")
-        repo_b = CustomProviderRepository(session, user_id="user-b")
+class TestTenantIsolation:
+    async def test_provider_crud_is_scoped_by_tenant(self, session: AsyncSession):
+        repo_a = CustomProviderRepository(session, user_id="user-a", tenant_id="ten_default")
+        repo_b = CustomProviderRepository(session, user_id="user-b", tenant_id="ten_other")
         provider_a = await repo_a.create_provider(
             display_name="Provider A",
             discovery_format="openai",
@@ -275,9 +277,9 @@ class TestUserIsolation:
         assert await repo_b.get_provider(provider_b.id) is not None
         assert [m.model_id for m in await repo_a.list_models(provider_a.id)] == ["model-a"]
 
-    async def test_model_management_is_scoped_by_user(self, session: AsyncSession):
-        repo_a = CustomProviderRepository(session, user_id="user-a")
-        repo_b = CustomProviderRepository(session, user_id="user-b")
+    async def test_model_management_is_scoped_by_tenant(self, session: AsyncSession):
+        repo_a = CustomProviderRepository(session, user_id="user-a", tenant_id="ten_default")
+        repo_b = CustomProviderRepository(session, user_id="user-b", tenant_id="ten_other")
         provider_a = await repo_a.create_provider(
             display_name="Provider A",
             discovery_format="openai",

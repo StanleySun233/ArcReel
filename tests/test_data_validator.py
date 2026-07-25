@@ -158,12 +158,9 @@ class TestDataValidator:
         assert not result.valid
         assert any("narration_audio" in error for error in result.errors)
 
-    def test_validate_episode_accepts_existing_narration_audio(self, tmp_path):
+    def test_validate_episode_accepts_narration_audio_file_id(self, tmp_path):
         project_dir = tmp_path / "projects" / "demo"
         _write_json(project_dir / "project.json", _project_payload("narration"))
-        audio_file = project_dir / "audio" / "segment_E1S01.wav"
-        audio_file.parent.mkdir(parents=True, exist_ok=True)
-        audio_file.write_bytes(b"RIFFfakewav")
         _write_json(
             project_dir / "scripts" / "episode_1.json",
             {
@@ -177,7 +174,7 @@ class TestDataValidator:
                         "characters_in_segment": ["姜月茴"],
                         "image_prompt": "img",
                         "video_prompt": "vid",
-                        "generated_assets": {"narration_audio": "audio/segment_E1S01.wav"},
+                        "generated_assets": {"narration_audio": "fil_audio_123"},
                     }
                 ],
             },
@@ -185,7 +182,6 @@ class TestDataValidator:
 
         result = DataValidator(projects_root=str(tmp_path / "projects")).validate_episode("demo", "episode_1.json")
 
-        # 文件存在 → 整条校验链应通过，且不产生 narration_audio 相关错误
         assert result.valid
         assert not any("narration_audio" in error for error in result.errors)
 

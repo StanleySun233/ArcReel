@@ -49,12 +49,12 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
   setProjects: (projects) => set({ projects }),
   setProjectsLoading: (loading) => set({ projectsLoading: loading }),
   setCurrentProject: (name, data, scripts, fingerprints) =>
-    set((s) => ({
+    set({
       currentProjectName: name,
       currentProjectData: data,
       currentScripts: scripts ?? {},
-      assetFingerprints: fingerprints ?? s.assetFingerprints,
-    })),
+      assetFingerprints: fingerprints ?? {},
+    }),
   setProjectDetailLoading: (loading) => set({ projectDetailLoading: loading }),
   setShowCreateModal: (show) => set({ showCreateModal: show }),
   setCreatingProject: (creating) => set({ creatingProject: creating }),

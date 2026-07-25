@@ -57,14 +57,13 @@ from lib.storyboard_sequence import (
 from lib.thumbnail import extract_video_thumbnail
 from lib.user_scope import get_current_tenant_id
 from lib.video_backends.base import VideoCapabilityError
-from server.services.resolution_resolver import resolve_resolution
+from server.services.resolution_resolver import get_provider_fallback, resolve_resolution
 
 pm = ProjectManager(app_data_dir())
 rate_limiter = get_shared_rate_limiter()
 logger = logging.getLogger(__name__)
 
-# 按 (channel, provider_name, model) 缓存 Backend 实例，避免每次任务重建 API 客户端
-_backend_cache: dict[tuple[str, str, str | None], Any] = {}
+_backend_cache: dict[tuple[str, str | None, str | None, str, str | None], Any] = {}
 
 
 async def _record_output_file(
@@ -118,6 +117,21 @@ def invalidate_backend_cache() -> None:
     _backend_cache.clear()
 
 
+def _backend_cache_key(
+    channel: str,
+    provider_name: str,
+    model: str | None,
+    resolver: ConfigResolver,
+) -> tuple[str, str | None, str | None, str, str | None]:
+    return (
+        channel,
+        getattr(resolver, "_tenant_id", None),
+        getattr(resolver, "_user_id", None),
+        provider_name,
+        model,
+    )
+
+
 async def _resolve_effective_image_backend(
     project: dict,
     payload: dict | None,
@@ -154,7 +168,7 @@ async def _get_or_create_video_backend(
     default_video_model: 全局默认视频模型，当 provider_settings 中无 model 时作为 fallback。
     """
     effective_model = provider_settings.get("model") or default_video_model or None
-    cache_key = ("video", provider_name, effective_model)
+    cache_key = _backend_cache_key("video", provider_name, effective_model, resolver)
     if cache_key in _backend_cache:
         return _backend_cache[cache_key]
 
@@ -178,7 +192,7 @@ async def _get_or_create_image_backend(
 ):
     """获取或创建 ImageBackend 实例（带缓存）。"""
     effective_model = provider_settings.get("model") or default_image_model or None
-    cache_key = ("image", provider_name, effective_model)
+    cache_key = _backend_cache_key("image", provider_name, effective_model, resolver)
     if cache_key in _backend_cache:
         return _backend_cache[cache_key]
 
@@ -202,7 +216,7 @@ async def _get_or_create_audio_backend(
 ):
     """获取或创建 AudioBackend 实例（带缓存）。"""
     effective_model = provider_settings.get("model") or default_audio_model or None
-    cache_key = ("audio", provider_name, effective_model)
+    cache_key = _backend_cache_key("audio", provider_name, effective_model, resolver)
     if cache_key in _backend_cache:
         return _backend_cache[cache_key]
 
@@ -1150,6 +1164,10 @@ async def execute_video_task(
         registry_provider_id,
         model_name or "",
     )
+    if resolution is None:
+        from lib.custom_provider import is_custom_provider
+
+        resolution = None if is_custom_provider(registry_provider_id) else get_provider_fallback(registry_provider_id)
 
     # duration 解析收口于执行层：payload > project.default_duration > caps 默认。
     # 用 ``is not None`` 而非 ``or`` 取 payload 值，避免显式 falsy 值被当作未设置。

@@ -56,7 +56,14 @@ async def get_custom_resolution_default(provider_id: str | None, model_id: str |
     async with async_session_factory() as session:
         repo = CustomProviderRepository(session, user_id=get_current_user_id(), tenant_id=get_current_tenant_id())
         model = await repo.get_model_by_ids(db_id, model_id)
-        return model.resolution if model else None
+        if model is None:
+            return None
+        if model.resolution:
+            return model.resolution
+        from lib.custom_provider.endpoints import ENDPOINT_REGISTRY
+
+        spec = ENDPOINT_REGISTRY.get(model.endpoint)
+        return PROVIDER_FALLBACK_RESOLUTION.get(spec.family) if spec and spec.media_type == "video" else None
 
 
 async def resolve_resolution(project: dict, provider_id: str, model_id: str) -> str | None:

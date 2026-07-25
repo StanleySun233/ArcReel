@@ -11,7 +11,11 @@ from tests.pg_utils import create_pg_test_engine_with_cleanup
 async def _make_session():
     """创建独立 PostgreSQL schema 并返回 (factory, engine)。"""
     engine = await create_pg_test_engine_with_cleanup()
-    factory = async_sessionmaker(engine, expire_on_commit=False)
+    factory = async_sessionmaker(
+        engine,
+        expire_on_commit=False,
+        info={"user_id": "default", "tenant_id": "ten_default"},
+    )
     return factory, engine
 
 

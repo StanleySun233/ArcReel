@@ -24,6 +24,8 @@ async def engine():
 async def session(engine):
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as session:
+        session.info["user_id"] = "default"
+        session.info["tenant_id"] = "ten_default"
         yield session
 
 
@@ -47,6 +49,7 @@ class TestCustomProviderTable:
             "image_max_workers",
             "video_max_workers",
             "audio_max_workers",
+            "tenant_id",
             "user_id",
             "created_at",
             "updated_at",
@@ -61,6 +64,7 @@ class TestCustomProviderRoundTrip:
             discovery_format="openai",
             base_url="http://localhost:11434/v1",
             api_key="sk-local-test",
+            tenant_id="ten_default",
         )
         session.add(provider)
         await session.commit()
@@ -81,6 +85,7 @@ class TestCustomProviderRoundTrip:
             discovery_format="openai",
             base_url="http://example.com/v1",
             api_key="sk-test",
+            tenant_id="ten_default",
         )
         session.add(provider)
         await session.commit()
@@ -115,6 +120,7 @@ class TestCustomProviderModelTable:
             "currency",
             "supported_durations",
             "resolution",
+            "tenant_id",
             "created_at",
             "updated_at",
         }
@@ -129,12 +135,14 @@ class TestCustomProviderModelRoundTrip:
             discovery_format="openai",
             base_url="https://openrouter.ai/api/v1",
             api_key="sk-or-xxx",
+            tenant_id="ten_default",
         )
         session.add(provider)
         await session.commit()
 
         model = CustomProviderModel(
             provider_id=provider.id,
+            tenant_id="ten_default",
             model_id="anthropic/claude-sonnet-4",
             display_name="Claude Sonnet",
             endpoint="openai-chat",
@@ -171,12 +179,14 @@ class TestCustomProviderModelRoundTrip:
             discovery_format="openai",
             base_url="http://localhost:11434/v1",
             api_key="ollama",
+            tenant_id="ten_default",
         )
         session.add(provider)
         await session.commit()
 
         model = CustomProviderModel(
             provider_id=provider.id,
+            tenant_id="ten_default",
             model_id="llama3",
             display_name="Llama 3",
             endpoint="openai-chat",
@@ -200,12 +210,14 @@ class TestCustomProviderModelRoundTrip:
             discovery_format="openai",
             base_url="http://example.com/v1",
             api_key="sk-test",
+            tenant_id="ten_default",
         )
         session.add(provider)
         await session.commit()
 
         model1 = CustomProviderModel(
             provider_id=provider.id,
+            tenant_id="ten_default",
             model_id="gpt-4o",
             display_name="GPT-4o",
             endpoint="openai-chat",
@@ -215,6 +227,7 @@ class TestCustomProviderModelRoundTrip:
 
         model2 = CustomProviderModel(
             provider_id=provider.id,
+            tenant_id="ten_default",
             model_id="gpt-4o",
             display_name="GPT-4o Dup",
             endpoint="openai-chat",
