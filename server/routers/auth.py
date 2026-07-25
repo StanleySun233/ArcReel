@@ -16,8 +16,10 @@ from starlette.responses import RedirectResponse
 from lib.db import get_async_session
 from lib.i18n import Translator
 from server.auth import (
+    STREAM_TOKEN_EXPIRY_SECONDS,
     CurrentUser,
     check_credentials,
+    create_stream_token,
     create_token,
     get_auth_mode,
     is_auth_enabled,
@@ -82,6 +84,11 @@ class TenantTokenResponse(BaseModel):
     tenant: dict
 
 
+class StreamTokenResponse(BaseModel):
+    stream_token: str
+    expires_in: int
+
+
 class TenantListResponse(BaseModel):
     tenants: list[dict]
 
@@ -144,6 +151,14 @@ async def verify(
         username=current_user.sub,
         user_id=current_user.id,
         provider=current_user.provider,
+    )
+
+
+@router.post("/auth/stream-token", response_model=StreamTokenResponse)
+async def stream_token(current_user: CurrentUser):
+    return StreamTokenResponse(
+        stream_token=create_stream_token(current_user),
+        expires_in=STREAM_TOKEN_EXPIRY_SECONDS,
     )
 
 

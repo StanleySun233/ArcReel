@@ -158,3 +158,27 @@ class TestVerifyRoute:
             headers={"Authorization": "Bearer invalid-token"},
         )
         assert resp.status_code == 401
+
+
+class TestStreamTokenRoute:
+    def test_stream_token_returns_short_lived_sse_token(self, client):
+        token = auth_module.create_token(
+            "camel-user",
+            user_id="camel:123",
+            provider="camel",
+            tenant_id="ten_team",
+            tenant_role="member",
+        )
+
+        resp = client.post(
+            "/api/v1/auth/stream-token",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["expires_in"] == auth_module.STREAM_TOKEN_EXPIRY_SECONDS
+        payload = auth_module.verify_stream_token(data["stream_token"])
+        assert payload["purpose"] == "sse"
+        assert payload["user_id"] == "camel:123"
+        assert payload["tenant_id"] == "ten_team"

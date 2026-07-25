@@ -46,6 +46,7 @@ _cached_token_secret: str | None = None
 
 # Token 有效期：7 天
 TOKEN_EXPIRY_SECONDS = 7 * 24 * 3600
+STREAM_TOKEN_EXPIRY_SECONDS = 60
 
 # 关闭认证时返回的匿名用户标识
 _ANONYMOUS_USER_SUB = "local"
@@ -166,6 +167,38 @@ def verify_token(token: str) -> dict | None:
 
 
 DOWNLOAD_TOKEN_EXPIRY_SECONDS = 300  # 5 分钟
+
+
+def create_stream_token(user: CurrentUserInfo) -> str:
+    now = time.time()
+    payload = {
+        "sub": user.sub,
+        "user_id": user.id,
+        "provider": user.provider,
+        "purpose": "sse",
+        "iat": now,
+        "exp": now + STREAM_TOKEN_EXPIRY_SECONDS,
+    }
+    if user.tenant_id is not None:
+        payload["tenant_id"] = user.tenant_id
+    if user.tenant_role is not None:
+        payload["tenant_role"] = user.tenant_role
+    return jwt.encode(payload, get_token_secret(), algorithm="HS256")
+
+
+def verify_stream_token(token: str) -> dict:
+    if not is_auth_enabled():
+        user = _anonymous_user()
+        return {
+            "sub": _ANONYMOUS_USER_SUB,
+            "user_id": user.id,
+            "provider": user.provider,
+            "purpose": "sse",
+        }
+    payload = jwt.decode(token, get_token_secret(), algorithms=["HS256"])
+    if payload.get("purpose") != "sse":
+        raise ValueError("token purpose 不匹配")
+    return payload
 
 
 def create_download_token(username: str, project_name: str, user_id: str | None = None) -> str:
@@ -477,6 +510,12 @@ def _verify_and_get_payload(token: str) -> dict:
             detail="token 无效或已过期",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if payload.get("purpose") is not None:
+        raise HTTPException(
+            status_code=401,
+            detail="token 无效或已过期",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return payload
 
 
@@ -531,14 +570,26 @@ async def get_current_user(
 async def get_current_user_flexible(
     token: Annotated[str | None, Depends(oauth2_scheme_optional)] = None,
     query_token: str | None = Query(None, alias="token"),
+    stream_token: str | None = Query(None, alias="stream_token"),
 ) -> CurrentUserInfo:
-    """SSE 认证依赖 — 同时支持 Authorization header 和 ?token= query param。
+    """SSE 认证依赖 — 支持 Authorization header、legacy ?token= 和短期 ?stream_token=。
 
     ``AUTH_ENABLED=false`` 时无视 token，直接返回匿名 admin。
     """
     if not is_auth_enabled():
         return _anonymous_user()
-    raw = token or query_token
+    raw_query_token = query_token if isinstance(query_token, str) else None
+    raw_stream_token = stream_token if isinstance(stream_token, str) else None
+    if raw_stream_token and not token:
+        try:
+            return _payload_to_user(verify_stream_token(raw_stream_token))
+        except (jwt.InvalidTokenError, jwt.ExpiredSignatureError, ValueError):
+            raise HTTPException(
+                status_code=401,
+                detail="token 无效或已过期",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from None
+    raw = token or raw_query_token
     if not raw:
         raise HTTPException(
             status_code=401,

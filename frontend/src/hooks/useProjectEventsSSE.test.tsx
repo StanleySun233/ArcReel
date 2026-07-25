@@ -53,7 +53,7 @@ describe("useProjectEventsSSE", () => {
 
   it("refreshes and navigates to the focused workspace target for remote changes", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -115,7 +115,7 @@ describe("useProjectEventsSSE", () => {
 
   it("navigates reference video units to the reference canvas via reference_unit target", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -175,7 +175,7 @@ describe("useProjectEventsSSE", () => {
 
   it("defers focus when the user is editing", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -222,7 +222,7 @@ describe("useProjectEventsSSE", () => {
 
   it("shows a toast without navigation for generation completion batches", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -271,7 +271,7 @@ describe("useProjectEventsSSE", () => {
 
   it("groups remote changes by type and invalidates only the touched entity keys", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -362,7 +362,7 @@ describe("useProjectEventsSSE", () => {
 
   it("refreshes without changing focus for webui-originated batches", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -406,7 +406,7 @@ describe("useProjectEventsSSE", () => {
 
   it("defers remote navigation when a workspace edit marker is present", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -452,7 +452,7 @@ describe("useProjectEventsSSE", () => {
 
   it("extracts asset_fingerprints from SSE changes and updates store", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
-    vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: vi.fn() } as unknown as EventSource;
     });
@@ -490,13 +490,14 @@ describe("useProjectEventsSSE", () => {
   it("stops the reconnect loop after the project_deleted termination event", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
     const closeMock = vi.fn();
-    const openSpy = vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    const openSpy = vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: closeMock } as unknown as EventSource;
     });
 
     renderHarness("/");
     expect(openSpy).toHaveBeenCalledTimes(1);
+    await act(async () => {});
 
     act(() => {
       capturedOptions?.onProjectDeleted?.(
@@ -526,13 +527,14 @@ describe("useProjectEventsSSE", () => {
   it("clears an already-pending reconnect timer when the project_deleted event arrives", async () => {
     let capturedOptions: ProjectEventStreamOptions | undefined;
     const closeMock = vi.fn();
-    const openSpy = vi.spyOn(API, "openProjectEventStream").mockImplementation((options) => {
+    const openSpy = vi.spyOn(API, "openProjectEventStream").mockImplementation(async (options) => {
       capturedOptions = options;
       return { close: closeMock } as unknown as EventSource;
     });
 
     renderHarness("/");
     expect(openSpy).toHaveBeenCalledTimes(1);
+    await act(async () => {});
 
     vi.useFakeTimers();
     try {

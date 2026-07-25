@@ -111,7 +111,7 @@ export function useAssistantSession(projectName: string | null) {
 
   // 连接 SSE entry 流
   const connectStream = useCallback(
-    (sessionId: string) => {
+    async (sessionId: string) => {
       // 如果已连接到同一 session 且连接健康，跳过重连
       if (
         streamRef.current &&
@@ -126,7 +126,24 @@ export function useAssistantSession(projectName: string | null) {
 
       // 冷订阅游标：已有条目之后；浏览器自动重连由 Last-Event-ID 续传
       const after = lastEntrySeq(store.getState().entries);
-      const url = API.getAssistantEntriesStreamUrl(projectName!, sessionId, after);
+      let url: string;
+      try {
+        url = await API.getAssistantEntriesStreamUrl(projectName!, sessionId, after);
+      } catch (err) {
+        if (
+          streamSessionRef.current === sessionId &&
+          store.getState().currentSessionId === sessionId
+        ) {
+          store.getState().setError(errMsg(err, "连接助手失败"));
+        }
+        return;
+      }
+      if (
+        streamSessionRef.current !== sessionId ||
+        store.getState().currentSessionId !== sessionId
+      ) {
+        return;
+      }
       const source = new EventSource(url);
       streamRef.current = source;
       const isActiveStream = () =>
@@ -204,11 +221,8 @@ export function useAssistantSession(projectName: string | null) {
           (statusRef.current === "running" || store.getState().sending)
         ) {
           reconnectRef.current = setTimeout(() => {
-            // 自引用 SSE 重连：useEffectEvent 不允许在 setTimeout 内调用，
-            // 用 ref 中转又被 immutability 规则禁止。当前写法是延迟到下一 tick
-            // 才执行，闭包内的 connectStream 引用已稳定，行为正确。
             // eslint-disable-next-line react-hooks/immutability
-            connectStream(sessionId);
+            void connectStream(sessionId);
           }, 3000);
         }
       };
@@ -229,7 +243,7 @@ export function useAssistantSession(projectName: string | null) {
     clearPendingQuestion();
 
     if (status === "running") {
-      connectStream(sessionId);
+      void connectStream(sessionId);
     } else {
       const data = await API.listAssistantEntries(projectName!, sessionId);
       if (store.getState().currentSessionId !== sessionId) return;
@@ -374,7 +388,7 @@ export function useAssistantSession(projectName: string | null) {
         statusRef.current = "running";
         store.getState().setSessionStatus("running");
         store.getState().setSending(false);
-        connectStream(sessionId);
+        void connectStream(sessionId);
         return true;
       } catch (err) {
         if (pendingSendVersionRef.current !== sendVersion) return false;

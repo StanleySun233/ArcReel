@@ -573,7 +573,7 @@ describe("API", () => {
       expect(requestSpy).toHaveBeenCalledWith("/usage/projects");
     });
 
-    it("builds static file and stream urls", () => {
+    it("builds static file and stream urls", async () => {
       expect(API.getFileUrl("my project", "source/a.txt")).toBe(
         "/api/v1/files/my%20project/source/a.txt",
       );
@@ -583,10 +583,10 @@ describe("API", () => {
       expect(API.getFileUrl("my project", "source/a #1?.txt", "v%1")).toBe(
         "/api/v1/files/my%20project/source/a%20%231%3F.txt?v=v%251",
       );
-      expect(API.getAssistantEntriesStreamUrl("demo", "session-1")).toBe(
+      await expect(API.getAssistantEntriesStreamUrl("demo", "session-1")).resolves.toBe(
         "/api/v1/projects/demo/assistant/sessions/session-1/entries/stream",
       );
-      expect(API.getAssistantEntriesStreamUrl("demo", "session-1", 7)).toBe(
+      await expect(API.getAssistantEntriesStreamUrl("demo", "session-1", 7)).resolves.toBe(
         "/api/v1/projects/demo/assistant/sessions/session-1/entries/stream?after=7",
       );
     });
@@ -1015,7 +1015,7 @@ describe("API", () => {
   });
 
   describe("openTaskStream", () => {
-    it("builds stream URL, dispatches events and forwards onError", () => {
+    it("uses a short stream token URL, dispatches events and forwards onError", async () => {
       const instances: MockEventSource[] = [];
       class EventSourceMock extends MockEventSource {
         constructor(url: string) {
@@ -1024,13 +1024,18 @@ describe("API", () => {
         }
       }
       vi.stubGlobal("EventSource", EventSourceMock as unknown as typeof EventSource);
+      window.localStorage.setItem("arcreel_auth_token", "long-lived-token");
+      const fetchMock = vi.fn().mockResolvedValue(
+        mockResponse({ jsonData: { stream_token: "short-stream-token", expires_in: 60 } }),
+      );
+      vi.stubGlobal("fetch", fetchMock);
 
       const onSnapshot = vi.fn();
       const onTask = vi.fn();
       const onError = vi.fn();
       const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      const source = API.openTaskStream({
+      const source = await API.openTaskStream({
         projectName: "demo",
         lastEventId: "42",
         onSnapshot,
@@ -1038,9 +1043,16 @@ describe("API", () => {
         onError,
       });
 
-      expect(instances[0].url).toBe(
-        "/api/v1/tasks/stream?project_id=demo&last_event_id=42",
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/auth/stream-token",
+        expect.objectContaining({ method: "POST" }),
       );
+      const headers = fetchMock.mock.calls[0][1].headers as Headers;
+      expect(headers.get("Authorization")).toBe("Bearer long-lived-token");
+      expect(instances[0].url).toBe(
+        "/api/v1/tasks/stream?project_id=demo&last_event_id=42&stream_token=short-stream-token",
+      );
+      expect(instances[0].url).not.toContain("long-lived-token");
 
       const es = instances[0];
       es.emit(
@@ -1070,7 +1082,7 @@ describe("API", () => {
       expect(source).toBe(es as unknown as EventSource);
     });
 
-    it("ignores invalid lastEventId", () => {
+    it("ignores invalid lastEventId", async () => {
       const instances: MockEventSource[] = [];
       class EventSourceMock extends MockEventSource {
         constructor(url: string) {
@@ -1080,7 +1092,7 @@ describe("API", () => {
       }
       vi.stubGlobal("EventSource", EventSourceMock as unknown as typeof EventSource);
 
-      API.openTaskStream({ projectName: "demo", lastEventId: "0" });
+      await API.openTaskStream({ projectName: "demo", lastEventId: "0" });
       expect(instances[0].url).toBe("/api/v1/tasks/stream?project_id=demo");
     });
   });

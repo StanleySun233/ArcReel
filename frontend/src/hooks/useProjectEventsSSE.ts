@@ -224,140 +224,151 @@ export function useProjectEventsSSE(projectName?: string | null): void {
     if (!projectName) return;
     let disposed = false;
 
-    const connect = () => {
+    const connect = async () => {
       if (sourceRef.current) {
         sourceRef.current.close();
         sourceRef.current = null;
       }
 
-      const source = API.openProjectEventStream({
-        projectName,
-        onSnapshot(payload) {
-          if (disposed) return;
-          const previousFingerprint = lastFingerprintRef.current;
-          lastFingerprintRef.current = payload.fingerprint;
-          if (previousFingerprint && previousFingerprint !== payload.fingerprint) {
-            void refreshProject();
-          }
-        },
-        onChanges(payload: ProjectChangeBatchPayload) {
-          if (disposed) return;
-          lastFingerprintRef.current = payload.fingerprint;
-          setAssistantToolActivitySuppressed(true);
-
-          // 提取并更新 asset fingerprints（零延迟，立即写入 store）
-          const mergedFingerprints: Record<string, number> = {};
-          for (const change of payload.changes) {
-            if (change.asset_fingerprints) {
-              Object.assign(mergedFingerprints, change.asset_fingerprints);
+      try {
+        const source = await API.openProjectEventStream({
+          projectName,
+          onSnapshot(payload) {
+            if (disposed) return;
+            const previousFingerprint = lastFingerprintRef.current;
+            lastFingerprintRef.current = payload.fingerprint;
+            if (previousFingerprint && previousFingerprint !== payload.fingerprint) {
+              void refreshProject();
             }
-          }
-          if (Object.keys(mergedFingerprints).length > 0) {
-            useProjectsStore.getState().updateAssetFingerprints(mergedFingerprints);
-          }
+          },
+          onChanges(payload: ProjectChangeBatchPayload) {
+            if (disposed) return;
+            lastFingerprintRef.current = payload.fingerprint;
+            setAssistantToolActivitySuppressed(true);
 
-          const invalidationKeys = payload.changes.map((change) =>
-            buildEntityRevisionKey(change.entity_type, change.entity_id),
-          );
-          invalidateEntities(invalidationKeys);
-
-          const groupedChanges = sortGroupedChanges(
-            groupChangesByType(payload.changes),
-          );
-
-          if (payload.source !== "webui") {
-            for (const group of groupedChanges) {
-              if (!hasImportantChanges(group)) {
-                continue;
-              }
-              pushNotification(formatGroupedNotificationText(group), "success");
-            }
-          }
-
-          if (payload.source !== "webui") {
-            // Draft 事件 — 自动导航到剧集预处理 Tab
-            let draftHandled = false;
+            // 提取并更新 asset fingerprints（零延迟，立即写入 store）
+            const mergedFingerprints: Record<string, number> = {};
             for (const change of payload.changes) {
-              if (
-                change.entity_type === "draft" &&
-                change.action === "created" &&
-                typeof change.episode === "number" &&
-                !isWorkspaceEditing()
-              ) {
-                startTransition(() => {
-                  setLocation(`/episodes/${change.episode}`);
-                });
-                draftHandled = true;
-                break;
+              if (change.asset_fingerprints) {
+                Object.assign(mergedFingerprints, change.asset_fingerprints);
+              }
+            }
+            if (Object.keys(mergedFingerprints).length > 0) {
+              useProjectsStore.getState().updateAssetFingerprints(mergedFingerprints);
+            }
+
+            const invalidationKeys = payload.changes.map((change) =>
+              buildEntityRevisionKey(change.entity_type, change.entity_id),
+            );
+            invalidateEntities(invalidationKeys);
+
+            const groupedChanges = sortGroupedChanges(
+              groupChangesByType(payload.changes),
+            );
+
+            if (payload.source !== "webui") {
+              for (const group of groupedChanges) {
+                if (!hasImportantChanges(group)) {
+                  continue;
+                }
+                pushNotification(formatGroupedNotificationText(group), "success");
               }
             }
 
-            if (!draftHandled) {
-              const nextFocusTarget =
-                groupedChanges
-                  .map((group) => {
-                    const target = getPrimaryGroupTarget(group);
-                    if (!target) {
-                      return null;
-                    }
-                    pushWorkspaceNotification({
-                      text: formatGroupedDeferredText(group),
-                      target,
-                    });
-                    return target;
-                  })
-                  .find(Boolean) ?? null;
+            if (payload.source !== "webui") {
+              // Draft 事件 — 自动导航到剧集预处理 Tab
+              let draftHandled = false;
+              for (const change of payload.changes) {
+                if (
+                  change.entity_type === "draft" &&
+                  change.action === "created" &&
+                  typeof change.episode === "number" &&
+                  !isWorkspaceEditing()
+                ) {
+                  startTransition(() => {
+                    setLocation(`/episodes/${change.episode}`);
+                  });
+                  draftHandled = true;
+                  break;
+                }
+              }
 
-              queuedFocusRef.current = isWorkspaceEditing() ? null : nextFocusTarget;
+              if (!draftHandled) {
+                const nextFocusTarget =
+                  groupedChanges
+                    .map((group) => {
+                      const target = getPrimaryGroupTarget(group);
+                      if (!target) {
+                        return null;
+                      }
+                      pushWorkspaceNotification({
+                        text: formatGroupedDeferredText(group),
+                        target,
+                      });
+                      return target;
+                    })
+                    .find(Boolean) ?? null;
+
+                queuedFocusRef.current = isWorkspaceEditing() ? null : nextFocusTarget;
+              }
             }
-          }
 
-          void refreshProject();
+            void refreshProject();
 
-          // Refresh cost data when generation completes
-          const hasGenerationEvent = payload.changes.some(
-            (c) => c.action === "storyboard_ready" || c.action === "video_ready",
-          );
-          if (hasGenerationEvent && projectName) {
-            useCostStore.getState().debouncedFetch(projectName);
-          }
+            // Refresh cost data when generation completes
+            const hasGenerationEvent = payload.changes.some(
+              (c) => c.action === "storyboard_ready" || c.action === "video_ready",
+            );
+            if (hasGenerationEvent && projectName) {
+              useCostStore.getState().debouncedFetch(projectName);
+            }
 
-          // Refresh grid list when a grid completes
-          if (payload.changes.some((c) => c.action === "grid_ready")) {
-            useAppStore.getState().invalidateGrids();
-          }
-        },
-        onProjectDeleted() {
-          if (disposed) return;
-          // 项目目录已被删除：后端已正常关流，停止重连循环——不对已删项目周期性发起请求。
-          // 浏览器随后会因连接结束触发一次 onError；terminatedRef 拦住它排的重连。
-          terminatedRef.current = true;
-          if (reconnectTimerRef.current) {
-            clearTimeout(reconnectTimerRef.current);
-            reconnectTimerRef.current = null;
-          }
-          if (sourceRef.current) {
-            sourceRef.current.close();
-            sourceRef.current = null;
-          }
-        },
-        onError() {
-          if (disposed) return;
-          if (terminatedRef.current) return;
-          if (sourceRef.current) {
-            sourceRef.current.close();
-            sourceRef.current = null;
-          }
-          reconnectTimerRef.current = setTimeout(() => {
-            if (!disposed) connect();
-          }, 3000);
-        },
-      });
+            // Refresh grid list when a grid completes
+            if (payload.changes.some((c) => c.action === "grid_ready")) {
+              useAppStore.getState().invalidateGrids();
+            }
+          },
+          onProjectDeleted() {
+            if (disposed) return;
+            // 项目目录已被删除：后端已正常关流，停止重连循环——不对已删项目周期性发起请求。
+            // 浏览器随后会因连接结束触发一次 onError；terminatedRef 拦住它排的重连。
+            terminatedRef.current = true;
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = null;
+            }
+            if (sourceRef.current) {
+              sourceRef.current.close();
+              sourceRef.current = null;
+            }
+          },
+          onError() {
+            if (disposed) return;
+            if (terminatedRef.current) return;
+            if (sourceRef.current) {
+              sourceRef.current.close();
+              sourceRef.current = null;
+            }
+            reconnectTimerRef.current = setTimeout(() => {
+              if (!disposed) void connect();
+            }, 3000);
+          },
+        });
 
-      sourceRef.current = source;
+        if (disposed) {
+          source.close();
+          return;
+        }
+        sourceRef.current = source;
+      } catch {
+        if (disposed || terminatedRef.current) return;
+        reconnectTimerRef.current = setTimeout(() => {
+          if (!disposed) void connect();
+        }, 3000);
+      }
     };
 
-    connect();
+    void connect();
 
     return () => {
       disposed = true;

@@ -405,14 +405,6 @@ function encodePathSegments(path: string): string {
   return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-/** 为 URL 追加 token query param（用于 EventSource） */
-function withAuthQuery(url: string): string {
-  const token = getToken();
-  if (!token) return url;
-  const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}token=${encodeURIComponent(token)}`;
-}
-
 class API {
   /**
    * 通用请求方法
@@ -462,6 +454,17 @@ class API {
       return undefined as T;
     }
     return response.json() as Promise<T>;
+  }
+
+  static async createStreamToken(): Promise<{ stream_token: string; expires_in: number }> {
+    return this.request("/auth/stream-token", { method: "POST" });
+  }
+
+  private static async withStreamAuth(url: string): Promise<string> {
+    if (!getToken()) return url;
+    const { stream_token } = await this.createStreamToken();
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}stream_token=${encodeURIComponent(stream_token)}`;
   }
 
   // ==================== 系统配置 ====================
@@ -1538,7 +1541,7 @@ class API {
     );
   }
 
-  static openTaskStream(options: TaskStreamOptions = {}): EventSource {
+  static async openTaskStream(options: TaskStreamOptions = {}): Promise<EventSource> {
     const params = new URLSearchParams();
     if (options.projectName)
       params.append("project_id", options.projectName);
@@ -1548,7 +1551,7 @@ class API {
     }
 
     const query = params.toString();
-    const url = withAuthQuery(`${API_BASE}/tasks/stream${query ? "?" + query : ""}`);
+    const url = await this.withStreamAuth(`${API_BASE}/tasks/stream${query ? "?" + query : ""}`);
     const source = new EventSource(url);
 
     const parsePayload = (event: MessageEvent): unknown => {
@@ -1589,8 +1592,8 @@ class API {
     return source;
   }
 
-  static openProjectEventStream(options: ProjectEventStreamOptions): EventSource {
-    const url = withAuthQuery(
+  static async openProjectEventStream(options: ProjectEventStreamOptions): Promise<EventSource> {
+    const url = await this.withStreamAuth(
       `${API_BASE}/projects/${encodeURIComponent(options.projectName)}/events/stream`
     );
     const source = new EventSource(url);
@@ -1792,14 +1795,14 @@ class API {
   }
 
   /** entry 流 SSE URL（after 为 seq 游标；重连续传由 EventSource Last-Event-ID 承担）。 */
-  static getAssistantEntriesStreamUrl(
+  static async getAssistantEntriesStreamUrl(
     projectName: string,
     sessionId: string,
     after: number = -1
-  ): string {
+  ): Promise<string> {
     const base = `${API_BASE}${this.assistantBase(projectName)}/sessions/${encodeURIComponent(sessionId)}/entries/stream`;
     const url = after >= 0 ? `${base}?after=${after}` : base;
-    return withAuthQuery(url);
+    return this.withStreamAuth(url);
   }
 
   static async listAssistantSkills(

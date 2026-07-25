@@ -88,6 +88,49 @@ class TestCreateAndVerifyToken:
             result = auth_module.verify_token(expired_token)
             assert result is None
 
+    def test_create_and_verify_stream_token(self):
+        with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
+            user = auth_module.CurrentUserInfo(
+                id="camel:1",
+                sub="alice",
+                provider="camel",
+                role="admin",
+                tenant_id="ten_team",
+                tenant_role="member",
+            )
+            token = auth_module.create_stream_token(user)
+
+            payload = auth_module.verify_stream_token(token)
+
+            assert payload["purpose"] == "sse"
+            assert payload["sub"] == "alice"
+            assert payload["user_id"] == "camel:1"
+            assert payload["provider"] == "camel"
+            assert payload["tenant_id"] == "ten_team"
+            assert payload["tenant_role"] == "member"
+            assert payload["exp"] - payload["iat"] == auth_module.STREAM_TOKEN_EXPIRY_SECONDS
+
+    def test_verify_stream_token_rejects_wrong_purpose(self):
+        import jwt
+        import pytest
+
+        secret = "test-secret-key-that-is-at-least-32-bytes"
+        with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": secret}):
+            token = jwt.encode(
+                {
+                    "sub": "admin",
+                    "user_id": "default",
+                    "purpose": "download",
+                    "iat": time.time(),
+                    "exp": time.time() + 60,
+                },
+                secret,
+                algorithm="HS256",
+            )
+
+            with pytest.raises(ValueError, match="purpose 不匹配"):
+                auth_module.verify_stream_token(token)
+
 
 class TestCheckCredentials:
     def setup_method(self):
@@ -318,6 +361,22 @@ class TestGetCurrentUser:
             result = await auth_module.get_current_user_flexible(None, token)
             assert isinstance(result, auth_module.CurrentUserInfo)
             assert result.sub == "admin"
+
+    async def test_get_current_user_flexible_stream_token(self):
+        with patch.dict(os.environ, {"AUTH_TOKEN_SECRET": "test-secret-key-that-is-at-least-32-bytes"}):
+            user = auth_module.CurrentUserInfo(
+                id="camel:1",
+                sub="alice",
+                provider="camel",
+                role="admin",
+                tenant_id="ten_team",
+                tenant_role="member",
+            )
+            token = auth_module.create_stream_token(user)
+            result = await auth_module.get_current_user_flexible(None, None, token)
+            assert isinstance(result, auth_module.CurrentUserInfo)
+            assert result.sub == "alice"
+            assert result.tenant_id == "ten_team"
 
     async def test_get_current_user_flexible_no_token(self):
         import pytest
