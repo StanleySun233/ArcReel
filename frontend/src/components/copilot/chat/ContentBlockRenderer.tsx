@@ -206,23 +206,25 @@ function QuestionAnswerBlock({ block }: Readonly<{ block: ContentBlock }>) {
 }
 
 function ChatImageBlock({ src }: Readonly<{ src: string }>) {
+  const { t } = useTranslation("common");
   const [open, setOpen] = useState(false);
+  const attachmentAlt = t("attachment_image");
   return (
     <>
       <button
         type="button"
         className="mt-1 cursor-pointer border-0 bg-transparent p-0"
         onClick={() => setOpen(true)}
-        aria-label="点击放大图片"
+        aria-label={t("enlarge_image")}
       >
         <img
           src={src}
-          alt="附件图片"
+          alt={attachmentAlt}
           className="max-w-full max-h-64 rounded-lg"
         />
       </button>
       {open && (
-        <ImageLightbox src={src} alt="附件图片" onClose={() => setOpen(false)} />
+        <ImageLightbox src={src} alt={attachmentAlt} onClose={() => setOpen(false)} />
       )}
     </>
   );

@@ -29,9 +29,10 @@ uv run alembic revision --autogenerate -m "desc"     # 生成迁移
 
 # 前端，先 cd frontend
 pnpm lint        # ESLint，CI frontend-tests 第一段，含 jsx-a11y 规则
-pnpm check       # typecheck + vitest
+pnpm check       # 快速本地门禁：typecheck + lint + vitest（不含覆盖率）
 pnpm build       # 生产构建，含 typecheck
-# CI 等价：pnpm lint && pnpm check，push 前两条都要绿
+pnpm test:coverage  # Vitest 覆盖率，CI frontend-tests 第三段
+# CI frontend-tests 等价：pnpm lint && pnpm build && pnpm test:coverage
 ```
 
 ## 架构要点
@@ -217,8 +218,8 @@ API Key、后端选择、模型配置等通过 WebUI 配置页（`/settings`）�
 ### 代码质量
 
 - **ruff**：line-length 120，提交前对修改的 Python 文件执行 `uv run ruff check <files> && uv run ruff format <files>`
-- **basedpyright**：standard 模式 + `reportMissingTypeStubs = false`，CI 强制 0 error，pre-push hook 跑全量扫描；本地随手 `uv run basedpyright` 校验。tests/ 内 `reportOptional*` 和 `unknown*` 系列降级为 warning，避免 mock-heavy 测试噪声；第三方 untyped 库（ffmpeg-python、pyJianYingDraft、volcenginesdkarkruntime、xai_sdk.chat、docx2txt/mammoth/ebooklib）通过行级 `# pyright: ignore[...]` 处理
-- **pytest**：`asyncio_mode = "auto"`，CI 覆盖率 ≥80%，共用 fixtures 在 `tests/conftest.py`
+- **basedpyright**：standard 模式 + `reportMissingTypeStubs = false`，CI 强制 0 error，pre-push hook 跑全量扫描；本地随手 `uv run basedpyright` 校验。tests/ 内 `reportArgumentType`、`reportAttributeAccessIssue`、`reportOptionalSubscript` 降级为 warning，`reportUnknownMemberType`、`reportUnknownArgumentType`、`reportUnknownVariableType` 关闭，避免 mock-heavy 测试噪声；第三方 untyped 库（ffmpeg-python、pyJianYingDraft、volcenginesdkarkruntime、xai_sdk.chat、docx2txt/mammoth/ebooklib）通过行级 `# pyright: ignore[...]` 处理
+- **pytest / vitest 覆盖率**：后端 CI `pytest --cov=lib --cov=server --cov-fail-under=80`；前端 CI `pnpm test:coverage` 按 `frontend/vitest.config.ts` 的选定入口统计，当前 lines 阈值 60；共用 fixtures 在 `tests/conftest.py`
 - **i18n 一致性**：`tests/test_i18n_consistency.py` 校验 zh/en/vi 三语 key 不漂移；新增 i18n key 时三语都要补全
 - **依赖管理**：前后端新增/升级依赖一律用 `uv add` / `pnpm add`（不手写版本号到 pyproject.toml / package.json）；加完依赖同步 `.github/dependabot.yml` 的 patterns 归入对应分组，避免落到 all-other 兜底组
 - **提交与 PR**：标题遵循 Conventional Commits（`type(scope): 摘要`，type 取值与 changelog 分类见 `CONTRIBUTING.md` / `.release-please-config.json`）。squash 合并下标题即 changelog 条目——写用户可感知的收益、范围词用产品术语，不写实现术语（status_code、内部类名等）且诚实限定范围；改正时只改标题不 amend commit

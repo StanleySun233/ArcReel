@@ -1340,6 +1340,7 @@ export default {
   'skill_name_generate_narration_audio': 'Tạo giọng thuyết minh',
   'skill_name_generate_assets': 'Tạo tài sản',
   'skill_name_compose_video': 'Ghép video',
+  'slash_command_menu': 'Menu lệnh kỹ năng',
   'upload_aborted_project_changed': 'Đã đổi dự án; đã hủy tải lên {{filename}}',
   'workspace_nav_characters': 'Nhân vật',
   'workspace_nav_overview': 'Tổng quan',

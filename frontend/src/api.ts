@@ -374,6 +374,10 @@ async function throwIfNotOk(response: Response, fallbackMsg: string): Promise<vo
   }
 }
 
+function errorText(key: string, options?: Record<string, unknown>): string {
+  return i18n.t(`errors:${key}`, options);
+}
+
 function handleUnauthorized(response: Response): void {
   if (response.status !== 401) return;
   expireLocalSession();
@@ -386,7 +390,7 @@ function expireLocalSession(): never {
   globalThis.location.href = current.startsWith("/app/")
     ? `/login?from=${encodeURIComponent(current)}`
     : "/login";
-  throw new Error("认证已过期，请重新登录");
+  throw new Error(errorText("session_expired"));
 }
 
 /** 为 fetch options 注入 Authorization header */
@@ -441,7 +445,7 @@ class API {
           throw new Error("TENANT_ACCESS_REVOKED");
         }
       }
-      let message = "请求失败";
+      let message = errorText("request_failed");
       if (typeof error.detail === "string") {
         message = error.detail;
       } else if (Array.isArray(error.detail) && error.detail.length > 0) {
@@ -558,7 +562,7 @@ class API {
     updates: Partial<ProjectData> & { clear_style_image?: boolean }
   ): Promise<{ success: boolean; project: ProjectData }> {
     if ("content_mode" in updates) {
-      throw new Error("项目创建后不支持修改 content_mode");
+      throw new Error(errorText("content_mode_immutable"));
     }
     return this.request(`/projects/${encodeURIComponent(name)}`, {
       method: "PATCH",
@@ -650,7 +654,7 @@ class API {
         .json()
         .catch(() => ({ detail: response.statusText, errors: [], warnings: [] })) as ImportErrorPayload;
       const error = new Error(
-        typeof payload.detail === "string" ? payload.detail : "导入失败"
+        typeof payload.detail === "string" ? payload.detail : errorText("import_failed")
       ) as Error & {
         status?: number;
         detail?: string;
@@ -660,7 +664,7 @@ class API {
         diagnostics?: ImportFailureDiagnostics;
       };
       error.status = response.status;
-      error.detail = typeof payload.detail === "string" ? payload.detail : "导入失败";
+      error.detail = typeof payload.detail === "string" ? payload.detail : errorText("import_failed");
       error.errors = Array.isArray(payload.errors) ? payload.errors : [];
       error.warnings = Array.isArray(payload.warnings) ? payload.warnings : [];
       if (typeof payload.conflict_project_name === "string") {
@@ -1030,7 +1034,7 @@ class API {
       // 若 detail 缺字段则视为协议异常，抛通用错误（带文件名标识）而非手搓 fallback —
       // 避免前端"猜"一个可能与后端命名规则不一致的 suggested_name 误导用户
       if (!detail?.existing || !detail?.suggested_name) {
-        throw new Error(`上传 "${file.name}" 失败：服务端返回 409 但 detail 字段不完整`);
+        throw new Error(errorText("upload_conflict_malformed", { filename: file.name }));
       }
       throw new ConflictError(
         detail.existing,
@@ -1039,7 +1043,7 @@ class API {
       );
     }
 
-    await throwIfNotOk(response, "上传失败");
+    await throwIfNotOk(response, errorText("upload_failed"));
     return (await response.json()) as {
       success: boolean;
       path: string;
@@ -1058,7 +1062,7 @@ class API {
     const formData = new FormData();
     formData.append("file", file);
     const response = await fetch(`${API_BASE}${url}`, withAuth({ method: "POST", body: formData }));
-    await throwIfNotOk(response, "上传失败");
+    await throwIfNotOk(response, errorText("upload_failed"));
     return (await response.json()) as T;
   }
 
@@ -1133,7 +1137,7 @@ class API {
       `${API_BASE}/projects/${encodeURIComponent(projectName)}/source/${encodeURIComponent(filename)}`,
       withAuth()
     );
-    await throwIfNotOk(response, "获取文件内容失败");
+    await throwIfNotOk(response, errorText("source_content_load_failed"));
     return response.text();
   }
 
@@ -1153,7 +1157,7 @@ class API {
         body: content,
       })
     );
-    await throwIfNotOk(response, "保存文件失败");
+    await throwIfNotOk(response, errorText("source_file_save_failed"));
     return response.json() as Promise<SuccessResponse>;
   }
 
@@ -1170,7 +1174,7 @@ class API {
         method: "DELETE",
       })
     );
-    await throwIfNotOk(response, "删除文件失败");
+    await throwIfNotOk(response, errorText("source_file_delete_failed"));
     return response.json() as Promise<SuccessResponse>;
   }
 
@@ -1199,7 +1203,7 @@ class API {
       `${API_BASE}/projects/${encodeURIComponent(projectName)}/drafts/${episode}/step${stepNum}`,
       withAuth()
     );
-    await throwIfNotOk(response, "获取草稿内容失败");
+    await throwIfNotOk(response, errorText("draft_content_load_failed"));
     return response.text();
   }
 
@@ -1220,7 +1224,7 @@ class API {
         body: content,
       })
     );
-    await throwIfNotOk(response, "保存草稿失败");
+    await throwIfNotOk(response, errorText("draft_save_failed"));
     return response.json() as Promise<SuccessResponse>;
   }
 
@@ -1704,7 +1708,7 @@ class API {
       })
     );
 
-    await throwIfNotOk(response, "上传失败");
+    await throwIfNotOk(response, errorText("upload_failed"));
 
     return response.json() as Promise<{ success: boolean; style_image: string; style_description: string; url: string }>;
   }
@@ -1969,7 +1973,7 @@ class API {
       `${API_BASE}/providers/gemini-vertex/credentials/upload?name=${encodeURIComponent(name)}`,
       withAuth({ method: "POST", body: formData }),
     );
-    await throwIfNotOk(response, "上传凭证失败");
+    await throwIfNotOk(response, errorText("credential_upload_failed"));
     return response.json() as Promise<ProviderCredential>;
   }
 
@@ -2221,7 +2225,7 @@ class API {
     form.append("alias", file.name);
     form.append("purpose", "library");
     const response = await fetch(`${API_BASE}/files`, withAuth({ method: "POST", body: form }));
-    await throwIfNotOk(response, "上传失败");
+    await throwIfNotOk(response, errorText("upload_failed"));
     return response.json() as Promise<{
       file_id: string;
       alias: string;

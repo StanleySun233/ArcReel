@@ -8,7 +8,7 @@
 
 - Phase 1 已关闭 credentialed backend cache 跨 tenant 复用、reference video resume tenant file record 丢失、SSE 长期 bearer token 进 URL、worker RLS 策略缺失、provider submit/resume route 漂移这五个 P0 风险。
 - 已增加 docs gate，并刷新 `CONTEXT.md`、ADR 0039、reference-video roadmap 和 `docs/INDEX.md` 的 stale 状态。
-- 本地已通过：`git diff --check`、Python 相关 `ruff check`、目标后端单测、`pnpm lint`、`pnpm check`、`pytest tests/test_auth.py tests/test_auth_router.py -q`、`basedpyright`。
+- 本地已通过：`git diff --check`、Python 相关 `ruff check`、目标后端单测、`DATABASE_URL= python -m pytest tests/test_i18n_consistency.py -q`、`pnpm lint`、`pnpm check`、`pytest tests/test_auth.py tests/test_auth_router.py -q`、`basedpyright`。
 - `tests/test_tenant_rls.py` 需要真实 PostgreSQL；当前本机 `127.0.0.1:5432` 拒绝连接，RLS 集成测试未能进入断言。
 
 ## Defects And Risks
@@ -60,7 +60,7 @@
 4. **Frontend API errors and UI copy still leak hardcoded Chinese**
    - Evidence: API fallback error、toast close aria-label、部分 login copy 仍是硬编码中文。
    - Impact: 英文/越南文 UI 可能混中文，错误处理无法按 namespace 管理。
-   - Next action: 统一 error code → UI i18n mapping；补 zh/en/vi nested key 和 placeholder 一致性测试。
+   - Status: fixed. API fallback error 与明确硬编码 aria/alt 文案已迁入 i18n；toast 已补 live region；zh/en/vi key 由现有 i18n 一致性测试覆盖。
 
 ### P2 - Quality Gates And Documentation Drift
 
@@ -72,17 +72,17 @@
 2. **Local frontend command docs drift from CI**
    - Evidence: project instructions 说 CI 等价 `pnpm lint && pnpm check`，实际 CI 跑 `pnpm lint`、`pnpm build`、`pnpm test:coverage`。
    - Impact: 本地验收会低估 CI 真实门槛。
-   - Next action: 更新开发命令说明，或明确 `pnpm check` 只是快速门禁。
+   - Status: fixed. `AGENTS.md` 已明确 `pnpm check` 是快速本地门禁，frontend CI 等价 `pnpm lint && pnpm build && pnpm test:coverage`。
 
 3. **Coverage policy is not a single number**
    - Evidence: backend CI `--cov-fail-under=80`；frontend vitest coverage 只覆盖选定入口且 lines 阈值为 60。
    - Impact: 文档中的“CI 覆盖率 ≥80%”会误导 frontend 风险判断。
-   - Next action: 要么提升并扩大 frontend coverage，要么文档明确 backend/frontend 分别门槛。
+   - Status: fixed. `AGENTS.md` 已拆分后端 80 与前端选定入口 lines 60 两套门槛。
 
 4. **Type-checking policy differs from documented warning level**
    - Evidence: docs 说 tests 内 unknown 系列降为 warning；`pyproject.toml` 实际设置为 `none`。
    - Impact: 测试代码中的 unknown 类型风险不会被门禁暴露。
-   - Next action: 配置改 warning，或文档承认 tests 中 unknown 类型关闭。
+   - Status: fixed. `AGENTS.md` 已按 `pyproject.toml` 记录 tests 下 unknown 系列关闭、部分类型问题降 warning 的真实策略。
 
 5. **Domain docs and ADR status are stale**
    - Evidence: reference-video roadmap 仍标 PR3-PR7 plan “待写”，但文件已存在；ADR 0039 仍是 proposed；`CONTEXT.md` 对 audio lane 的描述落后于 worker 代码。
@@ -121,7 +121,7 @@
 
 ### Phase 2 - Fix Tenant-Aware Frontend State
 
-**Status:** partially implemented.
+**Status:** implemented.
 
 **Acceptance Criteria**
 - 切换 tenant 后 provider/config status 必须刷新或清空，不显示旧 tenant 状态。
@@ -131,7 +131,7 @@
 
 ### Phase 3 - Add Quality Gates
 
-**Status:** partially implemented.
+**Status:** implemented.
 
 **Acceptance Criteria**
 - docs-only PR 至少跑 docs gate。

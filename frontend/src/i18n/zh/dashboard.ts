@@ -1221,6 +1221,7 @@ export default {
   'skill_name_generate_narration_audio': '生成旁白配音',
   'skill_name_generate_assets': '生成资产图',
   'skill_name_compose_video': '合成视频',
+  'slash_command_menu': '技能命令菜单',
   // PendingQuestionWizard
   'pending_question_wizard_label': '需要你的选择',
   'pending_question_wizard_step_question': '问题 {{number}}',

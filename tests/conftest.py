@@ -26,11 +26,6 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-import lib.generation_queue as generation_queue_module
-from lib.db.base import Base
-from server.agent_runtime.session_manager import SessionManager
-from server.agent_runtime.session_store import SessionMetaStore
-
 # ---------------------------------------------------------------------------
 # General utilities
 # ---------------------------------------------------------------------------
@@ -107,6 +102,8 @@ def _stub_sandbox_check(monkeypatch, request):
     stub）— 那个文件需要走真实函数，故按文件名跳过此 autouse stub。
     """
     if request.path.name == "test_startup_assertions.py":
+        return
+    if not os.environ.get("DATABASE_URL", "").strip():
         return
     monkeypatch.setattr("server.app.check_sandbox_available", lambda: True)
 
@@ -195,6 +192,7 @@ async def _create_pg_test_engine():
     async with engine.begin() as conn:
         import lib.agent_session_store.models  # noqa: F401
         import lib.db.models  # noqa: F401
+        from lib.db.base import Base
 
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
@@ -244,6 +242,8 @@ async def _drop_pg_test_engine(engine, schema: str) -> None:
 @pytest.fixture()
 async def meta_store():
     """Create an async SessionMetaStore backed by isolated PostgreSQL schema."""
+    from server.agent_runtime.session_store import SessionMetaStore
+
     engine, schema = await _create_pg_test_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     store = SessionMetaStore(session_factory=factory)
@@ -254,8 +254,10 @@ async def meta_store():
 
 
 @pytest.fixture()
-async def session_manager(tmp_path: Path, meta_store: SessionMetaStore) -> SessionManager:
+async def session_manager(tmp_path: Path, meta_store):
     """Create a SessionManager wired to *tmp_path* and *meta_store*."""
+    from server.agent_runtime.session_manager import SessionManager
+
     return SessionManager(
         project_root=tmp_path,
         data_dir=tmp_path,
@@ -329,6 +331,8 @@ async def generation_queue():
 
     Automatically resets the module singleton on teardown.
     """
+    import lib.generation_queue as generation_queue_module
+
     engine, schema = await _create_pg_test_engine()
     factory = async_sessionmaker(engine, expire_on_commit=False)
     queue = generation_queue_module.GenerationQueue(session_factory=factory)

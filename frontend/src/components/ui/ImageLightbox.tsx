@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { UI_LAYERS } from "@/utils/ui-layers";
 import { useEscapeClose } from "@/hooks/useEscapeClose";
@@ -11,6 +12,7 @@ export interface ImageLightboxProps {
 }
 
 export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
+  const { t } = useTranslation("common");
   useEscapeClose(onClose);
 
   useEffect(() => {
@@ -30,7 +32,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
       {/* backdrop: click-to-close */}
       <button
         type="button"
-        aria-label="关闭全屏预览"
+        aria-label={t("close_fullscreen_preview")}
         className="absolute inset-0 cursor-default appearance-none border-0 bg-transparent p-0"
         onClick={onClose}
       />
@@ -39,7 +41,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         <button
           type="button"
           onClick={onClose}
-          aria-label="关闭图片预览"
+          aria-label={t("close_image_preview")}
           className="relative z-10 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-black/55 text-white shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-black/75"
         >
           <X className="h-5 w-5" />
@@ -50,7 +52,7 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={`${alt} 全屏预览`}
+          aria-label={t("image_fullscreen_preview", { alt })}
           className="relative z-10 max-h-full max-w-full"
         >
           <img

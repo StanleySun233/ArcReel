@@ -55,6 +55,7 @@ const MENU_ID = "slash-command-menu";
  */
 export const SlashCommandMenu = forwardRef<SlashCommandMenuHandle, SlashCommandMenuProps>(
   function SlashCommandMenu({ filter, onSelect }, ref) {
+    const { t } = useTranslation("dashboard");
     const { skills } = useAssistantStore();
     const resolveLabel = useSkillLabel();
     const [activeIndex, setActiveIndex] = useState(0);
@@ -113,7 +114,7 @@ export const SlashCommandMenu = forwardRef<SlashCommandMenuHandle, SlashCommandM
       <div
         id={MENU_ID}
         role="listbox"
-        aria-label="技能命令菜单"
+        aria-label={t("slash_command_menu")}
         className="arc-glass-panel absolute bottom-full left-0 right-0 mb-1 max-h-52 overflow-y-auto rounded-lg py-1"
       >
         {filtered.map((skill, i) => {

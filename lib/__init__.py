@@ -1,10 +1,4 @@
-# AI Anime Generator Library
-# 共享 Python 库，用于 Gemini API 封装和项目管理
-
-# 首先初始化环境（激活 .venv，加载 .env）
-from .data_validator import DataValidator, ValidationResult, validate_episode, validate_project
-from .env_init import PROJECT_ROOT
-from .project_manager import ProjectManager
+from typing import Any
 
 __all__ = [
     "ProjectManager",
@@ -14,3 +8,19 @@ __all__ = [
     "validate_episode",
     "ValidationResult",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "PROJECT_ROOT":
+        from .env_init import PROJECT_ROOT
+
+        return PROJECT_ROOT
+    if name == "ProjectManager":
+        from .project_manager import ProjectManager
+
+        return ProjectManager
+    if name in {"DataValidator", "ValidationResult", "validate_episode", "validate_project"}:
+        from . import data_validator
+
+        return getattr(data_validator, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
