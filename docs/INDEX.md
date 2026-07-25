@@ -4,7 +4,7 @@
 
 | Date | Feature | Status | Sprint Backlog |
 |------|---------|--------|----------------|
-| 20260725 | current-project-audit-and-stabilization | planned | [->](./20260725/current-project-audit-and-stabilization/sprint-backlog.md) |
+| 20260725 | current-project-audit-and-stabilization | in progress | [->](./20260725/current-project-audit-and-stabilization/sprint-backlog.md) |
 
 ## Completed
 

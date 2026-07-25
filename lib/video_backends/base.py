@@ -46,6 +46,8 @@ async def _persist_with_retry(
     *,
     tenant_id: str | None = None,
     requested_by_user_id: str | None = None,
+    provider_id: str | None = None,
+    model_id: str | None = None,
 ) -> None:
     from lib.generation_queue import get_generation_queue
 
@@ -54,6 +56,10 @@ async def _persist_with_retry(
         kwargs["tenant_id"] = tenant_id
     if requested_by_user_id is not None:
         kwargs["requested_by_user_id"] = requested_by_user_id
+    if provider_id is not None:
+        kwargs["provider_id"] = provider_id
+    if model_id is not None:
+        kwargs["model_id"] = model_id
     await get_generation_queue().persist_provider_job_id(task_id, job_id, **kwargs)
 
 
@@ -64,6 +70,8 @@ async def persist_provider_job_id(
     provider: str,
     tenant_id: str | None = None,
     requested_by_user_id: str | None = None,
+    model_id: str | None = None,
+    route_provider_id: str | None = None,
 ) -> None:
     """Submit 之后立即调：把 job_id 持久化到 DB 让重启可接续。
 
@@ -76,6 +84,8 @@ async def persist_provider_job_id(
             job_id,
             tenant_id=tenant_id,
             requested_by_user_id=requested_by_user_id,
+            provider_id=route_provider_id or provider,
+            model_id=model_id,
         )
         logger.info("provider_job_id 已持久化 task_id=%s provider=%s job_id=%s", task_id, provider, job_id)
     except Exception as exc:
@@ -115,6 +125,11 @@ class ProviderJobIdPersistenceMixin:
             kwargs["tenant_id"] = request.tenant_id
         if request.user_id is not None:
             kwargs["requested_by_user_id"] = request.user_id
+        if request.provider_id is not None and request.provider_id != provider:
+            kwargs["route_provider_id"] = request.provider_id
+        model = request.model_id or getattr(self, "model", None)
+        if isinstance(model, str) and model:
+            kwargs["model_id"] = model
         await persist_provider_job_id(request.task_id, job_id, provider=provider, **kwargs)
 
 
@@ -471,6 +486,8 @@ class VideoGenerationRequest:
 
     # 项目上下文（用于构建文件服务 URL 等）
     project_name: str | None = None
+    provider_id: str | None = None
+    model_id: str | None = None
 
     # Worker 路径下从 task["task_id"] 传入，让 backend submit 后经
     # `ProviderJobIdPersistenceMixin._persist_provider_job_id` 持久化 job_id。

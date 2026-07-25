@@ -760,15 +760,23 @@ class GenerationWorker:
             return
 
         # 锁定持久化 provider 到 payload（resolver 优先级：payload > project > 默认）。
+        payload = task.get("payload")
+        route = payload.get("provider_route") if isinstance(payload, dict) else None
         persisted_provider_id = task.get("provider_id")
+        if not persisted_provider_id and isinstance(route, dict):
+            raw_route_provider = route.get("provider_id")
+            persisted_provider_id = raw_route_provider if isinstance(raw_route_provider, str) else None
         if persisted_provider_id:
-            payload = task.get("payload")
-            if payload is None:
+            if not isinstance(payload, dict):
                 payload = {}
                 task["payload"] = payload
+            raw_model = route.get("model") if isinstance(route, dict) else None
+            persisted_model = raw_model if isinstance(raw_model, str) and raw_model else None
             is_video = task.get("media_type") == "video" or task_type in ("video", "reference_video")
             if is_video:
                 payload["video_provider"] = persisted_provider_id
+                if persisted_model:
+                    payload["video_model"] = persisted_model
             else:
                 payload["image_provider"] = persisted_provider_id
 

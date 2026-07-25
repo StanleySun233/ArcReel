@@ -12,6 +12,22 @@ from lib.user_scope import current_identity_scope
 from tests.pg_utils import create_pg_test_engine, drop_pg_test_engine
 
 
+class _FakePostgresBind:
+    dialect = type("Dialect", (), {"name": "postgresql"})()
+
+
+class _FakePostgresSession:
+    def __init__(self) -> None:
+        self.info = {"tenant_id": "ten_old", "user_id": "camel:old"}
+        self.calls: list[tuple[str, dict | None]] = []
+
+    def get_bind(self):
+        return _FakePostgresBind()
+
+    async def execute(self, stmt, params=None):
+        self.calls.append((str(stmt), params))
+
+
 @pytest.fixture
 async def queue():
     """Create a GenerationQueue backed by an isolated PostgreSQL schema."""
@@ -26,6 +42,20 @@ async def queue():
 
 
 class TestGenerationQueue:
+    async def test_prepare_worker_session_sets_explicit_worker_rls_context(self):
+        session = _FakePostgresSession()
+
+        await generation_queue_module._prepare_worker_session(session)
+
+        assert "tenant_id" not in session.info
+        assert session.info["user_id"] == "default"
+        assert session.info["auth_mode"] == "worker"
+        assert session.calls
+        sql, params = session.calls[0]
+        assert "app.auth_mode" in sql
+        assert "'worker'" in sql
+        assert params == {"user_id": "default"}
+
     async def test_enqueue_dedupe_claim_and_succeed(self, queue):
         first = await queue.enqueue_task(
             project_name="demo",
@@ -454,10 +484,20 @@ class TestGenerationQueue:
             script_file="ep1.json",
         )
         # 入队的 task 此时是 queued,但 persist 不校验 status(独立 commit)
-        await queue.persist_provider_job_id(enqueued["task_id"], "job-abc-123")
+        await queue.persist_provider_job_id(
+            enqueued["task_id"],
+            "job-abc-123",
+            provider_id="ark",
+            model_id="doubao-seedance-1-5-pro-251215",
+        )
         task = await queue.get_task(enqueued["task_id"])
         assert task is not None
         assert task["provider_job_id"] == "job-abc-123"
+        assert task["provider_id"] == "ark"
+        assert task["payload"]["provider_route"] == {
+            "provider_id": "ark",
+            "model": "doubao-seedance-1-5-pro-251215",
+        }
 
     async def test_persist_provider_job_id_wrapper_preserves_tenant_scope(self, queue):
         enqueued = await queue.enqueue_task(

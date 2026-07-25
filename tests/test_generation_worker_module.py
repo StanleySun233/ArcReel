@@ -1385,8 +1385,8 @@ class TestGenerationWorker:
     # _process_resume_task：分流 + provider 锁定
     # ------------------------------------------------------------------
     @pytest.mark.asyncio
-    async def test_process_resume_task_locks_persisted_provider_to_payload(self, monkeypatch):
-        """C2 回归：persisted provider_id 应注入 payload.video_provider。"""
+    async def test_process_resume_task_locks_persisted_provider_route_to_payload(self, monkeypatch):
+        """C2 回归：persisted provider route 应注入 payload video provider/model。"""
         queue = _FakeQueue()
         worker = GenerationWorker(queue=queue)
         captured_task: dict | None = None
@@ -1406,13 +1406,20 @@ class TestGenerationWorker:
             "media_type": "video",
             "provider_id": "openai",
             "provider_job_id": "openai-job",
-            "payload": {"video_provider": "gemini-aistudio"},  # payload 原本指向另一个 provider
+            "payload": {
+                "video_provider": "gemini-aistudio",
+                "video_model": "veo-3.1-lite-generate-preview",
+                "provider_route": {
+                    "provider_id": "openai",
+                    "model": "sora-2",
+                },
+            },
             "project_name": "demo",
         }
         await worker._process_resume_task(task)
         assert captured_task is not None
-        # _process_resume_task 应覆写为持久化 provider_id (openai)
         assert captured_task["payload"]["video_provider"] == "openai"
+        assert captured_task["payload"]["video_model"] == "sora-2"
         assert captured_job_id == "openai-job"
         assert queue.succeeded == [("resume-locked", {"ok": True})]
 

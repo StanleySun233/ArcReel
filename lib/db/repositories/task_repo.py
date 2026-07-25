@@ -702,16 +702,45 @@ class TaskRepository(BaseRepository):
                 skipped_terminal=skipped_terminal,
             )
 
-    async def persist_provider_job_id(self, task_id: str, job_id: str) -> None:
+    async def persist_provider_job_id(
+        self,
+        task_id: str,
+        job_id: str,
+        *,
+        provider_id: str | None = None,
+        model_id: str | None = None,
+    ) -> None:
         """单独事务持久化 provider_job_id；不带 WHERE 状态守卫（worker 内调用，确定是 running）。
 
         失败抛异常，由 worker finally 兜底 mark_failed（ADR 0007 fail-fast：未持久化的
         submit 视为整笔失败，避免「幽灵任务」继续在 provider 端跑而 DB 已忘）。
         """
         now = utc_now()
-        await self.session.execute(
-            update(Task).where(Task.task_id == task_id).values(provider_job_id=job_id, updated_at=now)
-        )
+        values: dict[str, Any] = {"provider_job_id": job_id, "updated_at": now}
+        if provider_id:
+            values["provider_id"] = provider_id
+
+        if provider_id or model_id:
+            result = await self.session.execute(select(Task.payload_json).where(Task.task_id == task_id))
+            row = result.first()
+            if row is None:
+                raise ValueError(f"task not found: {task_id}")
+            data = _json_loads(row[0], {})
+            if not isinstance(data, dict):
+                data = {}
+            route = data.get("provider_route")
+            if not isinstance(route, dict):
+                route = {}
+            if provider_id:
+                route["provider_id"] = provider_id
+            if model_id:
+                route["model"] = model_id
+            data["provider_route"] = route
+            values["payload_json"] = _json_dumps(data)
+
+        result = await self.session.execute(update(Task).where(Task.task_id == task_id).values(**values))
+        if rowcount(result) == 0:
+            raise ValueError(f"task not found: {task_id}")
         await self.session.commit()
 
     async def persist_api_call_id(self, task_id: str, call_id: int) -> None:

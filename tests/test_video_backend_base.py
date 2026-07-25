@@ -477,7 +477,7 @@ class TestPersistJobIdRetry:
                 raise _make_operational_error("database is locked")
 
         class _FakeQueue:
-            async def persist_provider_job_id(self, tid: str, job_id: str) -> None:
+            async def persist_provider_job_id(self, tid: str, job_id: str, **_kwargs) -> None:
                 await _flaky_persist(tid, job_id)
 
         fake_queue = _FakeQueue()
@@ -499,7 +499,7 @@ class TestPersistJobIdRetry:
             raise _make_operational_error("database is locked")
 
         class _FailingQueue:
-            async def persist_provider_job_id(self, tid: str, job_id: str) -> None:
+            async def persist_provider_job_id(self, tid: str, job_id: str, **_kwargs) -> None:
                 await _always_fail(tid, job_id)
 
         fake_queue = _FailingQueue()
@@ -519,6 +519,51 @@ class TestPersistJobIdRetry:
         assert "provider=ark" in msg
         assert "job_id=job-X" in msg
 
+    async def test_persists_provider_route_metadata_to_queue(self):
+        captured: dict = {}
+
+        class _FakeQueue:
+            async def persist_provider_job_id(self, tid: str, job_id: str, **kwargs) -> None:
+                captured.update({"task_id": tid, "job_id": job_id, **kwargs})
+
+        with patch("lib.generation_queue.get_generation_queue", return_value=_FakeQueue()):
+            await persist_provider_job_id(
+                "task-route",
+                "job-route",
+                provider="ark",
+                model_id="doubao-seedance-1-5-pro-251215",
+            )
+
+        assert captured == {
+            "task_id": "task-route",
+            "job_id": "job-route",
+            "provider_id": "ark",
+            "model_id": "doubao-seedance-1-5-pro-251215",
+        }
+
+    async def test_persists_custom_route_provider_separately_from_log_provider(self):
+        captured: dict = {}
+
+        class _FakeQueue:
+            async def persist_provider_job_id(self, tid: str, job_id: str, **kwargs) -> None:
+                captured.update({"task_id": tid, "job_id": job_id, **kwargs})
+
+        with patch("lib.generation_queue.get_generation_queue", return_value=_FakeQueue()):
+            await persist_provider_job_id(
+                "task-route",
+                "job-route",
+                provider="openai",
+                route_provider_id="custom-1",
+                model_id="sora-2",
+            )
+
+        assert captured == {
+            "task_id": "task-route",
+            "job_id": "job-route",
+            "provider_id": "custom-1",
+            "model_id": "sora-2",
+        }
+
     async def test_no_retry_for_value_error(self):
         """ValueError 不在 retryable_errors 内 → 立即抛出，retry 仅尝试 1 次。"""
         attempts = 0
@@ -529,7 +574,7 @@ class TestPersistJobIdRetry:
             raise ValueError("not retryable")
 
         class _BadQueue:
-            async def persist_provider_job_id(self, tid: str, job_id: str) -> None:
+            async def persist_provider_job_id(self, tid: str, job_id: str, **_kwargs) -> None:
                 await _bad(tid, job_id)
 
         fake_queue = _BadQueue()
@@ -558,7 +603,7 @@ class TestPersistJobIdRetry:
             raise ValueError("Connection timed out: rate limited at upstream")
 
         class _BadQueue:
-            async def persist_provider_job_id(self, tid: str, job_id: str) -> None:
+            async def persist_provider_job_id(self, tid: str, job_id: str, **_kwargs) -> None:
                 await _bad(tid, job_id)
 
         fake_queue = _BadQueue()
@@ -580,6 +625,14 @@ class TestProviderJobIdPersistenceMixin:
         # 裸 mixin 实例即可——_persist_provider_job_id 不依赖任何子类状态。
         return ProviderJobIdPersistenceMixin()
 
+    def _backend_with_model(self, model: str) -> ProviderJobIdPersistenceMixin:
+        class _Backend(ProviderJobIdPersistenceMixin):
+            @property
+            def model(self) -> str:
+                return model
+
+        return _Backend()
+
     def _request(self, *, task_id: str | None) -> VideoGenerationRequest:
         return VideoGenerationRequest(prompt="p", output_path=Path("/tmp/out.mp4"), task_id=task_id)
 
@@ -590,6 +643,42 @@ class TestProviderJobIdPersistenceMixin:
                 self._request(task_id="local-task-1"), "job-1", provider="ark"
             )
         persist.assert_awaited_once_with("local-task-1", "job-1", provider="ark")
+
+    async def test_worker_path_persists_actual_submit_model(self):
+        with patch("lib.video_backends.base.persist_provider_job_id", new=AsyncMock()) as persist:
+            await self._backend_with_model("doubao-seedance-1-5-pro-251215")._persist_provider_job_id(
+                self._request(task_id="local-task-1"),
+                "job-1",
+                provider="ark",
+            )
+        persist.assert_awaited_once_with(
+            "local-task-1",
+            "job-1",
+            provider="ark",
+            model_id="doubao-seedance-1-5-pro-251215",
+        )
+
+    async def test_worker_path_persists_custom_route_provider_from_request(self):
+        request = VideoGenerationRequest(
+            prompt="p",
+            output_path=Path("/tmp/out.mp4"),
+            task_id="custom-task-1",
+            provider_id="custom-1",
+            model_id="sora-2",
+        )
+        with patch("lib.video_backends.base.persist_provider_job_id", new=AsyncMock()) as persist:
+            await self._backend_with_model("delegate-model")._persist_provider_job_id(
+                request,
+                "job-1",
+                provider="openai",
+            )
+        persist.assert_awaited_once_with(
+            "custom-task-1",
+            "job-1",
+            provider="openai",
+            route_provider_id="custom-1",
+            model_id="sora-2",
+        )
 
     async def test_worker_path_forwards_tenant_scope(self):
         request = VideoGenerationRequest(

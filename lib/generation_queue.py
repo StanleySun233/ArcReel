@@ -17,7 +17,7 @@ from typing import Any
 from lib.db import safe_session_factory
 from lib.db.base import DEFAULT_USER_ID
 from lib.db.repositories.task_repo import DEFAULT_TENANT_ID, TaskRepository
-from lib.db.tenant_context import set_tenant_context
+from lib.db.tenant_context import set_tenant_context, set_worker_context
 from lib.user_scope import current_identity_scope
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,14 @@ async def _prepare_task_session(session: Any, *, tenant_id: str | None, user_id:
     session.info["user_id"] = resolved_user_id
     if _is_postgresql_session(session):
         await set_tenant_context(session, user_id=resolved_user_id, tenant_id=resolved_tenant_id)
+
+
+async def _prepare_worker_session(session: Any) -> None:
+    session.info.pop("tenant_id", None)
+    session.info["user_id"] = DEFAULT_USER_ID
+    session.info["auth_mode"] = "worker"
+    if _is_postgresql_session(session):
+        await set_worker_context(session, user_id=DEFAULT_USER_ID)
 
 
 @contextlib.contextmanager
@@ -186,6 +194,7 @@ class GenerationQueue:
         pool_full_providers: frozenset[str] | None = None,
     ) -> dict[str, Any] | None:
         async with self._session_factory() as session:
+            await _prepare_worker_session(session)
             repo = TaskRepository(session)
             task = await repo.claim_next(media_type, pool_full_providers=pool_full_providers)
         if task:
@@ -194,6 +203,7 @@ class GenerationQueue:
 
     async def requeue_running_tasks(self, *, limit: int = 1000) -> int:
         async with self._session_factory() as session:
+            await _prepare_worker_session(session)
             repo = TaskRepository(session)
             recovered = await repo.requeue_running(limit=limit)
         if recovered > 0:
@@ -202,6 +212,7 @@ class GenerationQueue:
 
     async def list_orphan_tasks_on_start(self) -> list[dict[str, Any]]:
         async with self._session_factory() as session:
+            await _prepare_worker_session(session)
             repo = TaskRepository(session)
             return await repo.list_orphan_tasks_on_start()
 
@@ -212,11 +223,13 @@ class GenerationQueue:
         *,
         tenant_id: str | None = None,
         requested_by_user_id: str | None = None,
+        provider_id: str | None = None,
+        model_id: str | None = None,
     ) -> None:
         async with self._session_factory() as session:
             await _prepare_task_session(session, tenant_id=tenant_id, user_id=requested_by_user_id)
             repo = TaskRepository(session, tenant_id=tenant_id, requested_by_user_id=requested_by_user_id)
-            await repo.persist_provider_job_id(task_id, job_id)
+            await repo.persist_provider_job_id(task_id, job_id, provider_id=provider_id, model_id=model_id)
 
     async def persist_api_call_id(
         self,
