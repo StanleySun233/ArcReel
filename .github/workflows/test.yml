@@ -49,6 +49,19 @@ jobs:
             echo "code=$FILTER_CODE" >> "$GITHUB_OUTPUT"
           fi
 
+  docs-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Validate docs index and ADR frontmatter
+        run: python scripts/docs_gate.py .
+
   backend-tests:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -208,7 +221,7 @@ jobs:
 
   ci-required:
     if: always()
-    needs: [changes, backend-tests, postgres-compat, frontend-tests]
+    needs: [changes, docs-gate, backend-tests, postgres-compat, frontend-tests]
     runs-on: ubuntu-latest
     steps:
       - name: Verify required jobs
@@ -217,4 +230,4 @@ jobs:
             echo "One or more required jobs failed"
             exit 1
           fi
-          echo "All required jobs passed or were skipped (docs-only change)"
+          echo "All required jobs passed or were skipped where allowed"
